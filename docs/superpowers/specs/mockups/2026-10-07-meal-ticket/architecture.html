@@ -1,3 +1,68 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>설계 1 · 아키텍처 · 교회 식권 설계 목업</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-primary: #f5f5f7; --bg-secondary: #ffffff; --bg-tertiary: #e5e5e7; --border: #d1d1d6;
+      --text-primary: #1d1d1f; --text-secondary: #86868b; --text-tertiary: #aeaeb2;
+      --accent: #0071e3; --accent-hover: #0077ed; --success: #34c759; --warning: #ff9f0a; --error: #ff3b30;
+      --selected-bg: #e8f4fd; --selected-border: #0071e3;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-primary: #1d1d1f; --bg-secondary: #2d2d2f; --bg-tertiary: #3d3d3f; --border: #424245;
+        --text-primary: #f5f5f7; --text-secondary: #86868b; --text-tertiary: #636366;
+        --accent: #0a84ff; --accent-hover: #409cff; --selected-bg: rgba(10,132,255,.15); --selected-border: #0a84ff;
+      }
+    }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+           background: var(--bg-primary); color: var(--text-primary); line-height: 1.5; }
+    .frame-header { background: var(--bg-secondary); padding: .6rem 1.5rem; border-bottom: 1px solid var(--border);
+                    display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .frame-header h1 { font-size: .85rem; font-weight: 600; color: var(--text-secondary); }
+    .frame-header .note { font-size: .75rem; color: var(--text-tertiary); }
+    .frame-header a { color: var(--accent); text-decoration: none; font-size: .75rem; margin-left: .75rem; }
+    #claude-content { padding: 2rem; max-width: 1100px; margin: 0 auto; }
+    h2 { font-size: 1.5rem; font-weight: 600; margin-bottom: .5rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: .25rem; }
+    .subtitle { color: var(--text-secondary); margin-bottom: 1.5rem; }
+    .section { margin-bottom: 2rem; }
+    .label { font-size: .7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: .5rem; }
+    .options { display: flex; flex-direction: column; gap: .75rem; }
+    .option { background: var(--bg-secondary); border: 2px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem;
+              cursor: default; display: flex; align-items: flex-start; gap: 1rem; }
+    .option.selected { background: var(--selected-bg); border-color: var(--selected-border); }
+    .option .letter { background: var(--bg-tertiary); color: var(--text-secondary); width: 1.75rem; height: 1.75rem; border-radius: 6px;
+                      display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: .85rem; flex-shrink: 0; }
+    .option.selected .letter { background: var(--accent); color: #fff; }
+    .option .content { flex: 1; }
+    .option .content h3 { font-size: .95rem; margin-bottom: .15rem; }
+    .option .content p { color: var(--text-secondary); font-size: .85rem; margin: 0; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+    .card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; cursor: default; }
+    .card.selected { border-color: var(--selected-border); border-width: 2px; }
+    .card-image { background: var(--bg-tertiary); aspect-ratio: 16/10; display: flex; align-items: center; justify-content: center; }
+    .card-body { padding: 1rem; }
+    .card-body h3 { margin-bottom: .25rem; }
+    .card-body p { color: var(--text-secondary); font-size: .85rem; }
+    .mockup { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 1.5rem; }
+    .mockup-header { background: var(--bg-tertiary); padding: .5rem 1rem; font-size: .75rem; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
+    .mockup-body { padding: 1.5rem; }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 700px) { .split { grid-template-columns: 1fr; } }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; background: var(--bg-tertiary); padding: .05em .35em; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <div class="frame-header">
+    <h1>교회 식권 설계 목업 · 설계 1 · 아키텍처</h1>
+    <span class="note">GitHub Pages + Supabase + 카카오 구조도와 핵심 결정 <a href="index.html">목록으로</a></span>
+  </div>
+  <div id="claude-content">
 <h2>설계 1/5 · 아키텍처</h2>
 <p class="subtitle">서버 없이 정적 SPA + Supabase로 구성합니다. 숫자는 교인 폰에서 일어나는 요청 순서입니다.</p>
 
@@ -107,12 +172,16 @@
 
 <h3>이 구조로 가도 될까요?</h3>
 <div class="options">
-  <div class="option" data-choice="ok" onclick="toggleSelect(this)">
+  <div class="option selected" data-choice="ok">
     <div class="letter">A</div>
     <div class="content"><h3>좋습니다, 다음(데이터 모델)으로</h3><p>구조를 확정하고 테이블 설계로 넘어갑니다.</p></div>
   </div>
-  <div class="option" data-choice="revise" onclick="toggleSelect(this)">
+  <div class="option" data-choice="revise">
     <div class="letter">B</div>
     <div class="content"><h3>수정할 부분이 있습니다</h3><p>터미널에 어떤 부분인지 적어 주세요.</p></div>
   </div>
 </div>
+
+  </div>
+</body>
+</html>

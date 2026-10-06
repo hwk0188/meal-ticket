@@ -1,3 +1,68 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>설계 3a · 교인 화면 흐름 · 교회 식권 설계 목업</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-primary: #f5f5f7; --bg-secondary: #ffffff; --bg-tertiary: #e5e5e7; --border: #d1d1d6;
+      --text-primary: #1d1d1f; --text-secondary: #86868b; --text-tertiary: #aeaeb2;
+      --accent: #0071e3; --accent-hover: #0077ed; --success: #34c759; --warning: #ff9f0a; --error: #ff3b30;
+      --selected-bg: #e8f4fd; --selected-border: #0071e3;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-primary: #1d1d1f; --bg-secondary: #2d2d2f; --bg-tertiary: #3d3d3f; --border: #424245;
+        --text-primary: #f5f5f7; --text-secondary: #86868b; --text-tertiary: #636366;
+        --accent: #0a84ff; --accent-hover: #409cff; --selected-bg: rgba(10,132,255,.15); --selected-border: #0a84ff;
+      }
+    }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+           background: var(--bg-primary); color: var(--text-primary); line-height: 1.5; }
+    .frame-header { background: var(--bg-secondary); padding: .6rem 1.5rem; border-bottom: 1px solid var(--border);
+                    display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .frame-header h1 { font-size: .85rem; font-weight: 600; color: var(--text-secondary); }
+    .frame-header .note { font-size: .75rem; color: var(--text-tertiary); }
+    .frame-header a { color: var(--accent); text-decoration: none; font-size: .75rem; margin-left: .75rem; }
+    #claude-content { padding: 2rem; max-width: 1100px; margin: 0 auto; }
+    h2 { font-size: 1.5rem; font-weight: 600; margin-bottom: .5rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: .25rem; }
+    .subtitle { color: var(--text-secondary); margin-bottom: 1.5rem; }
+    .section { margin-bottom: 2rem; }
+    .label { font-size: .7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: .5rem; }
+    .options { display: flex; flex-direction: column; gap: .75rem; }
+    .option { background: var(--bg-secondary); border: 2px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem;
+              cursor: default; display: flex; align-items: flex-start; gap: 1rem; }
+    .option.selected { background: var(--selected-bg); border-color: var(--selected-border); }
+    .option .letter { background: var(--bg-tertiary); color: var(--text-secondary); width: 1.75rem; height: 1.75rem; border-radius: 6px;
+                      display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: .85rem; flex-shrink: 0; }
+    .option.selected .letter { background: var(--accent); color: #fff; }
+    .option .content { flex: 1; }
+    .option .content h3 { font-size: .95rem; margin-bottom: .15rem; }
+    .option .content p { color: var(--text-secondary); font-size: .85rem; margin: 0; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+    .card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; cursor: default; }
+    .card.selected { border-color: var(--selected-border); border-width: 2px; }
+    .card-image { background: var(--bg-tertiary); aspect-ratio: 16/10; display: flex; align-items: center; justify-content: center; }
+    .card-body { padding: 1rem; }
+    .card-body h3 { margin-bottom: .25rem; }
+    .card-body p { color: var(--text-secondary); font-size: .85rem; }
+    .mockup { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 1.5rem; }
+    .mockup-header { background: var(--bg-tertiary); padding: .5rem 1rem; font-size: .75rem; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
+    .mockup-body { padding: 1.5rem; }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 700px) { .split { grid-template-columns: 1fr; } }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; background: var(--bg-tertiary); padding: .05em .35em; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <div class="frame-header">
+    <h1>교회 식권 설계 목업 · 설계 3a · 교인 화면 흐름</h1>
+    <span class="note">시작·가입·아이 연결·가족 탭 (식권 배치는 v4 참고, 누르는 방식은 A 꾹 누르기로 확정) <a href="index.html">목록으로</a></span>
+  </div>
+  <div id="claude-content">
 <style>
   .phones { display:flex; gap:1.25rem; flex-wrap:wrap; justify-content:center; }
   .pwrap { display:flex; flex-direction:column; align-items:center; }
@@ -222,14 +287,14 @@
 <div class="section">
   <div class="label">결정이 필요한 것 · 식권 한 장을 "누르는" 방식</div>
   <div class="cards">
-    <div class="card" data-choice="hold" onclick="toggleSelect(this)">
+    <div class="card selected" data-choice="hold">
       <div class="card-image" style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center">
         <div class="tk holding" style="height:84px"><div class="fill"></div><div class="ic">🍚</div><div class="l">식권</div><div class="h">누르는 중…</div></div>
         <div class="tk used" style="height:84px"><div class="stamp">사용 완료</div><div class="ic">🍚</div><div class="l">12:31</div><div class="h">아빠 폰</div></div>
       </div>
       <div class="card-body"><h3>A. 꾹 누르기 (추천)</h3><p>한 장을 약 0.6초 누르고 있으면 색이 차오르다 "사용 완료"로 바뀝니다. 두 명분이면 두 장을 연달아 꾹, 꾹. 스쳐 닿아도 반응하지 않고, 종이 식권 찢는 리듬과 비슷합니다.</p></div>
     </div>
-    <div class="card" data-choice="tap-undo" onclick="toggleSelect(this)">
+    <div class="card" data-choice="tap-undo">
       <div class="card-image" style="padding:16px;display:flex;flex-direction:column;gap:10px;justify-content:center;position:relative">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="tk used" style="height:70px"><div class="stamp">사용 완료</div><div class="ic">🍚</div><div class="l">12:31</div></div><div class="tk" style="height:70px"><div class="ic">🍚</div><div class="l">식권</div><div class="h">눌러서 사용</div></div></div>
         <div style="background:var(--text-primary);color:var(--bg-primary);border-radius:10px;padding:8px 12px;font-size:11px;display:flex;justify-content:space-between"><span>1장 사용했어요</span><b style="color:var(--accent)">되돌리기 (3)</b></div>
@@ -262,3 +327,7 @@
     tick(); setInterval(tick, 1000);
   })();
 </script>
+
+  </div>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>교회 식권 설계 목업 목록</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-primary: #f5f5f7; --bg-secondary: #ffffff; --bg-tertiary: #e5e5e7; --border: #d1d1d6;
+      --text-primary: #1d1d1f; --text-secondary: #86868b; --text-tertiary: #aeaeb2;
+      --accent: #0071e3; --accent-hover: #0077ed; --success: #34c759; --warning: #ff9f0a; --error: #ff3b30;
+      --selected-bg: #e8f4fd; --selected-border: #0071e3;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-primary: #1d1d1f; --bg-secondary: #2d2d2f; --bg-tertiary: #3d3d3f; --border: #424245;
+        --text-primary: #f5f5f7; --text-secondary: #86868b; --text-tertiary: #636366;
+        --accent: #0a84ff; --accent-hover: #409cff; --selected-bg: rgba(10,132,255,.15); --selected-border: #0a84ff;
+      }
+    }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+           background: var(--bg-primary); color: var(--text-primary); line-height: 1.5; }
+    .frame-header { background: var(--bg-secondary); padding: .6rem 1.5rem; border-bottom: 1px solid var(--border);
+                    display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .frame-header h1 { font-size: .85rem; font-weight: 600; color: var(--text-secondary); }
+    .frame-header .note { font-size: .75rem; color: var(--text-tertiary); }
+    .frame-header a { color: var(--accent); text-decoration: none; font-size: .75rem; margin-left: .75rem; }
+    #claude-content { padding: 2rem; max-width: 1100px; margin: 0 auto; }
+    h2 { font-size: 1.5rem; font-weight: 600; margin-bottom: .5rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: .25rem; }
+    .subtitle { color: var(--text-secondary); margin-bottom: 1.5rem; }
+    .section { margin-bottom: 2rem; }
+    .label { font-size: .7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: .5rem; }
+    .options { display: flex; flex-direction: column; gap: .75rem; }
+    .option { background: var(--bg-secondary); border: 2px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem;
+              cursor: default; display: flex; align-items: flex-start; gap: 1rem; }
+    .option.selected { background: var(--selected-bg); border-color: var(--selected-border); }
+    .option .letter { background: var(--bg-tertiary); color: var(--text-secondary); width: 1.75rem; height: 1.75rem; border-radius: 6px;
+                      display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: .85rem; flex-shrink: 0; }
+    .option.selected .letter { background: var(--accent); color: #fff; }
+    .option .content { flex: 1; }
+    .option .content h3 { font-size: .95rem; margin-bottom: .15rem; }
+    .option .content p { color: var(--text-secondary); font-size: .85rem; margin: 0; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+    .card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; cursor: default; }
+    .card.selected { border-color: var(--selected-border); border-width: 2px; }
+    .card-image { background: var(--bg-tertiary); aspect-ratio: 16/10; display: flex; align-items: center; justify-content: center; }
+    .card-body { padding: 1rem; }
+    .card-body h3 { margin-bottom: .25rem; }
+    .card-body p { color: var(--text-secondary); font-size: .85rem; }
+    .mockup { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 1.5rem; }
+    .mockup-header { background: var(--bg-tertiary); padding: .5rem 1rem; font-size: .75rem; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
+    .mockup-body { padding: 1.5rem; }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 700px) { .split { grid-template-columns: 1fr; } }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; background: var(--bg-tertiary); padding: .05em .35em; border-radius: 4px; }
+
+    a.option { text-decoration: none; color: inherit; cursor: pointer; }
+    a.option:hover { border-color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="frame-header"><h1>교회 식권 설계 목업 · 목록</h1><span class="note">2026-10-07 브레인스토밍 결과. 파란 테두리가 확정된 선택.</span></div>
+  <div id="claude-content">
+    <h2>설계 목업</h2>
+    <p class="subtitle">설계 문서 <code>../../2026-10-07-church-meal-ticket-design.md</code>와 함께 보세요.</p>
+    <div class="options">
+      <a class="option selected-none" href="architecture.html"><div class="letter">1</div><div class="content"><h3>설계 1 · 아키텍처</h3><p>GitHub Pages + Supabase + 카카오 구조도와 핵심 결정</p></div></a>
+      <a class="option selected-none" href="member-row-and-data-model-v2.html"><div class="letter">2</div><div class="content"><h3>설계 2 · 데이터 모델 v2</h3><p>가족·연결 코드·아이 계정을 반영한 ERD, 함수, RLS (상단의 가로 한 줄 식권 배치는 폐기되고 v4 세로 목록으로 대체됨)</p></div></a>
+      <a class="option selected-none" href="member-screens-v3.html"><div class="letter">3</div><div class="content"><h3>설계 3a · 교인 화면 흐름</h3><p>시작·가입·아이 연결·가족 탭 (식권 배치는 v4 참고, 누르는 방식은 A 꾹 누르기로 확정)</p></div></a>
+      <a class="option selected-none" href="member-list-v4.html"><div class="letter">4</div><div class="content"><h3>설계 3a · 식권 세로 목록 v4 (확정)</h3><p>식권 한 장 = 좌우 꽉 찬 가로 막대, 아래로 쌓임</p></div></a>
+      <a class="option selected-none" href="admin-screens.html"><div class="letter">5</div><div class="content"><h3>설계 3b · 권사님(관리자) 화면</h3><p>식사 · 발급 · 식사 상세 · 사람 · 통계</p></div></a>
+    </div>
+  </div>
+</body>
+</html>

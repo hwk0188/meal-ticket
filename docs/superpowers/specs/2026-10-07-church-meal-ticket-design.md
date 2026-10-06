@@ -2,7 +2,7 @@
 
 - 작성일: 2026-10-07
 - 상태: 사용자 검토 대기
-- 목업: `docs/superpowers/specs/mockups/2026-10-07-meal-ticket/` (브레인스토밍 때 쓴 HTML 조각. 브라우저에서 열면 스타일 일부가 빠진 채 보이지만 구조는 확인 가능)
+- 목업: `docs/superpowers/specs/mockups/2026-10-07-meal-ticket/index.html` (브라우저에서 바로 열리는 단독 HTML. 파란 테두리가 확정된 선택)
 
 ## 1. 개요
 
