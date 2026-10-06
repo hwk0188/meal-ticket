@@ -1,0 +1,264 @@
+<style>
+  .phones { display:flex; gap:1.25rem; flex-wrap:wrap; justify-content:center; }
+  .pwrap { display:flex; flex-direction:column; align-items:center; }
+  .phone { width:232px; height:450px; border-radius:28px; border:7px solid var(--bg-tertiary); background:var(--bg-primary); overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 18px rgba(0,0,0,.08); position:relative; flex-shrink:0; }
+  .phone .sb { height:22px; font-size:10px; color:var(--text-secondary); display:flex; justify-content:space-between; padding:0 14px; align-items:center; }
+  .phone .body { padding:12px; flex:1; display:flex; flex-direction:column; gap:9px; font-size:12px; color:var(--text-primary); }
+  .pcap { width:232px; text-align:center; font-size:.8rem; color:var(--text-secondary); margin-top:.5rem; line-height:1.4; }
+  .kakao { background:#FEE500; color:#191919; border-radius:10px; padding:11px; text-align:center; font-weight:700; font-size:12px; }
+  .ghost { background:var(--bg-secondary); border:1px solid var(--border); color:var(--text-primary); border-radius:10px; padding:10px; text-align:center; font-weight:600; font-size:12px; }
+  .inp { background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:8px 10px; color:var(--text-tertiary); font-size:12px; }
+  .inp.filled { color:var(--text-primary); }
+  .btn { background:var(--accent); color:#fff; border-radius:10px; padding:11px; text-align:center; font-weight:700; font-size:13px; }
+  .btn.dis { opacity:.4; }
+  .consent { background:var(--bg-secondary); border:1px solid var(--accent); border-radius:10px; padding:8px 9px; font-size:10.5px; line-height:1.45; }
+  .consent .chk { width:14px; height:14px; border-radius:4px; background:var(--accent); color:#fff; font-size:10px; display:inline-flex; align-items:center; justify-content:center; vertical-align:-2px; margin-right:5px; }
+  .consent .sub { color:var(--text-secondary); margin-top:4px; padding-left:19px; }
+  .code { font-size:34px; font-weight:800; letter-spacing:.12em; text-align:center; font-variant-numeric:tabular-nums; margin:6px 0; }
+  .mealhead { background:var(--bg-secondary); border-radius:12px; padding:10px 12px; border:1px solid var(--border); position:relative; }
+  .mealhead .d { font-size:10.5px; color:var(--text-secondary); }
+  .mealhead .t { font-size:14px; font-weight:800; }
+  .mealhead .clock { position:absolute; right:12px; top:10px; font-size:11px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; }
+  .mealhead .r { position:absolute; right:12px; bottom:10px; font-size:11px; color:var(--text-secondary); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .tk { position:relative; border-radius:12px; border:2px solid var(--accent); background:var(--bg-secondary); height:74px; display:flex; flex-direction:column; align-items:center; justify-content:center; overflow:hidden; }
+  .tk::before, .tk::after { content:''; position:absolute; width:12px; height:12px; border-radius:50%; background:var(--bg-primary); border:2px solid var(--accent); top:50%; margin-top:-6px; }
+  .tk::before { left:-8px; } .tk::after { right:-8px; }
+  .tk .ic { font-size:18px; line-height:1; }
+  .tk .l { font-size:11px; font-weight:800; margin-top:3px; }
+  .tk .h { font-size:9.5px; color:var(--text-secondary); margin-top:1px; }
+  .tk .fill { position:absolute; left:0; top:0; bottom:0; width:0; background:rgba(10,132,255,.18); }
+  .tk.holding .fill { width:62%; }
+  .tk.used { border-color:var(--border); background:var(--bg-tertiary); color:var(--text-secondary); }
+  .tk.used::before, .tk.used::after { border-color:var(--border); }
+  .tk.used .stamp { position:absolute; border:2px solid var(--text-tertiary); color:var(--text-tertiary); border-radius:6px; padding:1px 5px; font-size:9.5px; font-weight:800; transform:rotate(-10deg); top:8px; right:8px; }
+  .tk.used .l { color:var(--text-secondary); }
+  .mini { font-size:11px; color:var(--text-secondary); display:flex; justify-content:space-between; padding:7px 10px; background:var(--bg-secondary); border-radius:10px; border:1px solid var(--border); }
+  .tabbar { display:flex; justify-content:space-around; border-top:1px solid var(--border); padding:8px 0 10px; font-size:10px; color:var(--text-secondary); background:var(--bg-secondary); }
+  .tabbar .on { color:var(--accent); font-weight:700; }
+  .fam { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-secondary); }
+  .fam .av { width:18px; height:18px; border-radius:50%; background:var(--bg-tertiary); display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:var(--text-primary); }
+  .toast { position:absolute; left:14px; right:14px; bottom:58px; background:var(--text-primary); color:var(--bg-primary); border-radius:10px; padding:9px 12px; font-size:11px; display:flex; justify-content:space-between; align-items:center; }
+  .toast b { color:var(--accent); }
+  .member { display:flex; justify-content:space-between; align-items:center; padding:8px 10px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:10px; font-size:11.5px; }
+  .member .tag { font-size:9.5px; color:var(--text-secondary); background:var(--bg-tertiary); border-radius:5px; padding:1px 5px; }
+</style>
+
+<h2>설계 3/5 · 화면 흐름 (3a 교인) <span style="font-size:.9rem;color:var(--accent);font-weight:600">v3 · 낱장 식권 + 가족 공유 + 아이 가입</span></h2>
+<p class="subtitle">식권은 산 장수만큼 낱장으로 보이고, 담당자가 한 장씩 누릅니다. 가족은 한 잔량을 함께 쓰고, 아이는 코드로 부모와 연결합니다.</p>
+
+<div class="section">
+  <div class="label">흐름 ① 시작 · 어른 가입 · 아이 연결</div>
+  <div class="phones">
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>12:28</span><span>●●●</span></div>
+        <div class="body" style="justify-content:center;gap:10px">
+          <div style="text-align:center;font-size:20px;font-weight:800">OO교회 식권</div>
+          <div style="text-align:center;color:var(--text-secondary);font-size:11px;margin-bottom:14px">주일 식사를 더 간편하게</div>
+          <div class="kakao">카카오로 시작하기</div>
+          <div class="ghost">아이 계정으로 시작하기<div style="font-size:9.5px;color:var(--text-secondary);font-weight:400;margin-top:2px">카카오 없이 · 보호자 연결 필요</div></div>
+          <div style="text-align:center;font-size:9.5px;color:var(--text-tertiary);margin-top:16px">개인정보 처리방침</div>
+        </div>
+      </div>
+      <div class="pcap">1. 시작 · 어른은 카카오, 카카오 없는 아이는 아래 버튼</div>
+    </div>
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>12:28</span><span>●●●</span></div>
+        <div class="body" style="gap:7px">
+          <div style="font-size:16px;font-weight:800;margin-top:2px">처음 오셨네요</div>
+          <div class="ghost" style="padding:7px;font-size:11px;display:flex;gap:4px"><span style="flex:1;background:var(--accent);color:#fff;border-radius:6px;padding:4px">어른이에요</span><span style="flex:1;padding:4px;color:var(--text-secondary)">만 14세 미만이에요</span></div>
+          <div class="label" style="margin:0">이름 <span style="text-transform:none;letter-spacing:0">(입금자명과 같게)</span></div>
+          <div class="inp filled" style="padding:7px 10px">김철수</div>
+          <div class="label" style="margin:0">휴대폰 번호</div>
+          <div class="inp filled" style="padding:7px 10px">010-1234-5678</div>
+          <div class="consent">
+            <span class="chk">✓</span><b>[필수] 개인정보 수집·이용 동의</b> <span style="color:var(--accent)">자세히</span>
+            <div class="sub">항목 이름·휴대폰 번호 / 목적 식권 발급·사용 확인 / 보유 탈퇴 시까지 / 미동의 시 이용 불가</div>
+          </div>
+          <div style="flex:1"></div>
+          <div class="btn" style="padding:9px">동의하고 시작하기</div>
+        </div>
+      </div>
+      <div class="pcap">2. 어른 가입 · 카카오 로그인 직후 1회. 선발급분 자동 연결</div>
+    </div>
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>12:29</span><span>●●●</span></div>
+        <div class="body" style="justify-content:center;gap:8px;text-align:center">
+          <div style="font-size:15px;font-weight:800">보호자에게 이 코드를<br>보여주세요</div>
+          <div class="code">482 913</div>
+          <div style="font-size:11px;color:var(--text-secondary)">보호자 앱의 <b>가족 › 자녀 추가</b>에서<br>이 숫자를 입력하면 연결됩니다</div>
+          <div style="font-size:10px;color:var(--text-tertiary);margin-top:6px">9분 41초 남음 · 1회용</div>
+          <div style="flex:1"></div>
+          <div style="font-size:10.5px;color:var(--text-secondary);background:var(--bg-secondary);border-radius:10px;padding:8px;border:1px solid var(--border)">연결이 끝나면 이 폰에 가족 식권이 보여요.<br><b>홈 화면에 추가</b>해 두면 다음부터 바로 열려요.</div>
+        </div>
+      </div>
+      <div class="pcap">3. 아이 폰 · "아이 계정으로 시작" 또는 카카오 후 "만 14세 미만"을 고르면 이 화면. 이름·번호 입력 없음</div>
+    </div>
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>12:29</span><span>●●●</span></div>
+        <div class="body" style="gap:7px">
+          <div style="font-size:15px;font-weight:800;margin-top:2px">자녀 추가</div>
+          <div class="label" style="margin:0">자녀 이름</div>
+          <div class="inp filled" style="padding:7px 10px">김서연</div>
+          <div class="label" style="margin:0">자녀 폰에 뜬 코드</div>
+          <div class="inp filled" style="padding:7px 10px;letter-spacing:.15em;font-weight:700">482 913</div>
+          <div class="consent">
+            <span class="chk">✓</span><b>[필수] 법정대리인 동의</b>
+            <div class="sub">만 14세 미만 자녀의 이름을 식권 사용 확인 목적으로 처리하는 데 보호자로서 동의합니다. 자녀 삭제 시 즉시 파기됩니다.</div>
+          </div>
+          <div style="flex:1"></div>
+          <div class="btn" style="padding:9px">연결하기</div>
+          <div style="font-size:9.5px;color:var(--text-tertiary);text-align:center">폰을 바꾼 자녀는 이름을 고르면 다시 연결됩니다</div>
+        </div>
+      </div>
+      <div class="pcap">4. 부모 폰 · 가족 탭 › 자녀 추가. 이 체크가 법정대리인 동의 기록. 배우자 연결도 같은 코드 방식(동의 체크만 없음)</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">흐름 ② 주일 식당 앞 · 네 식구, 4장 발급된 상태</div>
+  <div class="phones">
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>12:30</span><span>●●●</span></div>
+        <div class="body">
+          <div class="fam"><span class="av">철</span><span class="av">영</span><span class="av">민</span><span class="av">서</span><span>우리 가족 식권 · 4명</span></div>
+          <div class="mealhead">
+            <div class="clock">12:30:14</div>
+            <div class="d">오늘 · 10월 12일 (주일)</div>
+            <div class="t">주일 점심</div>
+            <div class="r">4장 남음</div>
+          </div>
+          <div class="grid">
+            <div class="tk"><div class="ic">🍚</div><div class="l">식권</div><div class="h">꾹 눌러 사용</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="l">식권</div><div class="h">꾹 눌러 사용</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="l">식권</div><div class="h">꾹 눌러 사용</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="l">식권</div><div class="h">꾹 눌러 사용</div></div>
+          </div>
+          <div class="label" style="margin:4px 0 0">다가오는 식권</div>
+          <div class="mini"><span>10/19 주일 점심</span><b>4장</b></div>
+          <div style="flex:1"></div>
+        </div>
+        <div class="tabbar"><span class="on">식권</span><span>내역</span><span>가족</span></div>
+      </div>
+      <div class="pcap">5. 아빠 폰 · 식권 4장이 낱장으로. 아빠·엄마 몫으로 담당자가 두 장을 연달아 꾹</div>
+    </div>
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>12:40</span><span>●●●</span></div>
+        <div class="body">
+          <div class="fam"><span class="av">철</span><span class="av">영</span><span class="av">민</span><span class="av">서</span><span>우리 가족 식권 · 4명</span></div>
+          <div class="mealhead">
+            <div class="clock">12:40:02</div>
+            <div class="d">오늘 · 10월 12일 (주일)</div>
+            <div class="t">주일 점심</div>
+            <div class="r">2장 남음</div>
+          </div>
+          <div class="grid">
+            <div class="tk used"><div class="stamp">사용 완료</div><div class="ic">🍚</div><div class="l">12:31</div><div class="h">아빠 폰</div></div>
+            <div class="tk used"><div class="stamp">사용 완료</div><div class="ic">🍚</div><div class="l">12:31</div><div class="h">아빠 폰</div></div>
+            <div class="tk holding"><div class="fill"></div><div class="ic">🍚</div><div class="l">식권</div><div class="h">누르는 중…</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="l">식권</div><div class="h">꾹 눌러 사용</div></div>
+          </div>
+          <div class="label" style="margin:4px 0 0">다가오는 식권</div>
+          <div class="mini"><span>10/19 주일 점심</span><b>4장</b></div>
+          <div style="flex:1"></div>
+        </div>
+        <div class="tabbar"><span class="on">식권</span><span>내역</span><span>가족</span></div>
+      </div>
+      <div class="pcap">6. 민준 폰(10분 뒤) · 아빠가 쓴 2장은 이미 회색. 세 번째 장을 담당자가 누르는 중</div>
+    </div>
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>12:45</span><span>●●●</span></div>
+        <div class="body">
+          <div class="fam"><span class="av">철</span><span class="av">영</span><span class="av">민</span><span class="av">서</span><span>우리 가족 식권 · 4명</span></div>
+          <div class="mealhead">
+            <div class="clock">12:45:33</div>
+            <div class="d">오늘 · 10월 12일 (주일)</div>
+            <div class="t">주일 점심</div>
+            <div class="r" style="color:var(--text-tertiary)">모두 사용</div>
+          </div>
+          <div class="grid">
+            <div class="tk used"><div class="stamp">사용 완료</div><div class="ic">🍚</div><div class="l">12:31</div><div class="h">아빠 폰</div></div>
+            <div class="tk used"><div class="stamp">사용 완료</div><div class="ic">🍚</div><div class="l">12:31</div><div class="h">아빠 폰</div></div>
+            <div class="tk used"><div class="stamp">사용 완료</div><div class="ic">🍚</div><div class="l">12:40</div><div class="h">민준 폰</div></div>
+            <div class="tk used"><div class="stamp">사용 완료</div><div class="ic">🍚</div><div class="l">12:45</div><div class="h">서연 폰</div></div>
+          </div>
+          <div class="label" style="margin:4px 0 0">다가오는 식권</div>
+          <div class="mini"><span>10/19 주일 점심</span><b>4장</b></div>
+          <div style="flex:1"></div>
+        </div>
+        <div class="tabbar"><span class="on">식권</span><span>내역</span><span>가족</span></div>
+      </div>
+      <div class="pcap">7. 서연 폰 · 마지막 장까지 사용. 네 폰 모두 같은 상태로 보임</div>
+    </div>
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>09:10</span><span>●●●</span></div>
+        <div class="body" style="gap:7px">
+          <div style="font-size:15px;font-weight:800;margin-top:2px">가족</div>
+          <div class="member"><span><b>김철수</b> <span class="tag">나</span></span><span style="color:var(--text-secondary)">010-****-5678</span></div>
+          <div class="member"><span><b>이영희</b></span><span style="color:var(--text-secondary)">010-****-9876</span></div>
+          <div class="member"><span><b>김민준</b> <span class="tag">자녀 · 카카오</span></span><span style="color:var(--text-secondary)">보호자 동의 10/5</span></div>
+          <div class="member"><span><b>김서연</b> <span class="tag">자녀 · 아이 계정</span></span><span style="color:var(--text-secondary)">보호자 동의 10/5</span></div>
+          <div class="ghost" style="padding:8px">+ 자녀 추가</div>
+          <div class="ghost" style="padding:8px">+ 가족 연결 (배우자 등)</div>
+          <div style="flex:1"></div>
+          <div style="font-size:9.5px;color:var(--text-tertiary);text-align:center">가족 나가기 · 자녀 삭제는 길게 누르기</div>
+        </div>
+        <div class="tabbar"><span>식권</span><span>내역</span><span class="on">가족</span></div>
+      </div>
+      <div class="pcap">8. 가족 탭 · 누가 연결되어 있는지, 자녀 동의 기록. 아이 폰에는 이 탭이 없음</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">결정이 필요한 것 · 식권 한 장을 "누르는" 방식</div>
+  <div class="cards">
+    <div class="card" data-choice="hold" onclick="toggleSelect(this)">
+      <div class="card-image" style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center">
+        <div class="tk holding" style="height:84px"><div class="fill"></div><div class="ic">🍚</div><div class="l">식권</div><div class="h">누르는 중…</div></div>
+        <div class="tk used" style="height:84px"><div class="stamp">사용 완료</div><div class="ic">🍚</div><div class="l">12:31</div><div class="h">아빠 폰</div></div>
+      </div>
+      <div class="card-body"><h3>A. 꾹 누르기 (추천)</h3><p>한 장을 약 0.6초 누르고 있으면 색이 차오르다 "사용 완료"로 바뀝니다. 두 명분이면 두 장을 연달아 꾹, 꾹. 스쳐 닿아도 반응하지 않고, 종이 식권 찢는 리듬과 비슷합니다.</p></div>
+    </div>
+    <div class="card" data-choice="tap-undo" onclick="toggleSelect(this)">
+      <div class="card-image" style="padding:16px;display:flex;flex-direction:column;gap:10px;justify-content:center;position:relative">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="tk used" style="height:70px"><div class="stamp">사용 완료</div><div class="ic">🍚</div><div class="l">12:31</div></div><div class="tk" style="height:70px"><div class="ic">🍚</div><div class="l">식권</div><div class="h">눌러서 사용</div></div></div>
+        <div style="background:var(--text-primary);color:var(--bg-primary);border-radius:10px;padding:8px 12px;font-size:11px;display:flex;justify-content:space-between"><span>1장 사용했어요</span><b style="color:var(--accent)">되돌리기 (3)</b></div>
+      </div>
+      <div class="card-body"><h3>B. 한 번 탭 + 3초 되돌리기</h3><p>탭하면 즉시 사용되고, 3초 동안 "되돌리기"가 뜹니다. 가장 빠르지만, 폰을 건네다 스치는 실수가 나기 쉽고, 되돌리기를 교인이 누를 수도 있어 담당자가 끝까지 지켜봐야 합니다.</p></div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem">
+  <div class="label">v2에서 바뀐 점 요약</div>
+  <ul style="padding-left:1.1rem;line-height:1.65;color:var(--text-primary);font-size:.9rem;margin:0">
+    <li><b>수량 선택 없음.</b> 식권은 낱장으로 보이고 한 장씩 처리합니다. 내부적으로는 한 번 누를 때마다 "1장 사용"이 기록됩니다.</li>
+    <li><b>가족 공유.</b> 식권은 산 사람 이름으로 기록되지만 잔량은 가족이 함께 봅니다. 어느 폰에서 썼는지 식권마다 남습니다.</li>
+    <li><b>아이 가입 두 갈래.</b> 카카오 있는 아이는 카카오 후 "만 14세 미만" → 코드. 없는 아이는 "아이 계정으로 시작" → 코드. 이후는 같습니다.</li>
+    <li><b>14세 미만 제외 철회.</b> 대신 부모의 "자녀 추가"가 법정대리인 동의 기록이 됩니다. 아이의 정보는 이름만 받습니다.</li>
+    <li><b>가족 탭 추가.</b> 어른 폰에만 있고, 자녀 추가·배우자 연결·동의 기록 확인·가족 나가기를 합니다.</li>
+    <li><b>스크린샷 대비는 그대로.</b> 식사 카드의 초 단위 시계, 사용 시각 표시, 당일만 사용 가능.</li>
+  </ul>
+</div>
+
+<script>
+  (function(){
+    var els = document.querySelectorAll('.mealhead .clock');
+    function tick(){
+      var d = new Date();
+      var str = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+      els.forEach(function(e){ e.textContent = str; });
+    }
+    tick(); setInterval(tick, 1000);
+  })();
+</script>

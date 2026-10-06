@@ -1,0 +1,118 @@
+<h2>설계 1/5 · 아키텍처</h2>
+<p class="subtitle">서버 없이 정적 SPA + Supabase로 구성합니다. 숫자는 교인 폰에서 일어나는 요청 순서입니다.</p>
+
+<div class="mockup" style="margin-bottom:1.5rem">
+  <div class="mockup-header">전체 구조</div>
+  <div class="mockup-body" style="padding:1rem">
+    <svg viewBox="0 0 920 540" width="100%" style="max-width:920px;display:block;margin:0 auto;font-family:inherit">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--text-secondary)"/>
+        </marker>
+        <marker id="arr-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+        </marker>
+      </defs>
+
+      <!-- 사용자 기기 -->
+      <rect x="260" y="16" width="400" height="74" rx="12" fill="var(--bg-secondary)" stroke="var(--accent)" stroke-width="2"/>
+      <text x="460" y="46" text-anchor="middle" font-size="17" font-weight="600" fill="var(--text-primary)">모바일 브라우저 (React SPA)</text>
+      <text x="460" y="70" text-anchor="middle" font-size="13" fill="var(--text-secondary)">교인 · 배식 담당자 · 권사님 모두 같은 앱, 권한만 다름</text>
+
+      <!-- GitHub Pages -->
+      <rect x="30" y="200" width="240" height="96" rx="12" fill="var(--bg-secondary)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="150" y="232" text-anchor="middle" font-size="16" font-weight="600" fill="var(--text-primary)">GitHub Pages</text>
+      <text x="150" y="256" text-anchor="middle" font-size="12.5" fill="var(--text-secondary)">정적 파일 호스팅 (HTML/JS/CSS)</text>
+      <text x="150" y="276" text-anchor="middle" font-size="12.5" fill="var(--text-secondary)">공개 저장소 · 무료</text>
+
+      <!-- Supabase -->
+      <rect x="310" y="180" width="380" height="136" rx="12" fill="var(--bg-secondary)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="500" y="206" text-anchor="middle" font-size="16" font-weight="600" fill="var(--text-primary)">Supabase (Free)</text>
+      <rect x="326" y="220" width="150" height="80" rx="8" fill="var(--bg-tertiary)" stroke="none"/>
+      <text x="401" y="246" text-anchor="middle" font-size="13.5" font-weight="600" fill="var(--text-primary)">Auth</text>
+      <text x="401" y="266" text-anchor="middle" font-size="12" fill="var(--text-secondary)">카카오 OAuth (PKCE)</text>
+      <text x="401" y="284" text-anchor="middle" font-size="12" fill="var(--text-secondary)">세션 · JWT 발급</text>
+      <rect x="490" y="220" width="184" height="80" rx="8" fill="var(--bg-tertiary)" stroke="none"/>
+      <text x="582" y="246" text-anchor="middle" font-size="13.5" font-weight="600" fill="var(--text-primary)">Postgres</text>
+      <text x="582" y="266" text-anchor="middle" font-size="12" fill="var(--text-secondary)">테이블 + RLS (권한)</text>
+      <text x="582" y="284" text-anchor="middle" font-size="12" fill="var(--text-secondary)">함수 RPC: 발급·사용·취소·연결</text>
+
+      <!-- Kakao -->
+      <rect x="730" y="200" width="160" height="96" rx="12" fill="var(--bg-secondary)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="810" y="238" text-anchor="middle" font-size="16" font-weight="600" fill="var(--text-primary)">카카오</text>
+      <text x="810" y="262" text-anchor="middle" font-size="12.5" fill="var(--text-secondary)">로그인 동의 화면</text>
+      <text x="810" y="280" text-anchor="middle" font-size="12.5" fill="var(--text-secondary)">앱 이름: OO교회 식권</text>
+
+      <!-- GitHub Actions -->
+      <rect x="30" y="420" width="240" height="96" rx="12" fill="var(--bg-secondary)" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <text x="150" y="452" text-anchor="middle" font-size="16" font-weight="600" fill="var(--text-primary)">GitHub Actions</text>
+      <text x="150" y="476" text-anchor="middle" font-size="12.5" fill="var(--text-secondary)">push 시 빌드 → Pages 배포</text>
+      <text x="150" y="496" text-anchor="middle" font-size="12.5" fill="var(--text-secondary)">3일마다 ping · 주 1회 백업</text>
+
+      <!-- 백업 저장소 -->
+      <rect x="400" y="430" width="200" height="76" rx="12" fill="var(--bg-secondary)" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <text x="500" y="462" text-anchor="middle" font-size="15" font-weight="600" fill="var(--text-primary)">비공개 백업 저장소</text>
+      <text x="500" y="484" text-anchor="middle" font-size="12.5" fill="var(--text-secondary)">주 1회 DB 덤프 (이름·연락처 보호)</text>
+
+      <!-- 화살표: 브라우저 → Pages (①) -->
+      <path d="M300,90 C240,130 190,150 160,198" fill="none" stroke="var(--accent)" stroke-width="2" marker-end="url(#arr-accent)"/>
+      <circle cx="214" cy="136" r="12" fill="var(--accent)"/>
+      <text x="214" y="140.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">1</text>
+      <text x="236" y="166" text-anchor="start" font-size="12.5" fill="var(--text-primary)">앱 로드</text>
+
+      <!-- 화살표: 브라우저 → 카카오 (②) -->
+      <path d="M640,90 C720,120 780,150 806,198" fill="none" stroke="var(--accent)" stroke-width="2" marker-end="url(#arr-accent)"/>
+      <circle cx="726" cy="124" r="12" fill="var(--accent)"/>
+      <text x="726" y="128.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">2</text>
+      <text x="744" y="152" text-anchor="start" font-size="12.5" fill="var(--text-primary)">카카오 로그인</text>
+
+      <!-- 카카오 → Auth -->
+      <path d="M730,268 L690,268" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="710" y="288" text-anchor="middle" font-size="11" fill="var(--text-secondary)">인가 코드</text>
+
+      <!-- 화살표: 브라우저 → Postgres (③) -->
+      <path d="M470,90 L470,178" fill="none" stroke="var(--accent)" stroke-width="2" marker-end="url(#arr-accent)"/>
+      <circle cx="470" cy="134" r="12" fill="var(--accent)"/>
+      <text x="470" y="138.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">3</text>
+      <text x="488" y="138" text-anchor="start" font-size="12.5" fill="var(--text-primary)">조회(RLS) · RPC 호출</text>
+
+      <!-- Actions → Pages (배포) -->
+      <path d="M150,420 L150,298" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="166" y="364" text-anchor="start" font-size="12" fill="var(--text-secondary)">배포</text>
+
+      <!-- Actions → Supabase (ping) -->
+      <path d="M270,440 C330,400 380,360 440,318" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+      <text x="300" y="388" text-anchor="start" font-size="12" fill="var(--text-secondary)">keep-alive</text>
+
+      <!-- Actions → 백업 -->
+      <path d="M270,468 L398,468" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+      <text x="334" y="458" text-anchor="middle" font-size="12" fill="var(--text-secondary)">pg_dump</text>
+      <!-- Supabase → 백업 (데이터 출처) -->
+      <path d="M560,316 C560,360 530,390 512,428" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+    </svg>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">핵심 결정</div>
+  <ul style="line-height:1.7;color:var(--text-primary);padding-left:1.25rem">
+    <li><b>앱은 하나.</b> 교인·배식 담당자·권사님이 같은 주소로 들어오고, 로그인한 사람의 역할(member/admin)에 따라 메뉴가 달라집니다. 배식 담당자는 계정이 필요 없습니다(교인 폰을 누르기만 함).</li>
+    <li><b>로직은 DB 함수에.</b> 발급·사용·취소·계정 연결은 Postgres 함수 하나가 한 트랜잭션으로 처리합니다. 프론트는 호출만 하므로 잔량이 틀어질 수 없습니다.</li>
+    <li><b>권한은 RLS에.</b> 교인은 자기 식권만, 관리자는 전부. 프론트 코드가 공개되어도 데이터는 DB 정책이 지킵니다.</li>
+    <li><b>라우팅은 해시 방식.</b> 주소가 <code>…/#/admin</code> 형태라 GitHub Pages의 새로고침 404 문제를 피합니다. 로그인 콜백은 PKCE 방식이라 해시와 충돌하지 않습니다.</li>
+    <li><b>운영 자동화는 GitHub Actions.</b> 배포, 3일 간격 ping(일시정지 예방), 주 1회 백업을 모두 무료 한도 안에서 돌립니다. 백업은 개인정보가 있어 비공개 저장소에 둡니다.</li>
+    <li><b>홈 화면 설치.</b> PWA 매니페스트를 넣어 "홈 화면에 추가"하면 앱처럼 열립니다. 주일마다 주소를 찾지 않아도 됩니다.</li>
+  </ul>
+</div>
+
+<h3>이 구조로 가도 될까요?</h3>
+<div class="options">
+  <div class="option" data-choice="ok" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content"><h3>좋습니다, 다음(데이터 모델)으로</h3><p>구조를 확정하고 테이블 설계로 넘어갑니다.</p></div>
+  </div>
+  <div class="option" data-choice="revise" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content"><h3>수정할 부분이 있습니다</h3><p>터미널에 어떤 부분인지 적어 주세요.</p></div>
+  </div>
+</div>

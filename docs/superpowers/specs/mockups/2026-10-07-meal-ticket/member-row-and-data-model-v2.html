@@ -1,0 +1,292 @@
+<style>
+  .phones { display:flex; gap:1.25rem; flex-wrap:wrap; justify-content:center; }
+  .pwrap { display:flex; flex-direction:column; align-items:center; }
+  .phone { width:232px; height:450px; border-radius:28px; border:7px solid var(--bg-tertiary); background:var(--bg-primary); overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 18px rgba(0,0,0,.08); position:relative; flex-shrink:0; }
+  .phone .sb { height:22px; font-size:10px; color:var(--text-secondary); display:flex; justify-content:space-between; padding:0 14px; align-items:center; }
+  .phone .body { padding:12px; flex:1; display:flex; flex-direction:column; gap:9px; font-size:12px; color:var(--text-primary); }
+  .pcap { width:232px; text-align:center; font-size:.8rem; color:var(--text-secondary); margin-top:.5rem; line-height:1.4; }
+  .mealhead { background:var(--bg-secondary); border-radius:12px; padding:10px 12px; border:1px solid var(--border); position:relative; }
+  .mealhead .d { font-size:10.5px; color:var(--text-secondary); }
+  .mealhead .t { font-size:14px; font-weight:800; }
+  .mealhead .clock { position:absolute; right:12px; top:10px; font-size:11px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; }
+  .mealhead .r { position:absolute; right:12px; bottom:10px; font-size:11px; color:var(--text-secondary); }
+  .row { display:flex; gap:6px; }
+  .row.scroll { overflow:hidden; position:relative; }
+  .row.scroll::after { content:''; position:absolute; right:0; top:0; bottom:0; width:28px; background:linear-gradient(90deg, transparent, var(--bg-primary)); }
+  .tk { position:relative; border-radius:10px; border:2px solid var(--accent); background:var(--bg-secondary); height:96px; flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; overflow:hidden; }
+  .row.scroll .tk { flex:0 0 68px; }
+  .tk::before, .tk::after { content:''; position:absolute; width:10px; height:10px; border-radius:50%; background:var(--bg-primary); border:2px solid var(--accent); left:50%; margin-left:-5px; }
+  .tk::before { top:-7px; } .tk::after { bottom:-7px; }
+  .tk .ic { font-size:17px; line-height:1; }
+  .tk .l { font-size:10.5px; font-weight:800; margin-top:4px; }
+  .tk .h { font-size:8.5px; color:var(--text-secondary); margin-top:2px; text-align:center; line-height:1.2; }
+  .tk .fill { position:absolute; left:0; right:0; bottom:0; height:0; background:rgba(10,132,255,.18); }
+  .tk.holding .fill { height:62%; }
+  .tk.used { border-color:var(--border); background:var(--bg-tertiary); color:var(--text-secondary); }
+  .tk.used::before, .tk.used::after { border-color:var(--border); }
+  .tk.used .ic { opacity:.45; }
+  .tk.used .l { color:var(--text-secondary); font-size:10px; }
+  .tk.used .chk { position:absolute; top:6px; right:6px; width:14px; height:14px; border-radius:50%; background:var(--text-tertiary); color:#fff; font-size:9px; display:flex; align-items:center; justify-content:center; font-weight:800; }
+  .mini { font-size:11px; color:var(--text-secondary); display:flex; justify-content:space-between; padding:7px 10px; background:var(--bg-secondary); border-radius:10px; border:1px solid var(--border); }
+  .tabbar { display:flex; justify-content:space-around; border-top:1px solid var(--border); padding:8px 0 10px; font-size:10px; color:var(--text-secondary); background:var(--bg-secondary); }
+  .tabbar .on { color:var(--accent); font-weight:700; }
+  .fam { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-secondary); }
+  .fam .av { width:18px; height:18px; border-radius:50%; background:var(--bg-tertiary); display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:var(--text-primary); }
+  .dots { display:flex; justify-content:center; gap:4px; }
+  .dots span { width:5px; height:5px; border-radius:50%; background:var(--border); }
+  .dots span.on { background:var(--accent); }
+  .tb { fill: var(--bg-secondary); stroke: var(--border); stroke-width: 1.5; }
+  .th { fill: var(--bg-tertiary); }
+  .tn { font-size: 15px; font-weight: 700; fill: var(--text-primary); }
+  .td { font-size: 12px; fill: var(--text-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .pk { fill: var(--text-primary); font-weight: 600; }
+  .fk { fill: var(--accent); }
+  .new { fill: var(--success); font-weight: 700; }
+  .rel { fill: none; stroke: var(--text-secondary); stroke-width: 1.5; }
+  .cap { font-size: 11.5px; fill: var(--text-secondary); }
+  .fn td { padding:.35rem 0; vertical-align:top; }
+  .fn td:first-child { color:var(--text-secondary); width:22%; }
+  .fn span { color:var(--text-secondary); }
+  .badge { display:inline-block; font-size:.7rem; font-weight:700; color:#fff; background:var(--success); border-radius:4px; padding:0 .35rem; margin-left:.3rem; vertical-align:middle; }
+</style>
+
+<h2>교인 화면 수정 확인 + 설계 2/5 데이터 모델 v2</h2>
+<p class="subtitle">위: 식권을 가로 한 줄로 바꾼 화면. 아래: 가족 공유·연결 코드·아이 계정을 반영한 테이블 설계.</p>
+
+<div class="section">
+  <div class="label">식권 가로 한 줄 배치 · 누르는 방식은 "꾹 누르기"로 확정</div>
+  <div class="phones">
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>12:40</span><span>●●●</span></div>
+        <div class="body">
+          <div class="fam"><span class="av">철</span><span class="av">영</span><span class="av">민</span><span class="av">서</span><span>우리 가족 식권 · 4명</span></div>
+          <div class="mealhead">
+            <div class="clock">12:40:02</div>
+            <div class="d">오늘 · 10월 12일 (주일)</div>
+            <div class="t">주일 점심</div>
+            <div class="r">2장 남음</div>
+          </div>
+          <div class="row">
+            <div class="tk used"><div class="chk">✓</div><div class="ic">🍚</div><div class="l">12:31</div><div class="h">아빠 폰</div></div>
+            <div class="tk used"><div class="chk">✓</div><div class="ic">🍚</div><div class="l">12:31</div><div class="h">아빠 폰</div></div>
+            <div class="tk holding"><div class="fill"></div><div class="ic">🍚</div><div class="l">식권</div><div class="h">누르는<br>중…</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="l">식권</div><div class="h">꾹 눌러<br>사용</div></div>
+          </div>
+          <div style="font-size:10px;color:var(--text-tertiary);text-align:center">담당자가 식권을 꾹 눌러 주세요</div>
+          <div class="label" style="margin:4px 0 0">다가오는 식권</div>
+          <div class="mini"><span>10/19 주일 점심</span><b>4장</b></div>
+          <div style="flex:1"></div>
+        </div>
+        <div class="tabbar"><span class="on">식권</span><span>내역</span><span>가족</span></div>
+      </div>
+      <div class="pcap">4장 이하 · 한 줄에 꽉 채워 배치. 사용한 장은 왼쪽부터 회색, 세 번째 장을 누르는 중</div>
+    </div>
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>12:30</span><span>●●●</span></div>
+        <div class="body">
+          <div class="fam"><span class="av">철</span><span class="av">영</span><span class="av">민</span><span class="av">서</span><span>우리 가족 식권 · 4명</span></div>
+          <div class="mealhead">
+            <div class="clock">12:30:14</div>
+            <div class="d">오늘 · 10월 12일 (주일)</div>
+            <div class="t">주일 점심</div>
+            <div class="r">6장 남음</div>
+          </div>
+          <div class="row scroll">
+            <div class="tk"><div class="ic">🍚</div><div class="l">식권</div><div class="h">꾹 눌러<br>사용</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="l">식권</div><div class="h">꾹 눌러<br>사용</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="l">식권</div><div class="h">꾹 눌러<br>사용</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="l">식권</div><div class="h">꾹 눌러<br>사용</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="l">식권</div><div class="h">꾹 눌러<br>사용</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="l">식권</div><div class="h">꾹 눌러<br>사용</div></div>
+          </div>
+          <div class="dots"><span class="on"></span><span></span></div>
+          <div class="label" style="margin:4px 0 0">다가오는 식권</div>
+          <div class="mini"><span>10/19 주일 점심</span><b>4장</b></div>
+          <div style="flex:1"></div>
+        </div>
+        <div class="tabbar"><span class="on">식권</span><span>내역</span><span>가족</span></div>
+      </div>
+      <div class="pcap">5장 이상 · 한 줄 그대로, 옆으로 밀어서 봄. 사용한 장이 생기면 첫 미사용 장이 보이도록 자동으로 이동</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">데이터 모델 v2 · 초록색이 추가·변경된 부분</div>
+  <div class="mockup">
+    <div class="mockup-header">ERD v2</div>
+    <div class="mockup-body" style="padding:1rem">
+      <svg viewBox="0 0 940 660" width="100%" style="max-width:940px;display:block;margin:0 auto;font-family:inherit">
+        <defs>
+          <marker id="crow2" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+            <path d="M1,1 L11,6 L1,11 M11,6 L1,6" fill="none" stroke="var(--text-secondary)" stroke-width="1.4"/>
+          </marker>
+        </defs>
+
+        <!-- families -->
+        <g>
+          <rect class="tb" x="30" y="20" width="230" height="92" rx="10" stroke="var(--success)"/>
+          <rect class="th" x="30" y="20" width="230" height="30" rx="10"/><rect class="th" x="30" y="38" width="230" height="12"/>
+          <text class="tn" x="44" y="41">families <tspan class="cap">가족</tspan></text>
+          <text class="td pk" x="44" y="70">id          uuid  PK</text>
+          <text class="td" x="44" y="90">created_at</text>
+          <text class="cap" x="44" y="106">· 사람 생성 시 1인 가족 자동 생성, 연결 = 이동</text>
+        </g>
+
+        <!-- pairing_codes -->
+        <g>
+          <rect class="tb" x="320" y="20" width="290" height="132" rx="10" stroke="var(--success)"/>
+          <rect class="th" x="320" y="20" width="290" height="30" rx="10"/><rect class="th" x="320" y="38" width="290" height="12"/>
+          <text class="tn" x="334" y="41">pairing_codes <tspan class="cap">연결 코드</tspan></text>
+          <text class="td pk" x="334" y="70">code          text  6자리, PK</text>
+          <text class="td fk" x="334" y="90">auth_user_id  uuid  코드 띄운 폰의 계정</text>
+          <text class="td" x="334" y="110">kind          child | adult</text>
+          <text class="td" x="334" y="130">expires_at (10분), used_at</text>
+          <text class="cap" x="334" y="146">· 만료·사용 후 삭제. 미연결 익명 계정도 24h 후 정리</text>
+        </g>
+
+        <!-- meals -->
+        <g>
+          <rect class="tb" x="670" y="20" width="240" height="150" rx="10"/>
+          <rect class="th" x="670" y="20" width="240" height="30" rx="10"/><rect class="th" x="670" y="38" width="240" height="12"/>
+          <text class="tn" x="684" y="41">meals <tspan class="cap">식사</tspan></text>
+          <text class="td pk" x="684" y="70">id         uuid  PK</text>
+          <text class="td" x="684" y="90">title      text</text>
+          <text class="td" x="684" y="110">served_on  date</text>
+          <text class="td" x="684" y="130">note, created_by, created_at</text>
+          <text class="cap" x="684" y="156">· (served_on, title) 고유</text>
+        </g>
+
+        <!-- people -->
+        <g>
+          <rect class="tb" x="30" y="160" width="290" height="270" rx="10"/>
+          <rect class="th" x="30" y="160" width="290" height="30" rx="10"/><rect class="th" x="30" y="178" width="290" height="12"/>
+          <text class="tn" x="44" y="181">people <tspan class="cap">사람</tspan></text>
+          <text class="td pk" x="44" y="210">id             uuid  PK</text>
+          <text class="td new" x="44" y="230">family_id      → families  (필수)</text>
+          <text class="td" x="44" y="250">name           text</text>
+          <text class="td new" x="44" y="270">phone          text  고유, 아이는 NULL</text>
+          <text class="td fk" x="44" y="290">auth_user_id   uuid  카카오 또는 익명</text>
+          <text class="td" x="44" y="310">role           member | admin</text>
+          <text class="td new" x="44" y="330">is_minor       bool  만 14세 미만</text>
+          <text class="td new" x="44" y="350">guardian_id    → people  (아이만)</text>
+          <text class="td new" x="44" y="370">consented_at, consent_version</text>
+          <text class="td new" x="44" y="390">guardian_consented_at  (아이만)</text>
+          <text class="td" x="44" y="410">deleted_at  (탈퇴 시 이름·번호 익명화)</text>
+        </g>
+
+        <!-- issuances -->
+        <g>
+          <rect class="tb" x="30" y="470" width="290" height="170" rx="10"/>
+          <rect class="th" x="30" y="470" width="290" height="30" rx="10"/><rect class="th" x="30" y="488" width="290" height="12"/>
+          <text class="tn" x="44" y="491">issuances <tspan class="cap">발급 장부</tspan></text>
+          <text class="td pk" x="44" y="520">id          uuid  PK</text>
+          <text class="td fk" x="44" y="540">person_id   → people  (구매자)</text>
+          <text class="td new" x="44" y="560">family_id   → families (발급 시점 가족)</text>
+          <text class="td fk" x="44" y="580">meal_id     → meals</text>
+          <text class="td" x="44" y="600">quantity, unit_price, memo, issued_by, issued_at</text>
+          <text class="td" x="44" y="620">cancelled_at, cancelled_by, cancel_reason</text>
+        </g>
+
+        <!-- usages -->
+        <g>
+          <rect class="tb" x="620" y="470" width="290" height="170" rx="10"/>
+          <rect class="th" x="620" y="470" width="290" height="30" rx="10"/><rect class="th" x="620" y="488" width="290" height="12"/>
+          <text class="tn" x="634" y="491">usages <tspan class="cap">사용 장부</tspan></text>
+          <text class="td pk" x="634" y="520">id           uuid  PK</text>
+          <text class="td new" x="634" y="540">family_id    → families</text>
+          <text class="td fk" x="634" y="560">person_id    → people  (누구 폰에서 / 누구 몫)</text>
+          <text class="td fk" x="634" y="580">meal_id      → meals</text>
+          <text class="td new" x="634" y="600">quantity = 1 고정 · used_via self|admin</text>
+          <text class="td" x="634" y="620">recorded_by, used_at, voided_at, voided_by</text>
+        </g>
+
+        <!-- view -->
+        <g>
+          <rect x="360" y="490" width="230" height="130" rx="10" fill="var(--bg-secondary)" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="6 4"/>
+          <text class="tn" x="374" y="516" style="fill:var(--accent)">ticket_balances <tspan class="cap">뷰</tspan></text>
+          <text class="td new" x="374" y="540">family_id, meal_id  ← 가족 단위</text>
+          <text class="td" x="374" y="560">issued, used</text>
+          <text class="td pk" x="374" y="580">remaining = issued − used</text>
+          <text class="td" x="374" y="600">amount = Σ 장수 × 단가</text>
+        </g>
+
+        <!-- relationships -->
+        <path class="rel" d="M145,112 L145,158" marker-end="url(#crow2)"/>
+        <path class="rel" d="M190,430 L190,468" marker-end="url(#crow2)"/>
+        <path class="rel" d="M320,300 C480,300 620,380 700,468" marker-end="url(#crow2)"/>
+        <path class="rel" d="M790,170 C790,300 560,380 300,520" marker-end="url(#crow2)" stroke-dasharray="0"/>
+        <path class="rel" d="M790,170 L790,468" marker-end="url(#crow2)"/>
+        <path class="rel" d="M320,540 L358,540" stroke-dasharray="4 3"/>
+        <path class="rel" d="M620,540 L592,540" stroke-dasharray="4 3"/>
+        <path class="rel" d="M260,66 C300,66 420,200 470,300 C520,400 560,440 575,488" stroke-dasharray="4 3" marker-end="url(#crow2)"/>
+        <text class="cap" x="475" y="650" text-anchor="middle">잔량은 가족 × 식사 단위. 사람이 가족을 옮겨도 이미 발급·사용된 장부는 그 가족에 남음</text>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<div class="split" style="margin-bottom:1.5rem">
+  <div class="mockup">
+    <div class="mockup-header">DB 함수 (RPC) v2</div>
+    <div class="mockup-body" style="padding:1rem 1.25rem">
+      <table class="fn" style="width:100%;border-collapse:collapse;font-size:0.85rem">
+        <tr><td>어른 가입</td><td><code>claim_person(name, phone)</code><br><span>동의 시각·버전 기록. 같은 번호의 미연결 사람이 있으면 연결</span></td></tr>
+        <tr><td>연결 코드<span class="badge">new</span></td><td><code>create_pairing_code(kind)</code><br><span>내 계정에 10분짜리 6자리 코드. 아이(child) 또는 어른(adult)</span></td></tr>
+        <tr><td>가족 추가<span class="badge">new</span></td><td><code>add_family_member(code, child_name?)</code><br><span>child: 자녀 사람 생성(이름만), 보호자=나, 동의 기록, 내 가족에 편입 · adult: 그 사람을 내 가족으로 이동</span></td></tr>
+        <tr><td>재연결<span class="badge">new</span></td><td><code>relink_child(child_id, code)</code><br><span>폰 바꾼 자녀. 새 계정으로 교체, 옛 세션은 접근 불가</span></td></tr>
+        <tr><td>가족 관리<span class="badge">new</span></td><td><code>leave_family()</code> · <code>remove_child(child_id)</code><br><span>나가면 1인 가족 새로 생성 · 자녀 삭제는 익명화 + 계정 연결 해제</span></td></tr>
+        <tr><td>사용</td><td><code>use_ticket(meal_id)</code><br><span>항상 1장. 가족 잔량 잠금 → 확인 → 기록. <b>식사 당일만</b></span></td></tr>
+        <tr><td>관리자</td><td><code>issue_tickets(person_id, meal_id, qty, unit_price, memo)</code> · <code>cancel_issuance(id, reason)</code> · <code>use_ticket_as_admin(person_id, meal_id)</code> · <code>void_usage(id)</code> · <code>merge_people(from, into)</code> · <code>link_person(person_id, auth_user_id)</code></td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">권한(RLS) v2 · 정리 작업</div>
+    <div class="mockup-body" style="padding:1rem 1.25rem;font-size:0.85rem;line-height:1.65">
+      <div class="label">RLS</div>
+      <ul style="padding-left:1.1rem;margin-bottom:1rem;color:var(--text-primary)">
+        <li><b>people</b>: 같은 가족 구성원 조회 가능(가족 탭). 본인 행만 이름·번호 수정. 아이 계정은 조회만. 관리자 전부.</li>
+        <li><b>issuances / usages / 잔량</b>: <b>내 가족</b> 것만 조회. 쓰기는 함수로만.</li>
+        <li><b>pairing_codes</b>: 직접 접근 불가. 함수로만.</li>
+        <li><b>meals</b>: 변경 없음.</li>
+      </ul>
+      <div class="label">주기 정리 (pg_cron, Supabase 기본 제공)</div>
+      <ul style="padding-left:1.1rem;color:var(--text-primary)">
+        <li>만료된 연결 코드 삭제 (매시간)</li>
+        <li>24시간 지나도 사람에 연결되지 않은 익명 계정 삭제 (매일)</li>
+      </ul>
+      <div class="label" style="margin-top:1rem">아이 계정 익명 로그인</div>
+      <ul style="padding-left:1.1rem;color:var(--text-primary)">
+        <li>Supabase 익명 로그인 사용. 무료, 월 활성 사용자 한도에 포함(5만 명, 여유 충분).</li>
+        <li>세션은 그 폰 브라우저에만 저장. 홈 화면 추가를 권장.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3>식권 한 줄 배치와 데이터 모델 v2, 이대로 갈까요?</h3>
+<div class="options">
+  <div class="option" data-choice="ok" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content"><h3>좋습니다, 관리자 화면(3b)으로</h3><p>교인 화면과 데이터 모델을 확정하고 권사님 화면 목업으로 넘어갑니다.</p></div>
+  </div>
+  <div class="option" data-choice="revise" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content"><h3>수정할 부분이 있습니다</h3><p>터미널에 어떤 부분인지 적어 주세요.</p></div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    var els = document.querySelectorAll('.mealhead .clock');
+    function tick(){
+      var d = new Date();
+      var str = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+      els.forEach(function(e){ e.textContent = str; });
+    }
+    tick(); setInterval(tick, 1000);
+  })();
+</script>

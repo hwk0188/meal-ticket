@@ -1,0 +1,153 @@
+<style>
+  .phones { display:flex; gap:1.25rem; flex-wrap:wrap; justify-content:center; }
+  .pwrap { display:flex; flex-direction:column; align-items:center; }
+  .phone { width:232px; height:450px; border-radius:28px; border:7px solid var(--bg-tertiary); background:var(--bg-primary); overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 18px rgba(0,0,0,.08); position:relative; flex-shrink:0; }
+  .phone .sb { height:22px; font-size:10px; color:var(--text-secondary); display:flex; justify-content:space-between; padding:0 14px; align-items:center; }
+  .phone .body { padding:12px; flex:1; display:flex; flex-direction:column; gap:8px; font-size:12px; color:var(--text-primary); overflow:hidden; }
+  .pcap { width:232px; text-align:center; font-size:.8rem; color:var(--text-secondary); margin-top:.5rem; line-height:1.4; }
+  .mealhead { background:var(--bg-secondary); border-radius:12px; padding:10px 12px; border:1px solid var(--border); position:relative; }
+  .mealhead .d { font-size:10.5px; color:var(--text-secondary); }
+  .mealhead .t { font-size:14px; font-weight:800; }
+  .mealhead .clock { position:absolute; right:12px; top:10px; font-size:11px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; }
+  .mealhead .r { position:absolute; right:12px; bottom:10px; font-size:11px; color:var(--text-secondary); }
+  .list { display:flex; flex-direction:column; gap:7px; }
+  .tk { position:relative; height:54px; border-radius:10px; border:2px solid var(--accent); background:var(--bg-secondary); display:flex; align-items:center; padding:0 12px 0 14px; gap:10px; overflow:hidden; }
+  .tk::before, .tk::after { content:''; position:absolute; width:12px; height:12px; border-radius:50%; background:var(--bg-primary); border:2px solid var(--accent); top:50%; margin-top:-6px; }
+  .tk::before { left:-8px; } .tk::after { right:-8px; }
+  .tk .ic { font-size:20px; line-height:1; }
+  .tk .txt { flex:1; display:flex; flex-direction:column; }
+  .tk .l { font-size:12.5px; font-weight:800; }
+  .tk .h { font-size:9.5px; color:var(--text-secondary); margin-top:1px; }
+  .tk .num { font-size:10px; color:var(--text-tertiary); font-weight:700; }
+  .tk .fill { position:absolute; left:0; top:0; bottom:0; width:0; background:rgba(10,132,255,.18); }
+  .tk.holding .fill { width:62%; }
+  .tk.holding .h { color:var(--accent); font-weight:700; }
+  .tk.used { border-color:var(--border); background:var(--bg-tertiary); color:var(--text-secondary); }
+  .tk.used::before, .tk.used::after { border-color:var(--border); }
+  .tk.used .ic { opacity:.45; }
+  .tk.used .l { color:var(--text-secondary); font-size:11.5px; }
+  .tk.used .stamp { border:2px solid var(--text-tertiary); color:var(--text-tertiary); border-radius:6px; padding:1px 6px; font-size:10px; font-weight:800; transform:rotate(-8deg); }
+  .mini { font-size:11px; color:var(--text-secondary); display:flex; justify-content:space-between; padding:7px 10px; background:var(--bg-secondary); border-radius:10px; border:1px solid var(--border); }
+  .tabbar { display:flex; justify-content:space-around; border-top:1px solid var(--border); padding:8px 0 10px; font-size:10px; color:var(--text-secondary); background:var(--bg-secondary); }
+  .tabbar .on { color:var(--accent); font-weight:700; }
+  .fam { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-secondary); }
+  .fam .av { width:18px; height:18px; border-radius:50%; background:var(--bg-tertiary); display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:var(--text-primary); }
+  .fade { position:absolute; left:0; right:0; bottom:38px; height:40px; background:linear-gradient(transparent, var(--bg-primary)); pointer-events:none; }
+</style>
+
+<h2>교인 화면 v4 · 식권 세로 목록 배치</h2>
+<p class="subtitle">식권 한 장이 좌우로 꽉 차는 가로 막대이고, 산 장수만큼 아래로 쌓입니다. 담당자는 위에서부터 한 장씩 꾹 누릅니다.</p>
+
+<div class="section">
+  <div class="phones">
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>12:30</span><span>●●●</span></div>
+        <div class="body">
+          <div class="fam"><span class="av">철</span><span class="av">영</span><span class="av">민</span><span class="av">서</span><span>우리 가족 식권 · 4명</span></div>
+          <div class="mealhead">
+            <div class="clock">12:30:14</div>
+            <div class="d">오늘 · 10월 12일 (주일)</div>
+            <div class="t">주일 점심</div>
+            <div class="r">4장 남음</div>
+          </div>
+          <div class="list">
+            <div class="tk"><div class="ic">🍚</div><div class="txt"><div class="l">식권</div><div class="h">담당자가 꾹 눌러 사용</div></div><div class="num">1 / 4</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="txt"><div class="l">식권</div><div class="h">담당자가 꾹 눌러 사용</div></div><div class="num">2 / 4</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="txt"><div class="l">식권</div><div class="h">담당자가 꾹 눌러 사용</div></div><div class="num">3 / 4</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="txt"><div class="l">식권</div><div class="h">담당자가 꾹 눌러 사용</div></div><div class="num">4 / 4</div></div>
+          </div>
+          <div style="flex:1"></div>
+          <div class="mini"><span>다음 · 10/19 주일 점심</span><b>4장</b></div>
+        </div>
+        <div class="tabbar"><span class="on">식권</span><span>내역</span><span>가족</span></div>
+      </div>
+      <div class="pcap">아빠 폰 · 발급 직후. 4장이 세로로 쌓임. 아빠·엄마 몫으로 담당자가 1번, 2번을 연달아 꾹</div>
+    </div>
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>12:40</span><span>●●●</span></div>
+        <div class="body">
+          <div class="fam"><span class="av">철</span><span class="av">영</span><span class="av">민</span><span class="av">서</span><span>우리 가족 식권 · 4명</span></div>
+          <div class="mealhead">
+            <div class="clock">12:40:02</div>
+            <div class="d">오늘 · 10월 12일 (주일)</div>
+            <div class="t">주일 점심</div>
+            <div class="r">2장 남음</div>
+          </div>
+          <div class="list">
+            <div class="tk used"><div class="ic">🍚</div><div class="txt"><div class="l">12:31 사용</div><div class="h">아빠 폰</div></div><div class="stamp">사용 완료</div></div>
+            <div class="tk used"><div class="ic">🍚</div><div class="txt"><div class="l">12:31 사용</div><div class="h">아빠 폰</div></div><div class="stamp">사용 완료</div></div>
+            <div class="tk holding"><div class="fill"></div><div class="ic">🍚</div><div class="txt"><div class="l">식권</div><div class="h">누르는 중…</div></div><div class="num">3 / 4</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="txt"><div class="l">식권</div><div class="h">담당자가 꾹 눌러 사용</div></div><div class="num">4 / 4</div></div>
+          </div>
+          <div style="flex:1"></div>
+          <div class="mini"><span>다음 · 10/19 주일 점심</span><b>4장</b></div>
+        </div>
+        <div class="tabbar"><span class="on">식권</span><span>내역</span><span>가족</span></div>
+      </div>
+      <div class="pcap">민준 폰(10분 뒤) · 위 2장은 회색. 3번째 장을 누르는 중, 색이 왼쪽에서 차오름</div>
+    </div>
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>12:30</span><span>●●●</span></div>
+        <div class="body">
+          <div class="fam"><span class="av">철</span><span class="av">영</span><span class="av">민</span><span class="av">서</span><span>우리 가족 식권 · 4명</span></div>
+          <div class="mealhead">
+            <div class="clock">12:30:14</div>
+            <div class="d">오늘 · 10월 12일 (주일)</div>
+            <div class="t">주일 점심</div>
+            <div class="r">6장 남음</div>
+          </div>
+          <div class="list">
+            <div class="tk"><div class="ic">🍚</div><div class="txt"><div class="l">식권</div><div class="h">담당자가 꾹 눌러 사용</div></div><div class="num">1 / 6</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="txt"><div class="l">식권</div><div class="h">담당자가 꾹 눌러 사용</div></div><div class="num">2 / 6</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="txt"><div class="l">식권</div><div class="h">담당자가 꾹 눌러 사용</div></div><div class="num">3 / 6</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="txt"><div class="l">식권</div><div class="h">담당자가 꾹 눌러 사용</div></div><div class="num">4 / 6</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="txt"><div class="l">식권</div><div class="h">담당자가 꾹 눌러 사용</div></div><div class="num">5 / 6</div></div>
+            <div class="tk"><div class="ic">🍚</div><div class="txt"><div class="l">식권</div><div class="h">담당자가 꾹 눌러 사용</div></div><div class="num">6 / 6</div></div>
+          </div>
+        </div>
+        <div class="fade"></div>
+        <div class="tabbar"><span class="on">식권</span><span>내역</span><span>가족</span></div>
+      </div>
+      <div class="pcap">6장 이상 · 그대로 아래로 이어지고 화면을 세로로 밉니다. 사용한 장은 위에 남아 "몇 장 썼는지"가 한눈에 보임</div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem">
+  <div class="label">배치 규칙</div>
+  <ul style="padding-left:1.1rem;line-height:1.65;color:var(--text-primary);font-size:.9rem;margin:0">
+    <li>식권 한 장 = 가로 막대 한 줄. 왼쪽 아이콘, 가운데 상태, 오른쪽 번호(3 / 4) 또는 "사용 완료" 도장.</li>
+    <li>위에서부터 사용되며, 사용한 장은 제자리에서 회색이 됩니다. 순서가 바뀌지 않아 담당자가 헷갈리지 않습니다.</li>
+    <li>꾹 누르면 그 줄의 색이 왼쪽에서 오른쪽으로 차오르고(약 0.6초), 다 차면 "사용 완료"로 바뀝니다.</li>
+    <li>장수가 많으면 화면을 세로로 밉니다. 담당자 손이 닿는 위쪽에 항상 다음 미사용 장이 오도록, 사용한 장이 3장 이상이면 접어서 "사용 완료 3장"으로 묶어 보여 줍니다.</li>
+    <li>"다음 식권" 한 줄은 맨 아래에 작게 둡니다. 오늘 식권이 주인공입니다.</li>
+  </ul>
+</div>
+
+<h3>이 배치가 의도하신 모양인가요?</h3>
+<p class="subtitle" style="margin-bottom:1rem">데이터 모델 v2는 이전 화면 그대로입니다. 함께 확정해 주시면 관리자 화면(3b)으로 넘어갑니다.</p>
+<div class="options">
+  <div class="option" data-choice="ok" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content"><h3>맞습니다, 관리자 화면(3b)으로</h3><p>세로 목록 배치와 데이터 모델 v2를 확정합니다.</p></div>
+  </div>
+  <div class="option" data-choice="revise" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content"><h3>수정할 부분이 있습니다</h3><p>터미널에 어떤 부분인지 적어 주세요.</p></div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    var els = document.querySelectorAll('.mealhead .clock');
+    function tick(){
+      var d = new Date();
+      var str = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+      els.forEach(function(e){ e.textContent = str; });
+    }
+    tick(); setInterval(tick, 1000);
+  })();
+</script>

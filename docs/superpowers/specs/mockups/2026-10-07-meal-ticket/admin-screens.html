@@ -1,0 +1,218 @@
+<style>
+  .phones { display:flex; gap:1.25rem; flex-wrap:wrap; justify-content:center; }
+  .pwrap { display:flex; flex-direction:column; align-items:center; }
+  .phone { width:232px; height:470px; border-radius:28px; border:7px solid var(--bg-tertiary); background:var(--bg-primary); overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 18px rgba(0,0,0,.08); position:relative; flex-shrink:0; }
+  .phone .sb { height:22px; font-size:10px; color:var(--text-secondary); display:flex; justify-content:space-between; padding:0 14px; align-items:center; }
+  .phone .body { padding:10px 12px; flex:1; display:flex; flex-direction:column; gap:7px; font-size:11.5px; color:var(--text-primary); overflow:hidden; }
+  .pcap { width:232px; text-align:center; font-size:.8rem; color:var(--text-secondary); margin-top:.5rem; line-height:1.4; }
+  .ttl { display:flex; justify-content:space-between; align-items:center; font-size:15px; font-weight:800; }
+  .ttl .adm { font-size:9px; font-weight:700; color:#fff; background:var(--warning); border-radius:5px; padding:1px 5px; }
+  .card { background:var(--bg-secondary); border:1px solid var(--border); border-radius:10px; padding:8px 10px; }
+  .card.hi { border-color:var(--accent); }
+  .card .r1 { display:flex; justify-content:space-between; align-items:baseline; }
+  .card .d { font-size:10px; color:var(--text-secondary); }
+  .card .t { font-size:12.5px; font-weight:800; }
+  .card .stat { display:flex; gap:8px; font-size:10px; color:var(--text-secondary); margin-top:4px; }
+  .card .stat b { color:var(--text-primary); }
+  .btn { background:var(--accent); color:#fff; border-radius:10px; padding:10px; text-align:center; font-weight:700; font-size:12.5px; }
+  .ghost { background:var(--bg-secondary); border:1px dashed var(--accent); color:var(--accent); border-radius:10px; padding:8px; text-align:center; font-weight:700; font-size:11.5px; }
+  .inp { background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:7px 10px; color:var(--text-tertiary); font-size:11.5px; display:flex; justify-content:space-between; }
+  .inp.filled { color:var(--text-primary); }
+  .lbl { font-size:9.5px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.04em; margin-top:2px; }
+  .res { display:flex; justify-content:space-between; align-items:center; padding:7px 10px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; }
+  .res.sel { border-color:var(--accent); background:var(--selected-bg); }
+  .res .sub { font-size:10px; color:var(--text-secondary); }
+  .tag { font-size:9px; border-radius:4px; padding:1px 4px; background:var(--bg-tertiary); color:var(--text-secondary); font-weight:700; }
+  .tag.warn { background:rgba(255,159,10,.15); color:var(--warning); }
+  .tag.ok { background:rgba(52,199,89,.15); color:var(--success); }
+  .row { display:flex; justify-content:space-between; align-items:center; padding:7px 10px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; }
+  .row .nm { font-weight:700; }
+  .row .sub { font-size:10px; color:var(--text-secondary); }
+  .row .act { font-size:10px; color:var(--accent); font-weight:700; }
+  .tabbar { display:flex; justify-content:space-around; border-top:1px solid var(--border); padding:8px 0 10px; font-size:10px; color:var(--text-secondary); background:var(--bg-secondary); }
+  .tabbar .on { color:var(--accent); font-weight:700; }
+  .num { display:flex; justify-content:space-between; gap:6px; }
+  .num .box { flex:1; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:6px 8px; text-align:center; }
+  .num .box .v { font-size:14px; font-weight:800; }
+  .num .box .k { font-size:9px; color:var(--text-secondary); }
+  .sheet { position:absolute; left:8px; right:8px; bottom:46px; background:var(--bg-secondary); border-radius:14px; padding:12px; box-shadow:0 -6px 24px rgba(0,0,0,.25); font-size:11.5px; }
+  .sheet .it { padding:9px 4px; border-bottom:1px solid var(--border); font-weight:700; }
+  .sheet .it:last-child { border-bottom:none; color:var(--error); }
+  .dim { position:absolute; inset:0; background:rgba(0,0,0,.3); }
+  .bar { height:7px; border-radius:4px; background:var(--bg-tertiary); overflow:hidden; }
+  .bar i { display:block; height:100%; background:var(--accent); }
+</style>
+
+<h2>설계 3/5 · 화면 흐름 (3b 권사님)</h2>
+<p class="subtitle">권사님은 같은 앱에서 "관리" 모드로 들어갑니다. 하단 탭은 식사 · 발급 · 사람 · 통계 네 개. 가장 자주 쓰는 "입금 확인 → 발급"이 두 번의 탭으로 끝나도록 설계했습니다.</p>
+
+<div class="section">
+  <div class="label">흐름 ① 식사 준비 → 발급</div>
+  <div class="phones">
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>20:10</span><span>●●●</span></div>
+        <div class="body">
+          <div class="ttl"><span>식사</span><span class="adm">관리자</span></div>
+          <div class="ghost">+ 다음 주일 점심 만들기 (10/19)</div>
+          <div class="lbl">다가오는 식사</div>
+          <div class="card hi">
+            <div class="r1"><span class="t">주일 점심</span><span class="d">10/12 (일) · 5일 뒤</span></div>
+            <div class="stat"><span>발급 <b>38장</b></span><span>가족 <b>14</b></span><span>금액 <b>190,000</b></span></div>
+            <div class="bar" style="margin-top:5px"><i style="width:0%"></i></div>
+          </div>
+          <div class="card">
+            <div class="r1"><span class="t">수요 저녁</span><span class="d">10/15 (수)</span></div>
+            <div class="stat"><span>발급 <b>6장</b></span><span>가족 <b>3</b></span><span>금액 <b>30,000</b></span></div>
+          </div>
+          <div class="card">
+            <div class="r1"><span class="t">추수감사 애찬</span><span class="d">10/26 (일)</span></div>
+            <div class="stat"><span>발급 <b>0장</b></span></div>
+          </div>
+          <div class="lbl">지난 식사</div>
+          <div class="card" style="opacity:.7">
+            <div class="r1"><span class="t">주일 점심</span><span class="d">10/5 (일)</span></div>
+            <div class="stat"><span>발급 <b>41</b></span><span>사용 <b>39</b></span><span>미사용 <b>2</b></span></div>
+            <div class="bar" style="margin-top:5px"><i style="width:95%"></i></div>
+          </div>
+          <div style="flex:1"></div>
+          <div class="ghost" style="border-style:solid;border-color:var(--border);color:var(--text-secondary)">+ 식사 직접 추가</div>
+        </div>
+        <div class="tabbar"><span class="on">식사</span><span>발급</span><span>사람</span><span>통계</span><span>내 식권</span></div>
+      </div>
+      <div class="pcap">1. 식사 탭 · 맨 위 버튼 하나로 다음 주일 점심 생성. 식사마다 발급 장수·가족 수·금액이 보여 배식 준비량을 가늠</div>
+    </div>
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>20:12</span><span>●●●</span></div>
+        <div class="body">
+          <div class="ttl"><span>발급</span><span class="adm">관리자</span></div>
+          <div class="lbl">식사</div>
+          <div class="inp filled"><span>10/12 (일) 주일 점심</span><span style="color:var(--accent)">변경</span></div>
+          <div class="lbl">누구에게</div>
+          <div class="inp filled"><span>김철</span><span style="color:var(--text-tertiary)">🔍</span></div>
+          <div class="res sel"><div><b>김철수</b><div class="sub">010-****-5678 · 가족 4명</div></div><span class="tag ok">가입</span></div>
+          <div class="res"><div><b>김철호</b><div class="sub">010-****-2211</div></div><span class="tag warn">미가입</span></div>
+          <div class="ghost" style="padding:7px">+ "김철" 새로 등록 (이름·전화)</div>
+          <div style="flex:1"></div>
+          <div class="btn">다음</div>
+        </div>
+        <div class="tabbar"><span>식사</span><span class="on">발급</span><span>사람</span><span>통계</span><span>내 식권</span></div>
+      </div>
+      <div class="pcap">2. 발급 · 식사는 다음 식사가 미리 선택됨. 이름 두 글자만 쳐도 검색. 없는 사람(방문자)은 그 자리에서 등록</div>
+    </div>
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>20:12</span><span>●●●</span></div>
+        <div class="body">
+          <div class="ttl"><span>발급</span><span class="adm">관리자</span></div>
+          <div class="card"><div class="r1"><span class="t">김철수</span><span class="d">가족 4명</span></div><div class="d">10/12 (일) 주일 점심</div></div>
+          <div class="lbl">장수</div>
+          <div class="num"><div class="box" style="font-size:16px;font-weight:800">−</div><div class="box"><div class="v">4</div><div class="k">장</div></div><div class="box" style="font-size:16px;font-weight:800">+</div></div>
+          <div class="lbl">단가 (원)</div>
+          <div class="inp filled"><span>5,000</span><span class="sub" style="font-size:10px;color:var(--text-tertiary)">지난번과 같음</span></div>
+          <div class="lbl">메모 (선택)</div>
+          <div class="inp">예: 10/8 입금 확인</div>
+          <div style="flex:1"></div>
+          <div class="card" style="text-align:center;border-color:var(--accent)"><div class="d">합계</div><div style="font-size:18px;font-weight:800">20,000원</div></div>
+          <div class="btn">4장 발급하기</div>
+        </div>
+        <div class="tabbar"><span>식사</span><span class="on">발급</span><span>사람</span><span>통계</span><span>내 식권</span></div>
+      </div>
+      <div class="pcap">3. 장수·단가 · 단가는 직전 값이 채워져 있고 합계가 바로 보임. 누르면 발급 완료 → 발급 화면으로 돌아와 다음 사람 처리</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">흐름 ② 식사 당일 · 사람 관리 · 통계</div>
+  <div class="phones">
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>12:35</span><span>●●●</span></div>
+        <div class="body">
+          <div class="ttl"><span>‹ 주일 점심 10/12</span><span class="adm">관리자</span></div>
+          <div class="num"><div class="box"><div class="v">38</div><div class="k">발급</div></div><div class="box"><div class="v">21</div><div class="k">사용</div></div><div class="box"><div class="v">17</div><div class="k">남음</div></div><div class="box"><div class="v">190k</div><div class="k">금액</div></div></div>
+          <div class="inp"><span>이름 검색</span><span>🔍</span></div>
+          <div class="row"><div><div class="nm">김철수 가족</div><div class="sub">4장 중 2장 사용</div></div><span class="act">⋯</span></div>
+          <div class="row" style="border-color:var(--accent)"><div><div class="nm">박지은 <span class="tag warn">방문자</span></div><div class="sub">2장 중 0장 사용</div></div><span class="act">⋯</span></div>
+          <div class="row"><div><div class="nm">이순자</div><div class="sub">1장 중 0장 사용 · 미가입</div></div><span class="act">⋯</span></div>
+          <div class="row" style="opacity:.6"><div><div class="nm">최민호 가족</div><div class="sub">3장 중 3장 사용</div></div><span class="act">⋯</span></div>
+          <div class="dim"></div>
+          <div class="sheet">
+            <div style="font-weight:800;margin-bottom:4px">박지은 · 2장 남음</div>
+            <div class="it" style="color:var(--accent)">1장 대신 사용 처리</div>
+            <div class="it">발급 내역 보기 / 취소</div>
+            <div class="it">최근 사용 무효 처리</div>
+            <div class="it">닫기</div>
+          </div>
+        </div>
+        <div class="tabbar"><span class="on">식사</span><span>발급</span><span>사람</span><span>통계</span><span>내 식권</span></div>
+      </div>
+      <div class="pcap">4. 식사 상세 · 당일 현황판 겸 명단. 폰 없는 방문자·어르신은 ⋯ 메뉴에서 "대신 사용 처리". 잘못 누른 사용은 무효 처리</div>
+    </div>
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>20:20</span><span>●●●</span></div>
+        <div class="body">
+          <div class="ttl"><span>사람</span><span class="adm">관리자</span></div>
+          <div class="inp"><span>이름 · 전화번호 검색</span><span>🔍</span></div>
+          <div style="display:flex;gap:5px"><span class="tag ok" style="padding:3px 7px">전체 112</span><span class="tag warn" style="padding:3px 7px">미가입 9</span><span class="tag" style="padding:3px 7px">관리자 2</span></div>
+          <div class="row"><div><div class="nm">김철수</div><div class="sub">010-1234-5678 · 가족 4 · 카카오</div></div><span class="act">›</span></div>
+          <div class="row"><div><div class="nm">이영희</div><div class="sub">010-9876-5432 · 김철수 가족</div></div><span class="act">›</span></div>
+          <div class="row"><div><div class="nm">김민준 <span class="tag">자녀</span></div><div class="sub">보호자 김철수 · 동의 10/5</div></div><span class="act">›</span></div>
+          <div class="row" style="border-color:var(--warning)"><div><div class="nm">이순자 <span class="tag warn">미가입</span></div><div class="sub">010-5555-0001 · 선발급 3건</div></div><span class="act">›</span></div>
+          <div class="row"><div><div class="nm">박지은 <span class="tag warn">방문자</span></div><div class="sub">010-7777-0002 · 10/12 2장</div></div><span class="act">›</span></div>
+          <div style="flex:1"></div>
+          <div class="card" style="font-size:10px;color:var(--text-secondary)">사람 상세에서: 전화번호 수정 · 가족 보기 · 카카오 계정 수동 연결 · 중복 사람 합치기 · 발급·사용 이력</div>
+        </div>
+        <div class="tabbar"><span>식사</span><span>발급</span><span class="on">사람</span><span>통계</span><span>내 식권</span></div>
+      </div>
+      <div class="pcap">5. 사람 탭 · 전체 번호는 여기서만 보임. 미가입(선발급만 있음)·방문자·자녀가 구분됨. 중복 가입은 "합치기"로 정리</div>
+    </div>
+    <div class="pwrap">
+      <div class="phone">
+        <div class="sb"><span>20:25</span><span>●●●</span></div>
+        <div class="body">
+          <div class="ttl"><span>통계</span><span class="adm">관리자</span></div>
+          <div class="inp filled"><span>‹ 2026년 10월 ›</span><span style="color:var(--accent)">월별</span></div>
+          <div class="num"><div class="box"><div class="v">163</div><div class="k">발급 장수</div></div><div class="box"><div class="v">815k</div><div class="k">발급 금액</div></div><div class="box"><div class="v">141</div><div class="k">사용</div></div></div>
+          <div class="lbl">식사별</div>
+          <div class="row"><div><div class="nm">10/5 주일 점심</div><div class="sub">발급 41 · 사용 39 · 미사용 2</div></div><b>205,000</b></div>
+          <div class="row"><div><div class="nm">10/8 수요 저녁</div><div class="sub">발급 8 · 사용 8</div></div><b>40,000</b></div>
+          <div class="row"><div><div class="nm">10/12 주일 점심</div><div class="sub">발급 38 · 사용 21 · 진행 중</div></div><b>190,000</b></div>
+          <div class="lbl">교인별</div>
+          <div class="inp"><span>이름으로 구매·사용 이력 찾기</span><span>🔍</span></div>
+          <div style="flex:1"></div>
+          <div style="display:flex;gap:6px"><div class="btn" style="flex:1;padding:8px">CSV 저장</div><div class="btn" style="flex:1;padding:8px;background:var(--bg-tertiary);color:var(--text-primary)">카톡으로 공유</div></div>
+          <div style="font-size:9.5px;color:var(--text-tertiary);text-align:center">발급·사용 장부 전체가 날짜·이름·장수·금액 열로 내보내짐</div>
+        </div>
+        <div class="tabbar"><span>식사</span><span>발급</span><span>사람</span><span class="on">통계</span><span>내 식권</span></div>
+      </div>
+      <div class="pcap">6. 통계 탭 · 월별 합계 → 식사별 → 교인별. CSV는 저장하거나 카카오톡으로 바로 공유(회계 보고)</div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem">
+  <div class="label">관리자 화면 설계 원칙</div>
+  <ul style="padding-left:1.1rem;line-height:1.65;color:var(--text-primary);font-size:.9rem;margin:0">
+    <li><b>발급이 2탭.</b> 발급 탭을 열면 다음 식사가 이미 선택되어 있고, 이름 검색 → 장수 확인 → 발급. 여러 명을 연달아 처리하는 입금 확인 작업에 맞춤.</li>
+    <li><b>식사 상세 = 당일 현황판.</b> 배식 중 권사님이 보는 화면. 발급·사용·남음이 실시간으로 바뀌고, 명단에서 바로 대신 사용 처리.</li>
+    <li><b>위험한 동작은 한 단계 더.</b> 발급 취소·사용 무효·사람 합치기는 ⋯ 메뉴 → 확인 창. 실수로 누르기 어렵게.</li>
+    <li><b>관리자도 교인.</b> "내 식권" 탭으로 자기 식권 화면에 바로 감. 권사님도 식사하시니까.</li>
+    <li><b>개인정보는 여기까지만.</b> 전화번호 전체는 사람 탭에서만, 교인 화면에서는 가운데가 가려짐.</li>
+  </ul>
+</div>
+
+<h3>관리자 화면, 이대로 갈까요?</h3>
+<div class="options">
+  <div class="option" data-choice="ok" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content"><h3>좋습니다, 다음(예외 처리 · 테스트)으로</h3><p>화면 설계를 마치고 마지막 두 섹션으로 넘어갑니다.</p></div>
+  </div>
+  <div class="option" data-choice="revise" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content"><h3>수정할 부분이 있습니다</h3><p>터미널에 어떤 부분인지 적어 주세요.</p></div>
+  </div>
+</div>
