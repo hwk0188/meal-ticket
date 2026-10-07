@@ -49,7 +49,7 @@ select throws_ok(
 
 -- 기본 차단: auto_expose_new_tables=true 라서 새 테이블은 anon 전체 권한으로 태어난다. revoke 를 잊으면 여기서 잡힌다.
 select table_privs_are('public','people','anon', '{}'::text[], 'anon은 people에 아무 권한이 없다');
-select table_privs_are('public','people','authenticated','{}'::text[], 'authenticated는 people에 아무 권한이 없다');
+select table_privs_are('public','people','authenticated','{SELECT}'::text[], 'authenticated는 people을 읽기만 할 수 있다 (열 단위 insert/update 는 table_privs_are 에 안 보임)');
 select table_privs_are('public','families','anon','{}'::text[], 'anon은 families에 아무 권한이 없다');
 select is((select relrowsecurity from pg_class where oid='public.people'::regclass), true, 'people에 RLS가 켜져 있다');
 select is((select relrowsecurity from pg_class where oid='public.families'::regclass), true, 'families에 RLS가 켜져 있다');
