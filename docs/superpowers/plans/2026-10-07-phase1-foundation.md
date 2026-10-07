@@ -3909,12 +3909,14 @@ jobs:
       - name: E2E
         run: npm run e2e
 
-      - name: E2E 리포트 보관 (실패 시)
+      - name: E2E 리포트·트레이스 보관 (실패 시)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: playwright-report
+          path: |
+            playwright-report
+            test-results
           retention-days: 7
 
       - name: 로컬 Supabase 종료
