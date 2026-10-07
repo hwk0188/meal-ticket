@@ -2381,11 +2381,13 @@ git commit -m "feat: 세션 컨텍스트, 사람 조회 훅, 해시 라우팅 �
 - Modify: `src/pages/StartPage.tsx`
 - Test: `src/features/auth/signIn.test.ts`, `src/pages/StartPage.test.tsx`
 
-- [ ] **Step 1: 교회 설정 — `src/config/church.ts`**
+- [x] **Step 1: 교회 설정 — `src/config/church.ts`**
 
 값은 교회에서 확인한 뒤 바꾼다. 처리방침 페이지와 가입 화면이 이 값을 읽는다.
 
 ```ts
+// 교회마다 바뀌는 값만 모아 둔다. 처리방침 페이지와 가입 화면이 이 값을 읽는다.
+// 값은 교회에서 확인한 뒤 바꾼다.
 export const church = {
   /** 교회 공식 명칭 (교회 확인 필요) */
   name: 'OO교회',
@@ -2393,7 +2395,7 @@ export const church = {
   appName: 'OO교회 식권',
   /** 개인정보 담당자 (교회 확인 필요) */
   privacyOfficer: { role: '식당 담당 권사', name: '', phone: '' },
-  /** 동의 문구를 바꾸면 이 날짜도 바꾼다. people.consent_version 에 저장된다 */
+  /** 동의 문구를 바꾸면 이 날짜도 바꾼다. people.consent_version 에 저장된다 (YYYY-MM-DD, DB 가 형식을 검사한다) */
   consentVersion: '2026-10-07',
   /** 가입 화면과 처리방침에 공통으로 쓰는 고지 4요소 */
   consentNotice: {
@@ -2405,25 +2407,46 @@ export const church = {
 } as const
 ```
 
-- [ ] **Step 2: 실패하는 테스트 — `src/features/auth/signIn.test.ts`**
+- [x] **Step 2: 실패하는 테스트 — `src/features/auth/signIn.test.ts`**
 
 ```ts
-import { signInWithKakao, devSignIn, signOut, redirectUrl } from './signIn'
+import { devSignIn, redirectUrl, signInWithKakao, signOut } from './signIn'
 
-const { signInWithOAuth, signInWithPassword, signUp, authSignOut } = vi.hoisted(() => ({
-  signInWithOAuth: vi.fn(),
-  signInWithPassword: vi.fn(),
-  signUp: vi.fn(),
-  authSignOut: vi.fn(),
+// supabase 모듈을 통째로 가짜로 바꾸므로 실제 반환 타입 전체를 만들 필요가 없다.
+// signIn 이 읽는 필드(error)와 넘기는 인자만 담은 느슨한 타입으로 둔다.
+type AuthResult = { error: (Error & { code?: string }) | null }
+type OAuthArgs = { provider: string; options: { redirectTo: string } }
+type Credentials = { email: string; password: string }
+
+// env 는 가짜 객체를 그대로 공유해 테스트마다 플래그만 바꾼다 (모듈을 다시 읽지 않아도 된다).
+const { signInWithOAuth, signInWithPassword, signUp, authSignOut, env } = vi.hoisted(() => ({
+  signInWithOAuth: vi.fn<(args: OAuthArgs) => Promise<AuthResult>>(),
+  signInWithPassword: vi.fn<(args: Credentials) => Promise<AuthResult>>(),
+  signUp: vi.fn<(args: Credentials) => Promise<AuthResult>>(),
+  authSignOut: vi.fn<() => Promise<AuthResult>>(),
+  env: { enableDevLogin: true },
 }))
 
 vi.mock('../../lib/supabase', () => ({
   supabase: { auth: { signInWithOAuth, signInWithPassword, signUp, signOut: authSignOut } },
 }))
+vi.mock('../../lib/env', () => ({ env }))
 
 describe('signIn', () => {
-  it('redirectUrl은 origin + BASE_URL', () => {
-    expect(redirectUrl()).toBe(`${window.location.origin}${import.meta.env.BASE_URL}`)
+  beforeEach(() => {
+    env.enableDevLogin = true
+  })
+
+  // GitHub Pages 프로젝트 사이트(/<repo>/)와 루트 배포(/) 둘 다 맞아야 한다.
+  // BASE_URL 을 그대로 기대값에 넣으면 구현을 베낀 셈이라 아무것도 검증하지 못한다.
+  it('redirectUrl은 하위 경로 배포에서 origin + 그 경로', () => {
+    vi.stubEnv('BASE_URL', '/meal-ticket/')
+    expect(redirectUrl()).toBe(`${window.location.origin}/meal-ticket/`)
+  })
+
+  it('redirectUrl은 루트 배포에서 origin + /', () => {
+    vi.stubEnv('BASE_URL', '/')
+    expect(redirectUrl()).toBe(`${window.location.origin}/`)
   })
 
   it('카카오 로그인은 kakao provider와 redirectTo를 넘긴다', async () => {
@@ -2453,25 +2476,68 @@ describe('signIn', () => {
     expect(signUp).toHaveBeenCalledWith({ email: 'new@test.local', password: 'password123' })
   })
 
+  it('개발 로그인: 가입도 실패하면 그 오류를 던진다', async () => {
+    signInWithPassword.mockResolvedValue({ error: new Error('Invalid login credentials') })
+    signUp.mockResolvedValue({ error: new Error('User already registered') })
+    await expect(devSignIn('x@test.local', 'wrongpass')).rejects.toThrow('User already registered')
+  })
+
+  it('개발 로그인: 플래그가 꺼져 있으면 supabase 를 건드리지 않고 거절한다', async () => {
+    env.enableDevLogin = false
+    // 화면 조건만으로는 번들에서 사라지지 않는다. 운영 빌드에서 플래그가 잘못 켜져도 여기서 막힌다.
+    await expect(devSignIn('x@test.local', 'password123')).rejects.toThrow('dev_login_disabled')
+    expect(signInWithPassword).not.toHaveBeenCalled()
+    expect(signUp).not.toHaveBeenCalled()
+  })
+
+  it('개발 로그인: 운영 빌드(DEV=false)에서는 플래그가 켜져 있어도 거절한다', async () => {
+    vi.stubEnv('DEV', false)
+    // 환경변수 오설정만으로 개발 로그인이 되살아나지 않아야 한다.
+    await expect(devSignIn('x@test.local', 'password123')).rejects.toThrow('dev_login_disabled')
+    expect(signInWithPassword).not.toHaveBeenCalled()
+    expect(signUp).not.toHaveBeenCalled()
+  })
+
+  it('개발 로그인: 자격 증명 오류가 아니면 가입을 시도하지 않고 그대로 던진다', async () => {
+    // 통신 오류까지 가입으로 넘기면 원래 오류가 묻히고 뜻하지 않은 계정이 생긴다.
+    signInWithPassword.mockResolvedValue({ error: new Error('Network request failed') })
+    await expect(devSignIn('x@test.local', 'password123')).rejects.toThrow('Network request failed')
+    expect(signUp).not.toHaveBeenCalled()
+  })
+
+  it('개발 로그인: 영문 문구가 달라도 code 로 자격 증명 오류를 알아본다', async () => {
+    const error = Object.assign(new Error('잘못된 로그인 정보'), { code: 'invalid_credentials' })
+    signInWithPassword.mockResolvedValue({ error })
+    signUp.mockResolvedValue({ error: null })
+    await devSignIn('new@test.local', 'password123')
+    expect(signUp).toHaveBeenCalledWith({ email: 'new@test.local', password: 'password123' })
+  })
+
   it('로그아웃을 호출한다', async () => {
     authSignOut.mockResolvedValue({ error: null })
     await signOut()
     expect(authSignOut).toHaveBeenCalled()
   })
+
+  it('로그아웃 오류는 그대로 던진다', async () => {
+    authSignOut.mockResolvedValue({ error: new Error('signout_failed') })
+    await expect(signOut()).rejects.toThrow('signout_failed')
+  })
 })
 ```
 
-- [ ] **Step 3: 실패하는 테스트 — `src/pages/StartPage.test.tsx`**
+- [x] **Step 3: 실패하는 테스트 — `src/pages/StartPage.test.tsx`**
 
 ```tsx
-import { render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { StartPage } from './StartPage'
 
+// env 는 가짜 객체를 그대로 공유해 테스트마다 플래그만 바꾼다 (모듈을 다시 읽지 않아도 된다).
 const { signInWithKakao, devSignIn, env } = vi.hoisted(() => ({
-  signInWithKakao: vi.fn(),
-  devSignIn: vi.fn(),
+  signInWithKakao: vi.fn<() => Promise<void>>(),
+  devSignIn: vi.fn<(email: string, password: string) => Promise<void>>(),
   env: { enableDevLogin: false },
 }))
 vi.mock('../features/auth/signIn', () => ({ signInWithKakao, devSignIn }))
@@ -2484,14 +2550,17 @@ function renderPage() {
 describe('StartPage', () => {
   beforeEach(() => {
     env.enableDevLogin = false
-    vi.clearAllMocks()
   })
 
   it('앱 이름과 카카오 버튼, 처리방침 링크를 보여준다', () => {
     renderPage()
     expect(screen.getByRole('heading', { name: 'OO교회 식권' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '카카오로 시작하기' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '개인정보 처리방침' })).toHaveAttribute('href', '/privacy')
+    // 해시 라우팅·하위 경로 배포에 따라 접두사가 달라지므로 경로 조각만 본다.
+    expect(screen.getByRole('link', { name: '개인정보 처리방침' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('privacy'),
+    )
   })
 
   it('카카오 버튼을 누르면 로그인을 시작한다', async () => {
@@ -2508,9 +2577,76 @@ describe('StartPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('잠시 후 다시 시도해 주세요.')
   })
 
+  it('카카오로 이동하는 동안은 버튼을 잠그고 안내를 보여준다', async () => {
+    signInWithKakao.mockResolvedValue(undefined)
+    renderPage()
+    const button = screen.getByRole('button', { name: '카카오로 시작하기' })
+    await userEvent.click(button)
+    // 떠나는 데 수백 ms 가 걸린다. 그 사이 두 번째 OAuth 가 code_verifier 를 덮어쓰면
+    // 돌아왔을 때 코드 교환이 실패한다. 그래서 성공 시엔 잠근 채 둔다.
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('카카오 로그인 화면으로 이동하고 있어요'))
+    expect(button).toBeDisabled()
+  })
+
+  it('로그인이 실패하면 버튼이 다시 살아난다', async () => {
+    signInWithKakao.mockRejectedValue(new Error('oauth_failed'))
+    renderPage()
+    const button = screen.getByRole('button', { name: '카카오로 시작하기' })
+    await userEvent.click(button)
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    // 버튼이 굳어 버리면 사용자는 더 할 수 있는 일이 없다.
+    expect(button).not.toBeDisabled()
+  })
+
+  it('다시 시도하면 이전 안내 문구를 지운다', async () => {
+    signInWithKakao.mockRejectedValueOnce(new Error('oauth_failed')).mockResolvedValue(undefined)
+    renderPage()
+    const button = screen.getByRole('button', { name: '카카오로 시작하기' })
+
+    await userEvent.click(button)
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+
+    await userEvent.click(button)
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+  })
+
   it('개발 로그인 플래그가 꺼져 있으면 이메일 폼이 없다', () => {
     renderPage()
     expect(screen.queryByLabelText('이메일')).not.toBeInTheDocument()
+  })
+
+  it('개발 로그인 실패 시 안내 문구를 보여준다', async () => {
+    env.enableDevLogin = true
+    devSignIn.mockRejectedValue(new Error('dev_login_disabled'))
+    renderPage()
+    await userEvent.type(screen.getByLabelText('이메일'), 'dev@test.local')
+    await userEvent.type(screen.getByLabelText('비밀번호'), 'password123')
+    await userEvent.click(screen.getByRole('button', { name: '개발용 로그인' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('개발용 로그인은 사용할 수 없어요.')
+  })
+
+  it('개발 로그인 중에는 버튼을 잠그지만 카카오 안내는 띄우지 않는다', async () => {
+    env.enableDevLogin = true
+    let settle: () => void = () => {}
+    devSignIn.mockReturnValue(
+      new Promise<void>((resolve) => {
+        settle = resolve
+      }),
+    )
+    renderPage()
+    await userEvent.type(screen.getByLabelText('이메일'), 'dev@test.local')
+    await userEvent.type(screen.getByLabelText('비밀번호'), 'password123')
+    const submit = screen.getByRole('button', { name: '개발용 로그인' })
+
+    await userEvent.click(submit)
+    expect(submit).toBeDisabled()
+    // 개발 로그인은 페이지를 떠나지 않으므로 카카오 이동 안내가 떠서는 안 된다.
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    await act(async () => {
+      settle()
+    })
+    expect(submit).not.toBeDisabled()
   })
 
   it('개발 로그인 플래그가 켜져 있으면 이메일·비밀번호로 로그인한다', async () => {
@@ -2525,17 +2661,25 @@ describe('StartPage', () => {
 })
 ```
 
-- [ ] **Step 4: 실패 확인**
+- [x] **Step 4: 실패 확인**
 
 ```bash
 npm test
 ```
 Expected: 두 파일 FAIL.
 
-- [ ] **Step 5: 구현 — `src/features/auth/signIn.ts`**
+- [x] **Step 5: 구현 — `src/features/auth/signIn.ts`**
 
 ```ts
+import { env } from '../../lib/env'
 import { supabase } from '../../lib/supabase'
+
+// supabase-js 는 code 를 주지만 버전·배포에 따라 비어 있을 수 있어 영문 문구도 함께 본다.
+const INVALID_CREDENTIALS = /invalid login credentials/i
+
+function isInvalidCredentials(error: { code?: string; message: string }): boolean {
+  return error.code === 'invalid_credentials' || INVALID_CREDENTIALS.test(error.message)
+}
 
 /** OAuth 후 돌아올 주소. GitHub Pages면 https://<user>.github.io/<repo>/ */
 export function redirectUrl(): string {
@@ -2550,10 +2694,17 @@ export async function signInWithKakao(): Promise<void> {
   if (error) throw error
 }
 
-/** 로컬·테스트 전용. 로그인 실패 시 가입을 시도한다 (로컬은 이메일 확인이 꺼져 있어 바로 세션이 생긴다). */
+/** 로컬·테스트 전용. 아직 없는 계정이면 가입을 시도한다 (로컬은 이메일 확인이 꺼져 있어 바로 세션이 생긴다). */
 export async function devSignIn(email: string, password: string): Promise<void> {
+  // import.meta.env.DEV 는 운영 빌드에서 리터럴 false 로 치환되어 아래 전체가 번들에서 사라진다.
+  // 환경변수 오설정으로는 되살릴 수 없다.
+  if (!import.meta.env.DEV || !env.enableDevLogin) throw new Error('dev_login_disabled')
+
   const signedIn = await supabase.auth.signInWithPassword({ email, password })
   if (!signedIn.error) return
+  // 통신 오류·속도 제한까지 가입으로 넘기면 원래 오류가 묻히고 뜻하지 않은 계정이 생긴다.
+  if (!isInvalidCredentials(signedIn.error)) throw signedIn.error
+
   const signedUp = await supabase.auth.signUp({ email, password })
   if (signedUp.error) throw signedUp.error
 }
@@ -2564,7 +2715,7 @@ export async function signOut(): Promise<void> {
 }
 ```
 
-- [ ] **Step 6: 구현 — `src/pages/StartPage.tsx`**
+- [x] **Step 6: 구현 — `src/pages/StartPage.tsx`**
 
 ```tsx
 import { useState, type FormEvent } from 'react'
@@ -2575,19 +2726,26 @@ import { devSignIn, signInWithKakao } from '../features/auth/signIn'
 import { env } from '../lib/env'
 import { toUserMessage } from '../lib/errors'
 
+/** 어느 버튼이 일하는 중인지. 카카오만 이동 안내를 띄우고, 성공해도 잠긴 채 둔다. */
+type Pending = 'kakao' | 'dev'
+
 export function StartPage() {
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [pending, setPending] = useState<Pending | null>(null)
+  const busy = pending !== null
 
-  async function run(action: () => Promise<void>) {
-    setBusy(true)
+  async function run(kind: Pending, action: () => Promise<void>, { unlockOnSuccess = true } = {}) {
+    setPending(kind)
     setError(null)
     try {
       await action()
+      // 카카오는 성공 시 window.location.assign 으로 떠나지만, 브라우저가 실제로 페이지를 내리기까지
+      // 수백 ms 가 걸린다. 그 사이 버튼을 열면 두 번째 OAuth 가 code_verifier 를 덮어써 돌아왔을 때
+      // 코드 교환이 실패한다. 그래서 성공 시엔 잠근 채 둔다.
+      if (unlockOnSuccess) setPending(null)
     } catch (err) {
       setError(toUserMessage(err))
-    } finally {
-      setBusy(false)
+      setPending(null)
     }
   }
 
@@ -2596,7 +2754,7 @@ export function StartPage() {
     const form = new FormData(e.currentTarget)
     const email = String(form.get('email') ?? '')
     const password = String(form.get('password') ?? '')
-    void run(() => devSignIn(email, password))
+    void run('dev', () => devSignIn(email, password))
   }
 
   return (
@@ -2606,9 +2764,19 @@ export function StartPage() {
         <p className="mt-2 text-sm text-gray-500">주일 식사를 더 간편하게</p>
       </div>
 
-      <Button variant="kakao" disabled={busy} onClick={() => void run(signInWithKakao)}>
+      <Button
+        variant="kakao"
+        disabled={busy}
+        onClick={() => void run('kakao', signInWithKakao, { unlockOnSuccess: false })}
+      >
         카카오로 시작하기
       </Button>
+
+      {pending === 'kakao' && (
+        <p role="status" className="text-center text-sm text-gray-600">
+          카카오 로그인 화면으로 이동하고 있어요…
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="text-center text-sm text-red-600">
@@ -2616,18 +2784,23 @@ export function StartPage() {
         </p>
       )}
 
-      {env.enableDevLogin && (
-        <form onSubmit={onDevSubmit} className="mt-6 flex flex-col gap-3 rounded-xl border border-dashed border-gray-300 p-4">
-          <p className="text-xs font-semibold text-gray-500">개발용 로그인 (로컬 전용)</p>
-          <TextField label="이메일" name="email" type="email" autoComplete="username" required />
-          <TextField label="비밀번호" name="password" type="password" autoComplete="current-password" required minLength={6} />
-          <Button variant="ghost" type="submit" disabled={busy}>
-            개발용 로그인
-          </Button>
+      {/* import.meta.env.DEV 는 운영 빌드에서 리터럴 false 로 치환되어 이 폼 전체가 번들에서 사라진다. */}
+      {import.meta.env.DEV && env.enableDevLogin && (
+        <form onSubmit={onDevSubmit} className="mt-6">
+          <fieldset className="rounded-xl border border-dashed border-gray-300 p-4">
+            <legend className="px-1 text-xs font-semibold text-gray-500">개발용 로그인 (로컬 전용)</legend>
+            <div className="flex flex-col gap-3">
+              <TextField label="이메일" name="email" type="email" autoComplete="username" required />
+              <TextField label="비밀번호" name="password" type="password" autoComplete="current-password" required minLength={6} />
+              <Button variant="ghost" type="submit" disabled={busy}>
+                개발용 로그인
+              </Button>
+            </div>
+          </fieldset>
         </form>
       )}
 
-      <Link to="/privacy" className="mt-8 text-center text-xs text-gray-400 underline">
+      <Link to="/privacy" className="mt-8 text-center text-xs text-gray-600 underline">
         개인정보 처리방침
       </Link>
     </main>
@@ -2635,14 +2808,25 @@ export function StartPage() {
 }
 ```
 
-- [ ] **Step 7: 통과 확인**
+- [x] **Step 7: 통과 확인**
 
 ```bash
 npm test
 ```
 Expected: 모두 통과. `App.test.tsx`의 "시작" 제목 기대값이 깨지므로 `{ name: 'OO교회 식권' }`으로 수정한다. 또한 `App.test.tsx`는 `./lib/env`를 모킹하지 않으므로 `.env.local`이 있어야 한다(Task 3에서 작성). `.env.local`이 없으면 `vi.mock('./lib/env', () => ({ env: { enableDevLogin: false } }))`를 `App.test.tsx`에 추가한다.
 
-- [ ] **Step 8: 커밋**
+- [x] **Step 7-1: 운영 빌드 고정값 — `.env.production` (커밋)**
+
+Vite 는 `.env.local` 을 운영 빌드에도 읽는다. 로컬의 `VITE_ENABLE_DEV_LOGIN=true` 가 운영 번들에 박히지 않도록 `.env.[mode]` 로 덮어쓴다(`.gitignore` 에 `!.env.production` 추가).
+
+```
+# 운영 빌드 고정값. .env.local 보다 우선한다 (vite 는 .env.[mode] 를 .env.local 위에 둔다).
+VITE_ENABLE_DEV_LOGIN=false
+```
+
+또한 `signIn.ts`/`StartPage.tsx` 의 개발 로그인 분기는 `import.meta.env.DEV` 로도 감싸서 운영 번들에서 코드 자체가 사라지게 한다(빌드 후 `grep -c 'current-password' dist/assets/App-*.js` → 0). 대가로 `npm run preview` 에서는 개발 로그인이 보이지 않는다.
+
+- [x] **Step 8: 커밋**
 
 ```bash
 git add -A
@@ -3609,6 +3793,7 @@ update public.people set role = 'admin' where phone = '01012345678' and deleted_
 - 백업(주 1회 pg_dump → 비공개 저장소)은 5단계 계획에서 추가한다.
 - `src/config/church.ts`의 교회명·담당자 연락처(`privacyOfficer.name`, `phone` — 지금은 빈 문자열)를 실제 값으로 바꾼 뒤 배포한다. 처리방침의 담당자 연락처는 법적 필수 항목이다.
 - `index.html`의 `<title>`도 같은 앱 이름으로 맞춘다 (TS 설정을 읽지 못하므로 수동 편집).
+- `npm run preview`(운영 빌드 미리보기)에는 개발용 로그인이 없다. 로컬 확인은 `npm run dev` 로 한다.
 - 운영 Supabase 의 **Email provider 는 반드시 끈다** (끄지 않으면 카카오 없이 이메일로 자가 가입이 가능해진다). 개발용 로그인 코드는 운영 번들에서 제거되지만 서버 쪽 차단이 진짜 경계다.
 - Supabase **Redirect URLs** 에 GitHub Pages 주소(`https://<github-user>.github.io/<repo>/`)가 등록되어 있는지 확인한다.
 
