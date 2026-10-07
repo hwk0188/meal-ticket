@@ -3201,7 +3201,7 @@ export function PrivacyPage() {
       </section>
       <section>
         <h2 className="mb-1 font-bold">5. 처리 위탁</h2>
-        <p>데이터 저장과 로그인 처리를 위해 Supabase(데이터베이스·인증), 카카오(소셜 로그인)를 이용합니다. 카카오에서는 회원번호와 닉네임만 제공받습니다.</p>
+        <p>데이터 저장과 로그인 처리를 위해 Supabase(데이터베이스·인증), 카카오(소셜 로그인)를 이용합니다. 카카오에서는 회원번호와 닉네임을 제공받으며, 프로필 사진과 카카오계정 이메일은 선택 동의 항목으로 거부할 수 있고 제공되더라도 로그인 계정 식별 외에 이용하지 않습니다.</p>
       </section>
       <section>
         <h2 className="mb-1 font-bold">6. 개인정보 담당자</h2>
