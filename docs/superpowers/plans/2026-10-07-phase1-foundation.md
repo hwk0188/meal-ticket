@@ -3401,6 +3401,8 @@ export default defineConfig({
 
 `devices['Pixel 7']`은 Chromium 기반 모바일 뷰포트다(WebKit 설치 불필요).
 
+`baseURL`/`webServer.url`은 반드시 `localhost`로 둔다. Vite 개발 서버는 이 환경에서 IPv6(`[::1]:5173`)에만 바인딩되어 `127.0.0.1:5173`은 연결이 거부된다.
+
 - [ ] **Step 3: 스모크 테스트 — `e2e/onboarding.spec.ts`**
 
 ```ts
