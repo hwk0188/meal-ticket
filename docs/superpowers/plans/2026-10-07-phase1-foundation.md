@@ -4075,8 +4075,10 @@ GitHub는 저장소에 60일간 커밋이 없으면 schedule 워크플로를 자
 - [ ] **Step 7: 워크플로 문법 확인**
 
 ```bash
-npx --yes @action-validator/cli .github/workflows/ci.yml .github/workflows/deploy.yml .github/workflows/keep-alive.yml 2>/dev/null || echo "validator 미설치 — GitHub에 push 후 Actions 탭에서 문법 오류 확인"
+# 파일당 한 번씩 실행한다 (여러 파일을 한 번에 넘기면 usage 만 찍고 exit 1 이라 오류가 가려진다)
+for f in ci deploy keep-alive; do npx --yes @action-validator/cli ".github/workflows/$f.yml" || echo "$f: 오류"; done
 ```
+Expected: 출력 없이 모두 통과. 검증기가 실제로 동작하는지 `steps:`를 `stepz:`로 바꿔 한 번 실패를 확인해 본다.
 
 - [ ] **Step 8: 커밋**
 
@@ -4155,7 +4157,7 @@ npm run dev                # http://localhost:5173
 1. 공개 저장소로 push. **Settings › Pages › Build and deployment › Source: GitHub Actions**.
 2. **Settings › Secrets and variables › Actions** — 반드시 **저장소(Repository) 수준**에 만든다. 환경(Environment) 수준에 넣으면 다른 환경에서 도는 배포 잡이 읽지 못해 "변수가 비어 있습니다"로 실패한다.
    - Variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`
-   - Secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_REF`
+   - Secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`(프로젝트 생성 때 정한 **Postgres DB 비밀번호**. 액세스 토큰이 아니다 — 틀리면 `supabase link` 가 대화형 프롬프트로 빠져 러너에서 멈춘다), `SUPABASE_PROJECT_REF`(비어 있으면 `supabase link` 가 바로 실패한다)
 3. **Settings › Environments**: `production` 생성. 승인자를 지정하면 main 에 push 할 때마다 마이그레이션 단계에서 승인을 기다리므로(그 뒤 Pages 배포도 멈춤) 운영 초기에는 비워 두는 편이 낫다.
 4. main에 push하면 `Deploy` 워크플로가 테스트 → 마이그레이션 → 배포를 수행한다.
 
@@ -4181,7 +4183,7 @@ update public.people set role = 'admin' where phone = '01012345678' and deleted_
 ### 6. 절대 운영에 실행하면 안 되는 명령
 
 - `supabase db reset --linked` — 운영 DB를 비우고 테스트용 시드(가짜 사용자 생성 헬퍼)를 넣는다.
-- `supabase db push --include-seed` — 시드를 운영에 적용한다. CI는 `--include-seed` 없이 `db push`만 쓴다.
+- `supabase db push --include-seed` — 시드를 운영에 적용한다. CI는 `supabase db push --linked --yes` 만 쓴다(`--include-seed` 없음).
 - `supabase config push` — 로컬 `config.toml`(localhost 주소, 카카오 없음)로 운영 Auth 설정을 덮어쓴다.
 ````
 
