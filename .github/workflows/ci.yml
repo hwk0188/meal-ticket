@@ -4,6 +4,10 @@ on:
   pull_request:
   workflow_call:
 
+# deploy.yml 이 이 워크플로를 호출할 때 그쪽의 pages·id-token write 를 물려받지 않도록 여기서 최소 권한으로 못박는다.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: DB · 단위 · E2E 테스트

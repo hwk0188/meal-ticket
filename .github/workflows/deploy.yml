@@ -24,8 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     env:
-      # CLI 2.120 의 DB 비밀번호 해석 순서는 --password 플래그 → SUPABASE_DB_PASSWORD 환경변수 → 프로젝트 env 다.
-      # 환경변수로 넘기면 비밀번호가 프로세스 argv 에 남지 않으므로 -p 플래그는 쓰지 않는다.
+      # 비밀번호는 SUPABASE_DB_PASSWORD 환경변수로 넘긴다 (argv 에 남지 않는다). 값은 Postgres DB 비밀번호여야 하며, 액세스 토큰이 아니다.
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}

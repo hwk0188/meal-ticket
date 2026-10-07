@@ -10,7 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # ping() 은 상수 1 만 돌려주는 anon 전용 함수다 (20261007000004_ping.sql).
-      # -f 가 있어 변수가 비어 있거나 키가 틀리면 워크플로가 실패로 남는다 (조용히 건너뛰지 않는다).
+      # 두 실패 모두 단계를 빨갛게 만든다 (조용히 건너뛰지 않는다).
+      #   URL 변수가 비어 있으면 curl 의 URL 파싱에서 걸린다 ("URL rejected: No host part in the URL", exit 3).
+      #   키가 틀리면 -f 가 401 을 오류로 바꾼다 (exit 22).
       - name: Supabase ping
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
