@@ -652,8 +652,9 @@ select throws_ok(
 );
 
 -- 기본 차단: auto_expose_new_tables=true 라서 새 테이블은 anon 전체 권한으로 태어난다. revoke 를 잊으면 여기서 잡힌다.
+-- 마이그레이션은 누적 적용되므로 authenticated 의 SELECT(다음 마이그레이션에서 부여)는 허용한다.
 select table_privs_are('public','people','anon', '{}'::text[], 'anon은 people에 아무 권한이 없다');
-select table_privs_are('public','people','authenticated','{}'::text[], 'authenticated는 people에 아무 권한이 없다');
+select table_privs_are('public','people','authenticated','{SELECT}'::text[], 'authenticated는 people을 읽기만 할 수 있다 (열 단위 insert/update 는 table_privs_are 에 안 보임)');
 select table_privs_are('public','families','anon','{}'::text[], 'anon은 families에 아무 권한이 없다');
 select is((select relrowsecurity from pg_class where oid='public.people'::regclass), true, 'people에 RLS가 켜져 있다');
 select is((select relrowsecurity from pg_class where oid='public.families'::regclass), true, 'families에 RLS가 켜져 있다');
@@ -989,7 +990,7 @@ git commit -m "feat(db): people·families RLS 정책 및 열 단위 권한"
 
 ```sql
 begin;
-select plan(11);
+select plan(12);
 
 select tests.create_user('new@test.local') as new_uid \gset
 select tests.create_user('pre@test.local') as pre_uid \gset
@@ -1031,8 +1032,13 @@ select is(
   '기존 사람 행에 계정이 연결된다 (새 사람이 생기지 않음)'
 );
 
--- 4) 이미 연결된 번호로 다른 계정이 가입 → phone_taken
+-- 4) 이미 연결된 번호로 다른 계정이 가입 → phone_taken. 이름이 다른 선발급 번호도 phone_taken (가로채기 방지)
+insert into public.people (name, phone) values ('박영수', '01022220005');
 select tests.authenticate_as(:'dup_uid');
+select throws_ok(
+  $$ select public.claim_person('가짜이름', '01022220005', '2026-10-07') $$,
+  'P0001', 'phone_taken', '선발급 번호라도 이름이 다르면 연결하지 않는다'
+);
 select throws_ok(
   $$ select public.claim_person('가짜', '01022220001', '2026-10-07') $$,
   'P0001', 'phone_taken', '남이 쓰는 번호로는 가입할 수 없다'
@@ -1103,19 +1109,19 @@ begin
     raise exception 'already_registered';
   end if;
 
-  -- 같은 번호의 사람이 있으면 (선발급) 연결, 이미 다른 계정이면 거부
+  -- 같은 번호의 사람이 있으면 (선발급) 연결. 이미 다른 계정이거나 이름이 다르면 거부.
+  -- 이름까지 맞아야 연결되므로, 번호만 대입해 남의 선발급 식권을 가로채는 시도를 막는다.
   select * into v_person
     from public.people
    where phone = v_phone and deleted_at is null
    for update;
 
   if found then
-    if v_person.auth_user_id is not null then
+    if v_person.auth_user_id is not null or v_person.is_minor or btrim(v_person.name) <> v_name then
       raise exception 'phone_taken';
     end if;
     update public.people
        set auth_user_id = v_uid,
-           name = v_name,
            consented_at = now(),
            consent_version = p_consent_version
      where id = v_person.id

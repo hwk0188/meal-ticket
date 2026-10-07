@@ -209,7 +209,7 @@ GitHub Actions ─────────────────────�
 
 | 함수 | 호출자 | 동작 |
 |---|---|---|
-| `claim_person(name, phone, consent_version)` | 로그인 사용자 | 번호 정규화 → 같은 번호의 미연결 사람이 있으면 `auth_user_id` 연결, 없으면 새 사람(1인 가족). `consented_at` 기록. 번호가 이미 다른 계정에 연결되어 있으면 오류 `phone_taken` |
+| `claim_person(name, phone, consent_version)` | 로그인 사용자 | 번호 정규화 → 같은 번호·**같은 이름**의 미연결 어른이 있으면 `auth_user_id` 연결, 번호가 없으면 새 사람(1인 가족). `consented_at` 기록. 번호가 이미 다른 계정에 연결되어 있거나 이름이 다르면 오류 `phone_taken`(권사님이 사람 탭에서 정리). 이름까지 맞아야 하므로 번호만 대입해 남의 선발급 식권을 가로채기 어렵다 |
 | `create_pairing_code(kind)` | 로그인 사용자 | `child`: 사람 미연결 계정만(연결된 계정이면 `already_registered`). `adult`: 가입을 마친 어른만. 기존 미사용 코드 무효화 후 새 6자리 숫자 코드. 10분 |
 | `add_family_member(code, child_name)` | 어른 교인 | `child`: 자녀 사람 생성(이름만, `is_minor`, `guardian_id`=호출자, `guardian_consented_at`=now, 가족=호출자 가족, `auth_user_id`=코드의 계정). `adult`: 코드 계정의 사람을 호출자 가족으로 이동(그 사람의 자녀도 함께). 비어 버린 가족은 삭제. 코드 `used_at` 기록. 만료·사용된 코드는 `invalid_code` |
 | `relink_child(child_id, code)` | 그 자녀의 보호자 | 자녀의 `auth_user_id`를 코드의 계정으로 교체 |
