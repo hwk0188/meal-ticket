@@ -3576,13 +3576,14 @@ npm run dev                # http://localhost:5173
 
 ### 2. 카카오 개발자 콘솔
 
-1. https://developers.kakao.com → 내 애플리케이션 → 애플리케이션 추가. 앱 이름 `OO교회 식권`, 회사명 교회명. (비즈 앱 전환 불필요)
-2. **앱 설정 › 플랫폼 › Web**: 사이트 도메인 `https://<github-user>.github.io`.
-3. **제품 설정 › 카카오 로그인**: 활성화 ON. Redirect URI에 Supabase Callback URL 등록.
-4. **제품 설정 › 카카오 로그인 › 동의항목**: 닉네임(profile_nickname)만 "필수 동의". 프로필 사진·이메일은 설정하지 않는다.
-5. **제품 설정 › 카카오 로그인 › 보안**: Client Secret 코드 생성, 상태 "사용함".
-6. **앱 설정 › 앱 키**의 REST API 키와 위 Client Secret을 Supabase Kakao provider에 입력.
-7. 운영 전까지는 콘솔에서 **팀원**으로 교회 담당자 계정을 추가해 둔다.
+1. https://developers.kakao.com → 내 애플리케이션 → 애플리케이션 추가. 앱 이름 `OO교회 식권`, 회사명 교회명.
+2. **앱 설정 › 비즈니스**: **개인 개발자 비즈 앱 전환**(무료, 사업자번호 불필요). Supabase 가 카카오에 `account_email` scope 를 항상 요청하기 때문에, 이메일 동의항목을 등록할 수 있는 비즈 앱이어야 로그인이 된다(아니면 KOE205 오류).
+3. **앱 설정 › 플랫폼 › Web**: 사이트 도메인 `https://<github-user>.github.io`.
+4. **제품 설정 › 카카오 로그인**: 활성화 ON. OpenID Connect 는 OFF. Redirect URI에 Supabase Callback URL 등록.
+5. **제품 설정 › 카카오 로그인 › 동의항목**: 닉네임(profile_nickname) 필수 동의, 프로필 사진(profile_image) **선택 동의**, 카카오계정 이메일(account_email) **선택 동의**. 교인이 선택 항목을 거부해도 로그인된다.
+6. **제품 설정 › 카카오 로그인 › 보안**: Client Secret 코드 생성, 상태 "사용함".
+7. **앱 설정 › 앱 키**의 REST API 키와 위 Client Secret을 Supabase Kakao provider에 입력. Supabase 쪽 **"Allow users without an email"** 을 켠다(이메일을 거부한 교인도 가입 가능).
+8. 운영 전까지는 콘솔에서 **팀원**으로 교회 담당자 계정을 추가해 둔다.
 
 ### 3. GitHub 저장소
 
@@ -3608,6 +3609,8 @@ update public.people set role = 'admin' where phone = '01012345678' and deleted_
 - 백업(주 1회 pg_dump → 비공개 저장소)은 5단계 계획에서 추가한다.
 - `src/config/church.ts`의 교회명·담당자 연락처(`privacyOfficer.name`, `phone` — 지금은 빈 문자열)를 실제 값으로 바꾼 뒤 배포한다. 처리방침의 담당자 연락처는 법적 필수 항목이다.
 - `index.html`의 `<title>`도 같은 앱 이름으로 맞춘다 (TS 설정을 읽지 못하므로 수동 편집).
+- 운영 Supabase 의 **Email provider 는 반드시 끈다** (끄지 않으면 카카오 없이 이메일로 자가 가입이 가능해진다). 개발용 로그인 코드는 운영 번들에서 제거되지만 서버 쪽 차단이 진짜 경계다.
+- Supabase **Redirect URLs** 에 GitHub Pages 주소(`https://<github-user>.github.io/<repo>/`)가 등록되어 있는지 확인한다.
 
 ### 6. 절대 운영에 실행하면 안 되는 명령
 
