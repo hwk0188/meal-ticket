@@ -4153,10 +4153,10 @@ npm run dev                # http://localhost:5173
 ### 3. GitHub 저장소
 
 1. 공개 저장소로 push. **Settings › Pages › Build and deployment › Source: GitHub Actions**.
-2. **Settings › Secrets and variables › Actions**
+2. **Settings › Secrets and variables › Actions** — 반드시 **저장소(Repository) 수준**에 만든다. 환경(Environment) 수준에 넣으면 다른 환경에서 도는 배포 잡이 읽지 못해 "변수가 비어 있습니다"로 실패한다.
    - Variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`
    - Secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_REF`
-3. **Settings › Environments**: `production` 생성(선택: 승인자 지정).
+3. **Settings › Environments**: `production` 생성. 승인자를 지정하면 main 에 push 할 때마다 마이그레이션 단계에서 승인을 기다리므로(그 뒤 Pages 배포도 멈춤) 운영 초기에는 비워 두는 편이 낫다.
 4. main에 push하면 `Deploy` 워크플로가 테스트 → 마이그레이션 → 배포를 수행한다.
 
 ### 4. 최초 관리자 지정
