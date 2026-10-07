@@ -1,5 +1,5 @@
 begin;
-select plan(9);
+select plan(11);
 
 select has_table('public', 'families', 'families 테이블이 있다');
 select has_table('public', 'people', 'people 테이블이 있다');
@@ -20,6 +20,8 @@ select is(
   (select phone from public.people where name = '김철수'), '01012345678',
   '전화번호는 숫자만 남겨 저장한다'
 );
+select is(public.normalize_phone('+82 10-9876-5432'), '01098765432', '+82 국제 표기는 010 으로 바꾼다');
+select is(public.normalize_phone(''), null, '빈 문자열은 null');
 
 -- 잘못된 번호 거부 (check 위반 23514)
 select throws_ok(

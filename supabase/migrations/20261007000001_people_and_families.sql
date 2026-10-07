@@ -6,13 +6,18 @@ create table public.families (
   created_at timestamptz not null default now()
 );
 
--- 전화번호: 숫자만 남긴다. 빈 문자열은 null.
+-- 전화번호: 숫자만 남긴다. 빈 문자열은 null. 국제 표기(+82 10…)는 국내 표기(010…)로 바꾼다.
 create or replace function public.normalize_phone(p text)
 returns text
 language sql
 immutable
 as $$
-  select nullif(regexp_replace(coalesce(p, ''), '\D', '', 'g'), '')
+  select case
+    when d is null then null
+    when d ~ '^82(1[0-9]{8,9})$' then '0' || substring(d from 3)
+    else d
+  end
+  from (select nullif(regexp_replace(coalesce(p, ''), '\D', '', 'g'), '')) as t(d)
 $$;
 
 create table public.people (
@@ -42,7 +47,8 @@ create unique index people_phone_unique
   on public.people (phone)
   where phone is not null and deleted_at is null;
 create index people_family_idx on public.people (family_id);
-create index people_auth_user_idx on public.people (auth_user_id);
+-- auth_user_id 는 unique 제약이 이미 인덱스를 만든다 (people_auth_user_id_key).
+create index people_guardian_idx on public.people (guardian_id);
 
 -- insert: 가족이 없으면 1인 가족 생성 / insert·update: 번호 정규화, updated_at 갱신
 -- security definer: 관리자가 authenticated 역할로 사람을 insert할 때도 families에 쓸 수 있어야 한다
@@ -110,3 +116,11 @@ $$;
 
 revoke execute on function public.current_person_id(), public.current_family_id(), public.is_admin() from public;
 grant execute on function public.current_person_id(), public.current_family_id(), public.is_admin() to authenticated, anon;
+
+-- =========================================================
+-- 기본 차단: RLS 켜고 API 역할 권한 회수. 정책과 세부 권한은 다음 마이그레이션(RLS)에서 부여한다.
+-- =========================================================
+alter table public.families enable row level security;
+alter table public.people enable row level security;
+revoke all on public.families from anon, authenticated;
+revoke all on public.people from anon, authenticated;
