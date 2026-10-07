@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { StartPage } from './StartPage'
@@ -40,6 +40,28 @@ describe('StartPage', () => {
     renderPage()
     await userEvent.click(screen.getByRole('button', { name: '카카오로 시작하기' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('잠시 후 다시 시도해 주세요.')
+  })
+
+  it('로그인이 실패하면 버튼이 다시 살아난다', async () => {
+    signInWithKakao.mockRejectedValue(new Error('oauth_failed'))
+    renderPage()
+    const button = screen.getByRole('button', { name: '카카오로 시작하기' })
+    await userEvent.click(button)
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    // 버튼이 굳어 버리면 사용자는 더 할 수 있는 일이 없다.
+    expect(button).not.toBeDisabled()
+  })
+
+  it('다시 시도하면 이전 안내 문구를 지운다', async () => {
+    signInWithKakao.mockRejectedValueOnce(new Error('oauth_failed')).mockResolvedValue(undefined)
+    renderPage()
+    const button = screen.getByRole('button', { name: '카카오로 시작하기' })
+
+    await userEvent.click(button)
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+
+    await userEvent.click(button)
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
   })
 
   it('개발 로그인 플래그가 꺼져 있으면 이메일 폼이 없다', () => {

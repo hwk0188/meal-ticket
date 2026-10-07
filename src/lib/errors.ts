@@ -7,6 +7,7 @@ const MESSAGES = {
   already_registered: '이미 가입된 계정이에요.',
   anonymous_cannot_claim: '아이 계정은 보호자 연결로 시작해 주세요.',
   not_authenticated: '로그인이 필요해요.',
+  dev_login_disabled: '개발용 로그인은 사용할 수 없어요.',
 } as const satisfies Record<string, string>
 
 /** MESSAGES 에 문구가 있는 오류 코드. 호출하는 쪽에서 오타를 막는 데 쓴다. */

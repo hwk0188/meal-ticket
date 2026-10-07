@@ -59,7 +59,7 @@ export function StartPage() {
         </form>
       )}
 
-      <Link to="/privacy" className="mt-8 text-center text-xs text-gray-400 underline">
+      <Link to="/privacy" className="mt-8 text-center text-xs text-gray-600 underline">
         개인정보 처리방침
       </Link>
     </main>

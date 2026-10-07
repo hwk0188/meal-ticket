@@ -6,6 +6,10 @@ describe('toUserMessage', () => {
     expect(toUserMessage(new Error('invalid_phone'))).toBe('휴대폰 번호를 확인해 주세요.')
   })
 
+  it('개발 로그인 차단도 사용자 문구로 바꾼다', () => {
+    expect(toUserMessage(new Error('dev_login_disabled'))).toBe('개발용 로그인은 사용할 수 없어요.')
+  })
+
   it('모르는 오류는 일반 문구', () => {
     expect(toUserMessage(new Error('something odd'))).toBe('잠시 후 다시 시도해 주세요.')
     expect(toUserMessage(undefined)).toBe('잠시 후 다시 시도해 주세요.')
