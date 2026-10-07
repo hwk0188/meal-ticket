@@ -2022,6 +2022,37 @@ export default function App() {
 }
 ```
 
+- [ ] **Step 9-1: `src/main.tsx` — 환경변수 오류 시 흰 화면 대신 안내 문구**
+
+`src/lib/env.ts`는 모듈 평가 시점에 throw 하므로, 빌드에 환경변수가 빠지면 콘솔에만 오류가 남고 화면은 비어 있다. 진입점에서 잡아 보여 준다.
+
+```tsx
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+
+const root = createRoot(document.getElementById('root')!)
+
+// env.ts 가 import 시점에 throw 하면(환경변수 누락) 흰 화면 대신 안내를 띄운다.
+import('./App')
+  .then(({ default: App }) => {
+    root.render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    )
+  })
+  .catch((err: unknown) => {
+    console.error(err)
+    root.render(
+      <main style={{ padding: 24, fontFamily: 'system-ui' }}>
+        <h1 style={{ fontSize: 18 }}>앱을 시작할 수 없어요</h1>
+        <p style={{ color: '#555' }}>설정이 올바르지 않습니다. 관리자에게 알려 주세요.</p>
+      </main>,
+    )
+  })
+```
+
 - [ ] **Step 10: `src/App.test.tsx`를 라우팅 스모크로 교체**
 
 ```tsx
