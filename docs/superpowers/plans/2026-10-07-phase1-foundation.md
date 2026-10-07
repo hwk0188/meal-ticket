@@ -236,13 +236,13 @@ git commit -m "chore: Vite + React + TypeScript + Tailwind v4 스캐폴딩"
 - Create: `src/test/setup.ts`, `src/App.test.tsx`
 - Modify: `package.json` (scripts)
 
-- [ ] **Step 1: 테스트 의존성 설치**
+- [x] **Step 1: 테스트 의존성 설치**
 
 ```bash
 npm install -D vitest jsdom @testing-library/react @testing-library/jest-dom @testing-library/user-event @vitest/coverage-v8
 ```
 
-- [ ] **Step 2: `src/test/setup.ts` 작성**
+- [x] **Step 2: `src/test/setup.ts` 작성**
 
 ```ts
 import '@testing-library/jest-dom/vitest'
@@ -254,7 +254,7 @@ afterEach(() => {
 })
 ```
 
-- [ ] **Step 3: `package.json`의 scripts를 다음으로 교체** (lint는 템플릿의 oxlint를 유지)
+- [x] **Step 3: `package.json`의 scripts를 다음으로 교체** (lint는 템플릿의 oxlint를 유지)
 
 ```json
 "scripts": {
@@ -268,7 +268,7 @@ afterEach(() => {
 }
 ```
 
-- [ ] **Step 3-1: `vite.config.ts`에 Vitest 설정을 넣는다** (Task 1에서는 vitest가 없어 `test` 블록을 뺐다)
+- [x] **Step 3-1: `vite.config.ts`에 Vitest 설정을 넣는다** (Task 1에서는 vitest가 없어 `test` 블록을 뺐다)
 
 ```ts
 /// <reference types="vitest/config" />
@@ -289,11 +289,28 @@ export default defineConfig(({ mode }) => {
       globals: true,
       setupFiles: ['./src/test/setup.ts'],
       include: ['src/**/*.test.{ts,tsx}'],
+      // 테스트에서 import.meta.env 를 읽는 모듈(src/lib/env.ts)이 깨지지 않도록 기본값을 준다.
+      // 테스트별로 바꿀 때는 vi.stubEnv 를 쓴다 (unstubEnvs 로 자동 복원).
+      env: {
+        VITE_SUPABASE_URL: 'http://127.0.0.1:54321',
+        VITE_SUPABASE_ANON_KEY: 'test-anon-key',
+        VITE_ENABLE_DEV_LOGIN: 'false',
+      },
+      clearMocks: true,
+      restoreMocks: true,
+      unstubEnvs: true,
+      unstubGlobals: true,
       coverage: {
         provider: 'v8',
         reporter: ['text', 'lcov'],
+        reportOnFailure: true,
         include: ['src/**/*.{ts,tsx}'],
-        exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/main.tsx', 'src/lib/database.types.ts'],
+        exclude: [
+          'src/**/*.test.{ts,tsx}',
+          'src/test/**',
+          'src/main.tsx',
+          'src/lib/database.types.ts',
+        ],
         thresholds: { lines: 80, functions: 80, branches: 70, statements: 80 },
       },
     },
@@ -301,9 +318,11 @@ export default defineConfig(({ mode }) => {
 })
 ```
 
-`vitest/config`는 `vite`의 `loadEnv`를 다시 내보낸다. 내보내지 않는 버전이면 `import { loadEnv } from 'vite'`를 따로 쓴다.
+`vitest/config`는 `loadEnv`를 다시 내보내지 않으므로 `import { loadEnv } from 'vite'`로 가져온다. `/// <reference types="vitest/config" />` 줄은 oxlint가 경고하므로 넣지 않는다(`vitest/config`의 `defineConfig`만으로 `test` 블록이 타입 검사된다). `.oxlintrc.json`의 `plugins`에 `"vitest"`를 추가해 `it.only`나 단언 없는 테스트가 lint에서 걸리게 한다.
 
-- [ ] **Step 4: 실패하는 테스트 작성 — `src/App.test.tsx`**
+참고: Vitest 4는 AI 에이전트 환경(`CLAUDECODE` 등 환경변수)에서 커버리지 표의 100% 파일 행을 숨긴다. 사람 터미널과 CI에서는 파일별 행이 정상 출력된다.
+
+- [x] **Step 4: 실패하는 테스트 작성 — `src/App.test.tsx`**
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -317,14 +336,14 @@ describe('App', () => {
 })
 ```
 
-- [ ] **Step 5: 실패 확인**
+- [x] **Step 5: 실패 확인**
 
 ```bash
 npm test
 ```
 Expected: FAIL — `Unable to find an accessible element with the role "heading" and name "교회 식권 앱"` (현재 제목은 "교회 식권").
 
-- [ ] **Step 6: 제목을 테스트에 맞추고 통과 확인**
+- [x] **Step 6: 제목을 테스트에 맞추고 통과 확인**
 
 `src/App.tsx`의 `<h1>` 내용을 `교회 식권 앱`으로 바꾼다.
 
@@ -333,11 +352,11 @@ npm test
 ```
 Expected: `1 passed`.
 
-- [ ] **Step 7: `tsconfig.app.json`에 vitest 전역 타입 추가**
+- [x] **Step 7: `tsconfig.app.json`에 vitest 전역 타입 추가**
 
 `compilerOptions`의 `types`를 `["vite/client", "vitest/globals"]`로 바꾼다. **`vite/client`를 빼면 `import.meta.env`와 CSS side-effect import가 타입 오류가 나므로 반드시 둘 다 둔다.** jest-dom 매처 타입은 `src/test/setup.ts`의 `@testing-library/jest-dom/vitest` import가 확장한다. `npm run build`가 통과하는지 확인한다.
 
-- [ ] **Step 8: 커밋**
+- [x] **Step 8: 커밋**
 
 ```bash
 git add -A
@@ -2107,6 +2126,8 @@ npm test
 ```
 Expected: 두 파일 FAIL.
 
+`QueryClientProvider` + `MemoryRouter` 조합이 이 Task부터 여러 테스트에 반복되면, `src/test/renderWithProviders.tsx`(테스트마다 새 `QueryClient({ defaultOptions: { queries: { retry: false } } })` + `MemoryRouter`)로 뽑아 공용으로 쓴다. 테스트 코드 중복이 두 파일을 넘기 전에는 만들지 않는다.
+
 - [ ] **Step 4: 구현 — `src/features/onboarding/onboardingSchema.ts`**
 
 ```ts
@@ -2823,7 +2844,7 @@ git commit -m "ci: 테스트·배포·keep-alive 워크플로와 ping 함수"
 
 ## 로컬 개발
 
-필요: Node 22+, Docker Desktop.
+필요: Node 20.19 이상(`.nvmrc` 참고. CI는 Node 22), Docker Desktop.
 
 ```bash
 npm install
