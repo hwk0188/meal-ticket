@@ -1861,10 +1861,15 @@ export type AuthState = { status: 'loading' } | { status: 'ready'; session: Sess
 
 const AuthContext = createContext<AuthState | null>(null)
 
-/** OAuth 콜백으로 붙은 ?code= 를 주소에서 지운다 (해시 라우트는 유지). */
-function stripOAuthCode() {
+/**
+ * OAuth 콜백으로 붙은 ?code= / ?error= 를 주소에서 지운다 (해시 라우트는 유지).
+ * supabase-js 는 교환에 성공했을 때만 code 를 지우므로, 실패하거나 새로고침·공유된 콜백 URL 은
+ * 매번 다시 실패한다. 세션 확인이 끝나면 성공·실패와 무관하게 지운다.
+ */
+function stripOAuthParams() {
   if (typeof window === 'undefined') return
-  if (!window.location.search.includes('code=')) return
+  const params = new URLSearchParams(window.location.search)
+  if (!params.has('code') && !params.has('error')) return
   window.history.replaceState(null, '', window.location.pathname + window.location.hash)
 }
 
@@ -1874,11 +1879,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true
     supabase.auth.getSession().then(({ data }) => {
-      if (active) setState({ status: 'ready', session: data.session })
+      if (!active) return
+      setState({ status: 'ready', session: data.session })
+      stripOAuthParams()
     })
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       setState({ status: 'ready', session })
-      if (session) stripOAuthCode()
+      stripOAuthParams()
     })
     return () => {
       active = false
@@ -2041,6 +2048,7 @@ import './index.css'
 const root = createRoot(document.getElementById('root')!)
 
 // env.ts 가 import 시점에 throw 하면(환경변수 누락) 흰 화면 대신 안내를 띄운다.
+// 주의: 이 파일에서 env.ts/supabase.ts 에 닿는 모듈을 정적 import 하면 이 보호가 무력화된다. 반드시 동적 import 로만.
 import('./App')
   .then(({ default: App }) => {
     root.render(
@@ -3167,6 +3175,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: 배포 환경변수 확인 (빈 값이면 조용히 깨진 사이트가 배포되므로 여기서 실패시킨다)
+        run: |
+          test -n "${{ vars.VITE_SUPABASE_URL }}" || { echo "VITE_SUPABASE_URL 변수가 비어 있습니다"; exit 1; }
+          test -n "${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}" || { echo "VITE_SUPABASE_PUBLISHABLE_KEY 변수가 비어 있습니다"; exit 1; }
       - name: 빌드
         run: npm run build
         env:
