@@ -6,16 +6,20 @@ export type AuthState = { status: 'loading' } | { status: 'ready'; session: Sess
 
 const AuthContext = createContext<AuthState | null>(null)
 
+// 콜백에만 쓰이는 파라미터. 이것만 골라 지우고 utm_source 같은 나머지는 건드리지 않는다.
+const OAUTH_PARAMS = ['code', 'error', 'error_code', 'error_description', 'state'] as const
+
 /**
- * OAuth 콜백으로 붙은 ?code= / ?error= 를 주소에서 지운다 (해시 라우트는 유지).
+ * OAuth 콜백으로 붙은 파라미터를 주소에서 지운다 (해시 라우트와 다른 파라미터는 유지).
  * supabase-js 는 교환에 성공했을 때만 code 를 지우므로, 실패하거나 새로고침·공유된 콜백 URL 은
  * 매번 다시 실패한다. 세션 확인이 끝나면 성공·실패와 무관하게 지운다.
  */
 function stripOAuthParams() {
-  if (typeof window === 'undefined') return
   const params = new URLSearchParams(window.location.search)
-  if (!params.has('code') && !params.has('error')) return
-  window.history.replaceState(null, '', window.location.pathname + window.location.hash)
+  if (!OAUTH_PARAMS.some((key) => params.has(key))) return
+  for (const key of OAUTH_PARAMS) params.delete(key)
+  const query = params.toString()
+  window.history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : '') + window.location.hash)
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -28,7 +32,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     supabase.auth
       .getSession()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        // getSession 은 보통 reject 하지 않고 error 필드로 알려 준다. 조용히 넘기지 않는다.
+        if (error) console.error('세션 확인 실패', error)
         if (!active || settledByListener) return
         setState({ status: 'ready', session: data.session })
         stripOAuthParams()

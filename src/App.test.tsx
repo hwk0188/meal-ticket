@@ -22,6 +22,14 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: '시작' })).toBeInTheDocument()
   })
 
+  // 오래된 링크나 오타로 들어와도 빈 화면을 보여 주지 않고 홈 주소로 정리한다.
+  it('모르는 주소는 홈으로 되돌린다', async () => {
+    window.location.hash = '#/nope'
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: '시작' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('#/')
+  })
+
   // 개인정보 처리방침은 동의 화면과 카카오 심사에서 링크로 열리므로 로그인 없이 닿아야 한다.
   it('로그인 전에도 개인정보 처리방침을 볼 수 있다', async () => {
     window.location.hash = '#/privacy'

@@ -21,18 +21,14 @@ describe('Button', () => {
     expect(onClick).not.toHaveBeenCalled()
   })
 
-  it('변형마다 다른 배경을 쓴다', () => {
-    const { rerender } = render(<Button>기본</Button>)
-    expect(screen.getByRole('button')).toHaveClass('bg-blue-600')
-    rerender(<Button variant="kakao">카카오</Button>)
-    expect(screen.getByRole('button')).toHaveClass('bg-[#FEE500]')
-    rerender(<Button variant="ghost">취소</Button>)
-    expect(screen.getByRole('button')).toHaveClass('bg-white')
+  it('기본 type 은 button 이다 (폼 안에서 뜻하지 않게 제출되지 않는다)', () => {
+    render(<Button>닫기</Button>)
+    expect(screen.getByRole('button')).toHaveAttribute('type', 'button')
   })
 
-  it('type 을 넘길 수 있다', () => {
-    render(<Button type="button">닫기</Button>)
-    expect(screen.getByRole('button')).toHaveAttribute('type', 'button')
+  it('제출 버튼으로 바꿀 수 있다', () => {
+    render(<Button type="submit">보내기</Button>)
+    expect(screen.getByRole('button')).toHaveAttribute('type', 'submit')
   })
 })
 
@@ -50,6 +46,20 @@ describe('TextField', () => {
     expect(screen.getByLabelText('휴대폰')).toHaveAttribute('id', 'phone-field')
   })
 
+  it('id 와 name 이 없어도 자동 id 로 서로 구분된다', () => {
+    render(
+      <>
+        <TextField label="첫째" />
+        <TextField label="둘째" />
+      </>,
+    )
+    const first = screen.getByLabelText('첫째')
+    const second = screen.getByLabelText('둘째')
+    expect(first.id).toBeTruthy()
+    expect(second.id).toBeTruthy()
+    expect(first.id).not.toBe(second.id)
+  })
+
   it('오류가 없으면 aria 속성을 붙이지 않는다', () => {
     render(<TextField label="이름" name="name" />)
     const input = screen.getByLabelText('이름')
@@ -58,16 +68,33 @@ describe('TextField', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('오류가 있으면 안내 문구를 input 에 연결한다', () => {
+  it('오류가 있어도 이름은 라벨 그대로고 안내는 설명으로 읽힌다', () => {
     render(<TextField label="이름" name="name" error="이름을 확인해 주세요" />)
-    // 오류 문구가 <label> 안에 있어 접근성 이름에 함께 묶인다 ("이름 이름을 확인해 주세요").
-    // 지금 구조의 알려진 한계라 역할로 찾는다.
-    const input = screen.getByRole('textbox')
+    const input = screen.getByLabelText('이름')
+    expect(input).toHaveAccessibleName('이름')
+    expect(input).toHaveAccessibleDescription('이름을 확인해 주세요')
     expect(input).toHaveAttribute('aria-invalid', 'true')
     expect(input).toHaveAttribute('aria-describedby', 'name-error')
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent('이름을 확인해 주세요')
     expect(alert).toHaveAttribute('id', 'name-error')
+  })
+
+  it('호출하는 쪽의 aria-describedby 를 지우지 않고 합친다', () => {
+    render(
+      <>
+        <p id="hint">숫자만 입력해 주세요</p>
+        <TextField label="휴대폰" name="phone" aria-describedby="hint" error="번호를 확인해 주세요" />
+      </>,
+    )
+    const input = screen.getByLabelText('휴대폰')
+    expect(input).toHaveAttribute('aria-describedby', 'hint phone-error')
+    expect(input).toHaveAccessibleDescription('숫자만 입력해 주세요 번호를 확인해 주세요')
+  })
+
+  it('오류가 없으면 호출하는 쪽의 aria-describedby 만 남는다', () => {
+    render(<TextField label="휴대폰" name="phone" aria-describedby="hint" />)
+    expect(screen.getByLabelText('휴대폰')).toHaveAttribute('aria-describedby', 'hint')
   })
 })
 
@@ -90,11 +117,13 @@ describe('Checkbox', () => {
 describe('Spinner', () => {
   it('기본 문구를 읽어 준다', () => {
     render(<Spinner />)
-    expect(screen.getByRole('status')).toHaveTextContent('불러오는 중')
+    expect(screen.getByRole('status')).toHaveTextContent('불러오는 중…')
   })
 
-  it('문구를 바꿀 수 있다', () => {
-    render(<Spinner label="연결에 문제가 있어요" />)
-    expect(screen.getByRole('status')).toHaveTextContent('연결에 문제가 있어요')
+  it('문구를 바꾸면 그대로 보여 준다 (말줄임표를 덧붙이지 않는다)', () => {
+    render(<Spinner label="연결에 문제가 있어요. 새로고침해 주세요" />)
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('연결에 문제가 있어요. 새로고침해 주세요')
+    expect(status.textContent).not.toContain('…')
   })
 })

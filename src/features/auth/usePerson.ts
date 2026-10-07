@@ -12,14 +12,17 @@ export function usePerson(userId: string | undefined) {
     queryKey: personQueryKey(userId),
     enabled: Boolean(userId),
     queryFn: async (): Promise<Person | null> => {
-      if (!userId) return null
+      // enabled 가 막아 주지만, 키 없이 호출되면 조용히 null 을 돌려주는 대신 드러낸다.
+      if (!userId) throw new Error('usePerson: userId 없이 조회할 수 없습니다')
       const { data, error } = await supabase
         .from('people')
         .select('*')
         .eq('auth_user_id', userId)
+        // 제약으로 이미 보장되지만(살아 있는 행만 auth_user_id 를 가진다) 이중 방어로 둔다.
         .is('deleted_at', null)
         .maybeSingle()
-      if (error) throw error
+      // PostgREST 오류는 Error 가 아닌 평범한 객체다. message/code 를 보존해 Error 로 감싼다.
+      if (error) throw Object.assign(new Error(error.message), { code: error.code, cause: error })
       return data
     },
   })

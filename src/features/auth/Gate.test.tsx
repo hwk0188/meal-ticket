@@ -4,8 +4,8 @@ import { Gate, RequireSession } from './Gate'
 
 // 훅을 통째로 가짜로 바꾸므로 실제 타입(Session, UseQueryResult) 전체를 만들 필요가 없다.
 // Gate 가 읽는 필드만 담은 느슨한 타입으로 둔다.
-type FakeAuth = { status: string; session?: { user: { id: string } } | null }
-type FakePerson = { status: string; data?: { id: string; name: string } | null }
+type FakeAuth = { status: 'loading' | 'ready'; session?: { user: { id: string } } | null }
+type FakePerson = { status: 'pending' | 'error' | 'success'; data?: { id: string; name: string } | null }
 
 const { useAuth, usePerson } = vi.hoisted(() => ({
   useAuth: vi.fn<() => FakeAuth>(),
@@ -42,6 +42,13 @@ describe('Gate', () => {
     expect(screen.getByText('start')).toBeInTheDocument()
   })
 
+  it('사람을 불러오는 중이면 스피너', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'pending', data: undefined })
+    renderAt('/')
+    expect(screen.getByRole('status')).toBeInTheDocument()
+  })
+
   it('세션은 있고 사람이 없으면 가입 화면으로 보낸다', () => {
     useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
     usePerson.mockReturnValue({ status: 'success', data: null })
@@ -61,6 +68,23 @@ describe('Gate', () => {
     usePerson.mockReturnValue({ status: 'error', data: undefined })
     renderAt('/')
     expect(screen.getByRole('status')).toHaveTextContent('연결에 문제가 있어요')
+  })
+
+  it('RequireSession: 세션 확인 중이면 스피너', () => {
+    useAuth.mockReturnValue({ status: 'loading' })
+    usePerson.mockReturnValue({ status: 'pending', data: undefined })
+    renderAt('/onboarding')
+    expect(screen.queryByText('onboarding')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeInTheDocument()
+  })
+
+  it('RequireSession: 사람을 불러오는 중이면 스피너', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'pending', data: undefined })
+    renderAt('/onboarding')
+    // 가입 여부를 모르는 채로 가입 화면을 깜빡이며 보여 주지 않는다.
+    expect(screen.queryByText('onboarding')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeInTheDocument()
   })
 
   it('RequireSession: 세션이 없으면 /로 보낸다', () => {

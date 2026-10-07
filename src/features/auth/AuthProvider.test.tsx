@@ -2,7 +2,10 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import type { Session } from '@supabase/supabase-js'
 import { AuthProvider, useAuth } from './AuthProvider'
 
-type GetSession = () => Promise<{ data: { session: Session | null } }>
+type GetSession = () => Promise<{
+  data: { session: Session | null }
+  error?: { message: string } | null
+}>
 type OnAuthStateChange = (
   callback: (event: string, session: Session | null) => void,
 ) => { data: { subscription: { unsubscribe: () => void } } }
@@ -25,6 +28,11 @@ function Probe() {
 
 beforeEach(() => {
   onAuthStateChange.mockReturnValue({ data: { subscription: { unsubscribe } } })
+})
+
+// 주소를 만지는 테스트가 다음 테스트로 새지 않게 되돌린다.
+afterEach(() => {
+  window.history.replaceState(null, '', '/')
 })
 
 describe('AuthProvider', () => {
@@ -53,6 +61,17 @@ describe('AuthProvider', () => {
 
     act(() => notify('SIGNED_OUT', null))
     expect(screen.getByText('no-session')).toBeInTheDocument()
+  })
+
+  it('세션 확인이 오류를 함께 돌려주면 기록하고 비로그인으로 둔다', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // getSession 은 보통 reject 하지 않고 { data, error } 로 알려 준다. 조용히 넘기면 안 된다.
+    getSession.mockResolvedValue({ data: { session: null }, error: { message: 'storage unavailable' } })
+
+    render(<AuthProvider><Probe /></AuthProvider>)
+
+    await waitFor(() => expect(screen.getByText('no-session')).toBeInTheDocument())
+    expect(consoleError).toHaveBeenCalled()
   })
 
   it('세션 확인이 실패해도 멈추지 않고 비로그인으로 넘긴다', async () => {
@@ -97,13 +116,25 @@ describe('AuthProvider', () => {
     expect(unsubscribe).toHaveBeenCalled()
   })
 
-  it('OAuth 콜백 파라미터(?code=)를 주소에서 지운다 (해시 유지)', async () => {
+  it('OAuth 콜백 파라미터만 지우고 나머지 파라미터와 해시는 남긴다', async () => {
     getSession.mockResolvedValue({ data: { session: null } })
-    window.history.replaceState(null, '', '/?code=abc&state=xyz#/')
+    window.history.replaceState(null, '', '/?code=abc&state=xyz&utm_source=kakao#/')
+
     render(<AuthProvider><Probe /></AuthProvider>)
+
+    await waitFor(() => expect(screen.getByText('no-session')).toBeInTheDocument())
+    expect(window.location.search).toBe('?utm_source=kakao')
+    expect(window.location.hash).toBe('#/')
+  })
+
+  it('실패한 콜백의 오류 파라미터도 지운다', async () => {
+    getSession.mockResolvedValue({ data: { session: null } })
+    window.history.replaceState(null, '', '/?error=access_denied&error_description=denied#/')
+
+    render(<AuthProvider><Probe /></AuthProvider>)
+
     await waitFor(() => expect(screen.getByText('no-session')).toBeInTheDocument())
     expect(window.location.search).toBe('')
     expect(window.location.hash).toBe('#/')
-    window.history.replaceState(null, '', '/')
   })
 })

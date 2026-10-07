@@ -19,7 +19,15 @@ import('./App')
     root.render(
       <main style={{ padding: 24, fontFamily: 'system-ui' }}>
         <h1 style={{ fontSize: 18 }}>앱을 시작할 수 없어요</h1>
-        <p style={{ color: '#555' }}>설정이 올바르지 않습니다. 관리자에게 알려 주세요.</p>
+        <p style={{ color: '#555' }}>잠시 후 새로고침해 주세요. 계속되면 관리자에게 알려 주세요.</p>
+        <button
+          type="button"
+          onClick={() => {
+            window.location.reload()
+          }}
+        >
+          새로고침
+        </button>
       </main>,
     )
   })

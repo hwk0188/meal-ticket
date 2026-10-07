@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
+import { useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react'
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'kakao' | 'ghost' }
 
@@ -9,29 +9,35 @@ export function Button({ variant = 'primary', className = '', ...rest }: ButtonP
     kakao: 'bg-[#FEE500] text-[#191919]',
     ghost: 'bg-white text-gray-900 border border-gray-300',
   }[variant]
-  return <button className={`${base} ${look} ${className}`} {...rest} />
+  // type 을 먼저 두어 기본값은 button 이 되고, 제출 버튼은 호출하는 쪽에서 덮어쓴다.
+  // (HTML 기본값 submit 이면 폼 안의 모든 버튼이 뜻하지 않게 폼을 제출한다.)
+  return <button type="button" className={`${base} ${look} ${className}`} {...rest} />
 }
 
 type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }
 
-export function TextField({ label, error, id, ...rest }: TextFieldProps) {
-  const inputId = id ?? rest.name
+export function TextField({ label, error, id, 'aria-describedby': describedBy, ...rest }: TextFieldProps) {
+  const autoId = useId()
+  const inputId = id ?? rest.name ?? autoId
+  const errorId = `${inputId}-error`
   return (
-    <label className="block" htmlFor={inputId}>
-      <span className="mb-1 block text-xs font-semibold text-gray-500">{label}</span>
+    <div className="block">
+      <label className="mb-1 block text-xs font-semibold text-gray-500" htmlFor={inputId}>
+        {label}
+      </label>
       <input
         id={inputId}
         className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base outline-none focus:border-blue-600"
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${inputId}-error` : undefined}
         {...rest}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={[describedBy, error ? errorId : undefined].filter(Boolean).join(' ') || undefined}
       />
       {error && (
-        <span id={`${inputId}-error`} role="alert" className="mt-1 block text-xs text-red-600">
+        <p id={errorId} role="alert" className="mt-1 text-xs text-red-600">
           {error}
-        </span>
+        </p>
       )}
-    </label>
+    </div>
   )
 }
 
@@ -46,10 +52,10 @@ export function Checkbox({ children, ...rest }: CheckboxProps) {
   )
 }
 
-export function Spinner({ label = '불러오는 중' }: { label?: string }) {
+export function Spinner({ label = '불러오는 중…' }: { label?: string }) {
   return (
     <div role="status" aria-live="polite" className="flex min-h-dvh items-center justify-center text-sm text-gray-500">
-      {label}…
+      {label}
     </div>
   )
 }

@@ -66,12 +66,17 @@ describe('usePerson', () => {
     expect(result.current.data).toBeNull()
   })
 
-  it('조회가 실패하면 오류로 알린다', async () => {
-    maybeSingle.mockResolvedValue({ data: null, error: { message: 'boom' } })
+  it('조회가 실패하면 진짜 Error 로 감싸 알린다', async () => {
+    const raw = { message: 'boom', code: 'PGRST500' }
+    maybeSingle.mockResolvedValue({ data: null, error: raw })
 
     const { result } = renderHook(() => usePerson('u1'), { wrapper: makeWrapper() })
 
     await waitFor(() => expect(result.current.status).toBe('error'))
-    expect(result.current.error).toEqual({ message: 'boom' })
+    // PostgREST 가 주는 평범한 객체는 Error 가 아니다. 스택과 cause 를 남기려 감싼다.
+    expect(result.current.error).toBeInstanceOf(Error)
+    expect(result.current.error?.message).toBe('boom')
+    // toUserMessage 는 message/code 를 읽으므로 그대로 보존해야 한다.
+    expect(result.current.error).toMatchObject({ code: 'PGRST500', cause: raw })
   })
 })
