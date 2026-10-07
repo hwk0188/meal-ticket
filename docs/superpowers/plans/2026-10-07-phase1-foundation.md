@@ -603,7 +603,7 @@ git commit -m "test: pgTAP 테스트 헬퍼(사용자 생성·인증) 추가"
 
 ```sql
 begin;
-select plan(19);
+select plan(20);
 
 select has_table('public', 'families', 'families 테이블이 있다');
 select has_table('public', 'people', 'people 테이블이 있다');
@@ -652,10 +652,10 @@ select throws_ok(
 );
 
 -- 기본 차단: auto_expose_new_tables=true 라서 새 테이블은 anon 전체 권한으로 태어난다. revoke 를 잊으면 여기서 잡힌다.
--- 마이그레이션은 누적 적용되므로 authenticated 의 SELECT(다음 마이그레이션에서 부여)는 허용한다.
 select table_privs_are('public','people','anon', '{}'::text[], 'anon은 people에 아무 권한이 없다');
 select table_privs_are('public','people','authenticated','{SELECT}'::text[], 'authenticated는 people을 읽기만 할 수 있다 (열 단위 insert/update 는 table_privs_are 에 안 보임)');
 select table_privs_are('public','families','anon','{}'::text[], 'anon은 families에 아무 권한이 없다');
+select table_privs_are('public','families','authenticated','{SELECT}'::text[], 'authenticated는 families를 읽기만 할 수 있다');
 select is((select relrowsecurity from pg_class where oid='public.people'::regclass), true, 'people에 RLS가 켜져 있다');
 select is((select relrowsecurity from pg_class where oid='public.families'::regclass), true, 'families에 RLS가 켜져 있다');
 
@@ -837,7 +837,7 @@ revoke all on public.people from anon, authenticated;
 npm run db:reset
 npm run db:test
 ```
-Expected: `020_people_schema.sql .. ok`, 전체 `All tests successful.` (5 + 19 단언)
+Expected: `020_people_schema.sql .. ok`, 전체 `All tests successful.` (5 + 20 단언)
 
 - [x] **Step 5: 커밋**
 
@@ -854,13 +854,13 @@ git commit -m "feat(db): families·people 테이블, 전화번호 정규화 트�
 - Create: `supabase/migrations/20261007000002_people_rls.sql`
 - Test: `supabase/tests/database/030_people_rls.sql`
 
-- [ ] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/030_people_rls.sql`**
+- [x] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/030_people_rls.sql`**
 
 ```sql
 begin;
-select plan(10);
+select plan(15);
 
--- 준비: 사용자 A(김철수), B(이영희, 다른 가족), 관리자(권사)
+-- 준비: 사용자 A(김철수), B(이영희, 다른 가족), 관리자(권사). uid 는 역할 전환 전에 \gset 으로 받아 둔다.
 select tests.create_user('a@test.local') as a_uid \gset
 select tests.create_user('b@test.local') as b_uid \gset
 select tests.create_user('admin@test.local') as admin_uid \gset
@@ -879,8 +879,21 @@ select is((select count(*) from public.people), 1::bigint, 'A는 자기 가족(�
 select is((select name from public.people), '김철수', '보이는 사람은 본인이다');
 select is((select count(*) from public.families), 1::bigint, 'A는 자기 가족 행만 본다');
 
-update public.people set name = '김철수A' where auth_user_id = :'a_uid';
-select is((select name from public.people where auth_user_id = :'a_uid'), '김철수A', 'A는 자기 이름을 바꿀 수 있다');
+-- 같은 가족의 탈퇴한 구성원은 보이지 않는다 (정책의 deleted_at is null 절)
+select tests.clear_auth();
+insert into public.people (name, family_id, deleted_at)
+values ('탈퇴가족원', (select family_id from public.people where auth_user_id = :'a_uid'), now());
+insert into public.people (name, family_id)
+values ('가족형제', (select family_id from public.people where auth_user_id = :'a_uid'));
+select tests.authenticate_as(:'a_uid');
+select is((select count(*) from public.people), 2::bigint, 'A는 살아 있는 가족 구성원만 본다 (탈퇴자 제외)');
+
+-- 같은 가족이라도 남의 행은 고칠 수 없다 (people_update_self 의 USING 범위)
+update public.people set name = '해킹' where name = '가족형제';
+select is((select name from public.people where name in ('가족형제','해킹')), '가족형제', 'A는 같은 가족이라도 남의 이름을 바꿀 수 없다');
+
+update public.people set name = '김철수A' where auth_user_id = auth.uid();
+select is((select name from public.people where auth_user_id = auth.uid()), '김철수A', 'A는 자기 이름을 바꿀 수 있다');
 
 select throws_ok(
   $$ update public.people set role = 'admin' where auth_user_id = auth.uid() $$,
@@ -892,15 +905,24 @@ select throws_ok(
   '42501', null, 'A는 사람을 만들 수 없다'
 );
 
--- 관리자로서
+-- 실패한 insert 가 트리거로 만든 가족 행을 남기지 않았는지 (문장 단위 롤백)
 select tests.clear_auth();
+select is((select count(*) from public.families), 4::bigint, '거부된 insert 는 families 행을 남기지 않는다');
+
+-- 관리자로서
 select tests.authenticate_as(:'admin_uid');
-select is((select count(*) from public.people), 4::bigint, '관리자는 모든 사람을 본다');
+select is((select count(*) from public.people), 6::bigint, '관리자는 모든 사람을 본다 (탈퇴자 포함)');
 select lives_ok(
   $$ insert into public.people (name, phone) values ('방문자', '01099990000') $$,
   '관리자는 선발급용 사람을 만들 수 있다'
 );
-select is((select count(*) from public.families), 5::bigint, '관리자는 모든 가족을 본다');
+select is((select count(*) from public.families), 5::bigint, '관리자는 모든 가족을 본다 (방금 만든 1인 가족 포함)');
+
+-- 정책 구조를 고정한다: 정책이 늘거나 사라지면 여기서 잡힌다
+select policies_are('public', 'people',
+  array['people_select_family_or_admin','people_update_self','people_insert_admin','people_update_admin'],
+  'people 정책은 정확히 4개');
+select policies_are('public', 'families', array['families_select_own_or_admin'], 'families 정책은 정확히 1개');
 
 -- 비로그인(anon)
 select tests.clear_auth();
@@ -914,14 +936,14 @@ rollback;
 
 `\gset`은 psql 전용 문법이며 `supabase test db`(pg_prove → psql)에서 동작한다. uid 는 반드시 `authenticate_as` 호출 **전에** `\gset` 으로 받아 둔다(`authenticated` 역할은 `auth.users` 를 읽을 수 없다). `authenticate_as` 는 연속 호출이 가능하므로 사용자 전환 사이의 `clear_auth()` 는 "postgres 로 돌아가서 전체 데이터를 보고 싶을 때"만 필요하다.
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 ```bash
 npm run db:test
 ```
 Expected: `030_people_rls.sql` FAIL — 앞 마이그레이션이 기본 차단 상태라 A의 첫 조회부터 `42501 permission denied`로 중단된다(정책·권한이 아직 없음).
 
-- [ ] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261007000002_people_rls.sql`**
+- [x] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261007000002_people_rls.sql`**
 
 ```sql
 -- RLS 활성화와 권한 회수는 앞 마이그레이션(테이블 생성)에서 이미 했다. 여기서는 필요한 권한과 정책만 부여한다.
@@ -963,15 +985,17 @@ create policy people_update_admin on public.people
 
 관리자도 직접 고칠 수 있는 열은 이름·전화뿐이다. 역할·가족·보호자·계정 연결 같은 열은 뒤 단계의 관리자 전용 함수(`merge_people`, `link_person`, `admin_reset_person` 등)로만 바꾼다. 설계 문서 7.4의 "관리자 update 전부"는 이 함수들을 포함한 의미다.
 
-- [ ] **Step 4: 적용하고 통과 확인**
+- [x] **Step 4: 적용하고 통과 확인**
 
 ```bash
 npm run db:reset
 npm run db:test
 ```
-Expected: `030_people_rls.sql .. ok`, 전체 성공.
+Expected: `030_people_rls.sql .. ok`, 전체 성공 (5 + 20 + 15 = 40 단언).
 
-- [ ] **Step 5: 커밋**
+참고: `people_update_self`의 `and deleted_at is null`은 `people_deleted_is_anonymized` 제약 때문에 논리적으로 도달 불가한 방어 조항이다(탈퇴 행은 항상 `auth_user_id`가 NULL). 변이 테스트에서 살아남는 '동치 변이'이므로 테스트로 잡으려 하지 않는다.
+
+- [x] **Step 5: 커밋**
 
 ```bash
 git add supabase
