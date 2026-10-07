@@ -3606,7 +3606,8 @@ update public.people set role = 'admin' where phone = '01012345678' and deleted_
 - `Keep alive` 워크플로가 3일마다 돌아 무료 플랜 일시정지를 막는다. 저장소에 60일간 커밋이 없으면 GitHub가 스케줄을 끄므로 Actions 탭에서 다시 켠다.
 - 일시정지되면 Supabase 대시보드에서 "Restore"를 누른다(1~2분).
 - 백업(주 1회 pg_dump → 비공개 저장소)은 5단계 계획에서 추가한다.
-- `src/config/church.ts`의 교회명·담당자 연락처를 실제 값으로 바꾼 뒤 배포한다.
+- `src/config/church.ts`의 교회명·담당자 연락처(`privacyOfficer.name`, `phone` — 지금은 빈 문자열)를 실제 값으로 바꾼 뒤 배포한다. 처리방침의 담당자 연락처는 법적 필수 항목이다.
+- `index.html`의 `<title>`도 같은 앱 이름으로 맞춘다 (TS 설정을 읽지 못하므로 수동 편집).
 
 ### 6. 절대 운영에 실행하면 안 되는 명령
 
