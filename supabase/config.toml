@@ -20,7 +20,7 @@ max_rows = 1000
 # `postgres` are reachable through the Data API roles (`anon`, `authenticated`, `service_role`)
 # without explicit GRANTs, matching the cloud default. Set to `false` to require explicit GRANTs
 # instead. Left unset, a fresh project falls back to `true`.
-# auto_expose_new_tables = true
+auto_expose_new_tables = true
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
@@ -85,8 +85,9 @@ allowed_cidrs_v6 = ["::/0"]
 # [db.ssl_enforcement]
 # enabled = true
 
+# 이 프로젝트는 사용하지 않음. 필요해지면 다시 켠다.
 [realtime]
-enabled = true
+enabled = false
 # Bind realtime via either IPv4 or IPv6. (default: IPv4)
 # ip_version = "IPv6"
 # The maximum length in bytes of HTTP request headers. (default: 4096)
@@ -113,8 +114,9 @@ port = 54324
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
+# 이 프로젝트는 사용하지 않음. 필요해지면 다시 켠다.
 [storage]
-enabled = true
+enabled = false
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"
 
@@ -176,6 +178,7 @@ refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
 enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
+# 3단계(아이 계정)에서 사용. 1단계에서는 호출하지 않음.
 enable_anonymous_sign_ins = true
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
@@ -372,8 +375,9 @@ authorization_url_path = "/oauth/consent"
 # Allow dynamic client registration
 allow_dynamic_registration = false
 
+# 이 프로젝트는 사용하지 않음. 필요해지면 다시 켠다.
 [edge_runtime]
-enabled = true
+enabled = false
 # Supported request policies: `oneshot`, `per_worker`.
 # `per_worker` (default) — enables hot reload during local development.
 # `oneshot` — fallback mode if hot reload causes issues (e.g. in large repos or with symlinks).
@@ -386,8 +390,9 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# 이 프로젝트는 사용하지 않음. 필요해지면 다시 켠다. (analytics를 끄면 `supabase logs`/Studio Logs도 비활성화된다)
 [analytics]
-enabled = true
+enabled = false
 port = 54327
 # Configure one of the supported backends: `postgres`, `bigquery`.
 backend = "postgres"

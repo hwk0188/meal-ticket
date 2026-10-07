@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
       // 테스트별로 바꿀 때는 vi.stubEnv 를 쓴다 (unstubEnvs 로 자동 복원).
       env: {
         VITE_SUPABASE_URL: 'http://127.0.0.1:54321',
-        VITE_SUPABASE_ANON_KEY: 'test-anon-key',
+        VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
         VITE_ENABLE_DEV_LOGIN: 'false',
       },
       clearMocks: true,
