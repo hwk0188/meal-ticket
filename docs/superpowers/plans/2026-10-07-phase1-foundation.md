@@ -816,10 +816,10 @@ as $$
 $$;
 
 revoke execute on function public.current_person_id(), public.current_family_id(), public.is_admin() from public;
-grant execute on function public.current_person_id(), public.current_family_id(), public.is_admin() to authenticated, anon, service_role;
--- normalize_phone 과 트리거 함수는 PostgREST RPC 로 노출할 이유가 없다
+grant execute on function public.current_person_id(), public.current_family_id(), public.is_admin() to authenticated, service_role;
+-- normalize_phone 과 트리거 함수는 PostgREST RPC 로 노출할 이유가 없다. anon 에게는 어떤 RPC 도 주지 않는다 (ping 은 뒤에 따로).
 revoke execute on function public.normalize_phone(text), public.people_before_write() from public, anon, authenticated;
-grant execute on function public.normalize_phone(text) to authenticated, anon, service_role;
+grant execute on function public.normalize_phone(text) to authenticated, service_role;
 
 -- =========================================================
 -- 기본 차단: RLS 켜고 API 역할 권한 회수. 정책과 세부 권한은 다음 마이그레이션(RLS)에서 부여한다.
@@ -950,12 +950,14 @@ Expected: `030_people_rls.sql` FAIL — 앞 마이그레이션이 기본 차단 
 grant select on public.families to authenticated;
 grant select on public.people to authenticated;
 -- 본인 수정은 이름·전화만, 관리자 선발급 입력도 이름·전화만 (나머지는 함수로)
+-- phone 은 인증된 값이 아니다 (SMS 인증 없음). 본인이 미사용 번호로 바꿀 수 있으며, 식별은 관리자 확인에 의존한다.
 grant update (name, phone) on public.people to authenticated;
 grant insert (name, phone) on public.people to authenticated;
 
 -- families
 -- 정책 안의 함수 호출은 (select …) 로 감싼다. 감싸지 않으면 행마다 함수를 다시 실행해
 -- 2만 행 기준 253ms vs 1.7ms 차이가 난다 (InitPlan 으로 한 번만 평가됨). 이후 모든 테이블에 같은 규칙.
+-- 쿼리 조건에서도 같다: where auth_user_id = auth.uid() 는 Seq Scan, (select auth.uid()) 는 Index Scan 을 탄다.
 create policy families_select_own_or_admin on public.families
   for select to authenticated
   using (id = (select public.current_family_id()) or (select public.is_admin()));
@@ -968,18 +970,20 @@ create policy people_select_family_or_admin on public.people
     or (select public.is_admin())
   );
 
+-- 자녀 계정은 조회만 (이름·번호는 보호자/관리자가 관리). 어른만 자기 이름·전화를 고친다.
 create policy people_update_self on public.people
   for update to authenticated
-  using (auth_user_id = (select auth.uid()) and deleted_at is null)
-  with check (auth_user_id = (select auth.uid()));
+  using (auth_user_id = (select auth.uid()) and deleted_at is null and is_minor = false)
+  with check (auth_user_id = (select auth.uid()) and is_minor = false);
 
 create policy people_insert_admin on public.people
   for insert to authenticated
   with check ((select public.is_admin()));
 
+-- 관리자도 익명화(탈퇴)된 행은 직접 고칠 수 없다 (개인정보 재부착 방지). 필요하면 4단계의 관리자 함수로만.
 create policy people_update_admin on public.people
   for update to authenticated
-  using ((select public.is_admin()))
+  using ((select public.is_admin()) and deleted_at is null)
   with check ((select public.is_admin()));
 ```
 

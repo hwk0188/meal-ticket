@@ -233,7 +233,7 @@ GitHub Actions ─────────────────────�
 
 | 테이블 | 교인 | 자녀 계정 | 관리자 |
 |---|---|---|---|
-| people | 같은 가족 select. 본인 행의 name·phone만 update | 같은 가족 select | 전부 select/insert/update |
+| people | 같은 가족(탈퇴자 제외) select. 본인 행의 name·phone만 update | 같은 가족 select (수정 불가) | 전부 select, insert·update는 name·phone만, 익명화된 행은 수정 불가(함수로만) |
 | families | 자기 가족 select | 동일 | 전부 |
 | meals | 전체 select | 동일 | insert/update/delete |
 | issuances, usages | 자기 가족 select | 동일 | 전부 select |
