@@ -293,7 +293,7 @@ export default defineConfig(({ mode }) => {
       // 테스트별로 바꿀 때는 vi.stubEnv 를 쓴다 (unstubEnvs 로 자동 복원).
       env: {
         VITE_SUPABASE_URL: 'http://127.0.0.1:54321',
-        VITE_SUPABASE_ANON_KEY: 'test-anon-key',
+        VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
         VITE_ENABLE_DEV_LOGIN: 'false',
       },
       clearMocks: true,
@@ -374,7 +374,7 @@ git commit -m "test: Vitest + Testing Library 설정"
 - [ ] **Step 1: Supabase CLI를 devDependency로 설치하고 초기화**
 
 ```bash
-npm install -D supabase
+npm install -D supabase@2.120.0 --save-exact
 npx supabase init
 ```
 Expected: `supabase/config.toml` 생성. "Generate VS Code settings?" 질문은 `N`.
@@ -400,7 +400,19 @@ enable_anonymous_sign_ins = true
 [auth.email]
 enable_signup = true
 enable_confirmations = false
+
+# 이 프로젝트가 쓰지 않는 서비스는 꺼서 start/reset 시간을 줄인다 (12 → 7 컨테이너)
+[realtime]
+enabled = false
+[storage]
+enabled = false
+[edge_runtime]
+enabled = false
+[analytics]
+enabled = false   # supabase logs / Studio Logs 도 꺼진다
 ```
+
+`[api] auto_expose_new_tables = true`는 주석을 풀어 명시한다(클라우드 기본값과 동일. RLS 테스트가 운영과 같은 조건에서 돌아야 한다). `enable_anonymous_sign_ins`는 3단계 아이 계정용이며 1단계에서는 호출하지 않는다.
 
 카카오 provider는 로컬에 설정하지 않는다. 로컬은 이메일 개발 로그인을 쓰고, 운영 Supabase 대시보드에서만 카카오를 켠다(Task 17의 README 참고).
 
@@ -416,9 +428,9 @@ Expected(약 1~3분): `API URL: http://127.0.0.1:54321`, `anon key: ...` 등 출
 
 `.env.example`:
 ```bash
-# Supabase 프로젝트 (로컬은 `npx supabase status -o env` 참고)
+# Supabase 프로젝트 (로컬은 `npx supabase status -o env` 의 API_URL / PUBLISHABLE_KEY)
 VITE_SUPABASE_URL=http://127.0.0.1:54321
-VITE_SUPABASE_ANON_KEY=
+VITE_SUPABASE_PUBLISHABLE_KEY=
 # 로컬·테스트에서만 true. 운영 빌드에서는 비워 둔다.
 VITE_ENABLE_DEV_LOGIN=true
 # GitHub Pages 프로젝트 사이트 경로. 로컬은 /
@@ -427,9 +439,9 @@ VITE_BASE_PATH=/
 
 `.env.local`은 실제 값으로 채운다:
 ```bash
-npx supabase status -o env | grep -E '^(API_URL|ANON_KEY)=' 
+npx supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)='
 ```
-출력된 `ANON_KEY` 값을 `VITE_SUPABASE_ANON_KEY=`에 넣고 나머지는 `.env.example`과 같게 둔다.
+출력된 `PUBLISHABLE_KEY`(`sb_publishable_…`) 값을 `VITE_SUPABASE_PUBLISHABLE_KEY=`에 넣고 나머지는 `.env.example`과 같게 둔다. 레거시 `ANON_KEY`(JWT)는 2026년 말 폐기 예정이라 쓰지 않는다.
 
 - [ ] **Step 5: `package.json` scripts에 DB 명령 추가**
 
@@ -438,7 +450,7 @@ npx supabase status -o env | grep -E '^(API_URL|ANON_KEY)='
 "db:stop": "supabase stop",
 "db:reset": "supabase db reset",
 "db:test": "supabase test db",
-"db:types": "supabase gen types typescript --local > src/lib/database.types.ts"
+"db:types": "mkdir -p src/lib && supabase gen types typescript --local > src/lib/database.types.ts.tmp && mv src/lib/database.types.ts.tmp src/lib/database.types.ts"
 ```
 
 - [ ] **Step 6: 커밋**
@@ -453,9 +465,9 @@ git commit -m "chore: 로컬 Supabase 초기화 및 환경변수 예시"
 ### Task 4: DB 테스트 헬퍼 (시드) + 첫 pgTAP 테스트
 
 **Files:**
-- Create: `supabase/seeds/test_helpers.sql`, `supabase/tests/database/010_helpers.sql`
+- Create: `supabase/seeds/000_test_helpers.sql`, `supabase/tests/database/010_helpers.sql`
 
-- [ ] **Step 1: 헬퍼 시드 작성 — `supabase/seeds/test_helpers.sql`**
+- [ ] **Step 1: 헬퍼 시드 작성 — `supabase/seeds/000_test_helpers.sql`**
 
 운영 DB에는 `db push`로 올라가지 않는다(시드는 로컬 전용).
 
@@ -1094,7 +1106,7 @@ import { parseEnv } from './env'
 
 const valid = {
   VITE_SUPABASE_URL: 'http://127.0.0.1:54321',
-  VITE_SUPABASE_ANON_KEY: 'anon-key',
+  VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_x',
   VITE_ENABLE_DEV_LOGIN: 'true',
 }
 
@@ -1102,7 +1114,7 @@ describe('parseEnv', () => {
   it('올바른 값을 구조화해 돌려준다', () => {
     expect(parseEnv(valid)).toEqual({
       supabaseUrl: 'http://127.0.0.1:54321',
-      supabaseAnonKey: 'anon-key',
+      supabasePublishableKey: 'sb_publishable_x',
       enableDevLogin: true,
     })
   })
@@ -1113,7 +1125,7 @@ describe('parseEnv', () => {
   })
 
   it('필수 값이 빠지면 어떤 키인지 알려주며 실패한다', () => {
-    expect(() => parseEnv({ VITE_SUPABASE_URL: 'http://x' })).toThrow(/VITE_SUPABASE_ANON_KEY/)
+    expect(() => parseEnv({ VITE_SUPABASE_URL: 'http://x' })).toThrow(/VITE_SUPABASE_PUBLISHABLE_KEY/)
   })
 })
 ```
@@ -1186,13 +1198,13 @@ import { z } from 'zod'
 
 const schema = z.object({
   VITE_SUPABASE_URL: z.string().url(),
-  VITE_SUPABASE_ANON_KEY: z.string().min(1),
+  VITE_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
   VITE_ENABLE_DEV_LOGIN: z.enum(['true', 'false']).default('false'),
 })
 
 export type Env = {
   supabaseUrl: string
-  supabaseAnonKey: string
+  supabasePublishableKey: string
   enableDevLogin: boolean
 }
 
@@ -1204,7 +1216,7 @@ export function parseEnv(raw: Record<string, unknown>): Env {
   }
   return {
     supabaseUrl: result.data.VITE_SUPABASE_URL,
-    supabaseAnonKey: result.data.VITE_SUPABASE_ANON_KEY,
+    supabasePublishableKey: result.data.VITE_SUPABASE_PUBLISHABLE_KEY,
     enableDevLogin: result.data.VITE_ENABLE_DEV_LOGIN === 'true',
   }
 }
@@ -1219,7 +1231,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { Database } from './database.types'
 import { env } from './env'
 
-export const supabase = createClient<Database>(env.supabaseUrl, env.supabaseAnonKey, {
+export const supabase = createClient<Database>(env.supabaseUrl, env.supabasePublishableKey, {
   auth: {
     flowType: 'pkce',
     detectSessionInUrl: true,
@@ -2670,14 +2682,14 @@ jobs:
       - run: npm ci
 
       - name: 로컬 Supabase 기동
-        run: npx supabase start
+        run: npx supabase start -x studio,postgres-meta,mailpit
 
       - name: 로컬 환경변수 작성
         run: |
-          eval "$(npx supabase status -o env | grep -E '^(API_URL|ANON_KEY)=')"
+          eval "$(npx supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)=')"
           {
             echo "VITE_SUPABASE_URL=$API_URL"
-            echo "VITE_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "VITE_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
             echo "VITE_ENABLE_DEV_LOGIN=true"
             echo "VITE_BASE_PATH=/"
           } > .env.local
@@ -2776,7 +2788,7 @@ jobs:
         run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_ENABLE_DEV_LOGIN: 'false'
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
       - uses: actions/configure-pages@v5
@@ -2806,8 +2818,8 @@ jobs:
       - name: Supabase ping
         run: |
           curl -fsS -X POST "${{ vars.VITE_SUPABASE_URL }}/rest/v1/rpc/ping" \
-            -H "apikey: ${{ vars.VITE_SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ vars.VITE_SUPABASE_ANON_KEY }}" \
+            -H "apikey: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}" \
+            -H "Authorization: Bearer ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}" \
             -H "Content-Type: application/json" \
             -d '{}'
 ```
@@ -2849,7 +2861,7 @@ git commit -m "ci: 테스트·배포·keep-alive 워크플로와 ping 함수"
 ```bash
 npm install
 npm run db:start           # 로컬 Supabase (처음 1~3분)
-npx supabase status -o env # API_URL, ANON_KEY 확인 → .env.local 에 기입 (.env.example 참고)
+npx supabase status -o env # API_URL, PUBLISHABLE_KEY 확인 → .env.local 에 기입 (.env.example 참고)
 npm run dev                # http://localhost:5173
 ```
 
@@ -2877,7 +2889,7 @@ npm run dev                # http://localhost:5173
    - Anonymous sign-ins: **켜기** (3단계 아이 계정용. 미리 켜 두어도 무방).
    - Kakao: **켜기**. 아래 카카오 콘솔에서 받은 REST API 키를 Client ID에, Client Secret 코드를 Secret에 입력. **"Allow users without an email"을 켠다.**
    - Kakao 설정 화면에 표시되는 Callback URL(`https://<ref>.supabase.co/auth/v1/callback`)을 복사해 둔다.
-4. **Project Settings › API**: Project URL과 anon(public) key를 복사해 둔다.
+4. **Project Settings › API Keys**: Project URL과 **Publishable key**(`sb_publishable_…`)를 복사해 둔다. 레거시 anon JWT는 쓰지 않는다.
 5. **Project Settings › General**: Reference ID(`<ref>`)를 복사해 둔다.
 6. **Account › Access Tokens**에서 CI용 토큰을 하나 만든다.
 
@@ -2895,7 +2907,7 @@ npm run dev                # http://localhost:5173
 
 1. 공개 저장소로 push. **Settings › Pages › Build and deployment › Source: GitHub Actions**.
 2. **Settings › Secrets and variables › Actions**
-   - Variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+   - Variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`
    - Secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_REF`
 3. **Settings › Environments**: `production` 생성(선택: 승인자 지정).
 4. main에 push하면 `Deploy` 워크플로가 테스트 → 마이그레이션 → 배포를 수행한다.
@@ -2914,6 +2926,12 @@ update public.people set role = 'admin' where phone = '01012345678' and deleted_
 - 일시정지되면 Supabase 대시보드에서 "Restore"를 누른다(1~2분).
 - 백업(주 1회 pg_dump → 비공개 저장소)은 5단계 계획에서 추가한다.
 - `src/config/church.ts`의 교회명·담당자 연락처를 실제 값으로 바꾼 뒤 배포한다.
+
+### 6. 절대 운영에 실행하면 안 되는 명령
+
+- `supabase db reset --linked` — 운영 DB를 비우고 테스트용 시드(가짜 사용자 생성 헬퍼)를 넣는다.
+- `supabase db push --include-seed` — 시드를 운영에 적용한다. CI는 `--include-seed` 없이 `db push`만 쓴다.
+- `supabase config push` — 로컬 `config.toml`(localhost 주소, 카카오 없음)로 운영 Auth 설정을 덮어쓴다.
 ````
 
 - [ ] **Step 2: 커밋**
