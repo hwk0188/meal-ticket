@@ -1404,13 +1404,13 @@ git commit -m "feat(db): claim_person RPC (어른 가입·선발급 연결·동�
 - Create: `src/lib/env.ts`, `src/lib/supabase.ts`, `src/lib/phone.ts`, `src/lib/errors.ts`
 - Test: `src/lib/env.test.ts`, `src/lib/phone.test.ts`, `src/lib/errors.test.ts`
 
-- [ ] **Step 1: 런타임 의존성 설치**
+- [x] **Step 1: 런타임 의존성 설치**
 
 ```bash
 npm install @supabase/supabase-js @tanstack/react-query react-router zod
 ```
 
-- [ ] **Step 2: 실패하는 테스트 — `src/lib/env.test.ts`**
+- [x] **Step 2: 실패하는 테스트 — `src/lib/env.test.ts`**
 
 ```ts
 import { parseEnv } from './env'
@@ -1431,8 +1431,8 @@ describe('parseEnv', () => {
   })
 
   it('개발 로그인 플래그가 없으면 false', () => {
-    const { VITE_ENABLE_DEV_LOGIN: _omit, ...rest } = valid
-    expect(parseEnv(rest).enableDevLogin).toBe(false)
+    const { VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY } = valid
+    expect(parseEnv({ VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY }).enableDevLogin).toBe(false)
   })
 
   it('필수 값이 빠지면 어떤 키인지 알려주며 실패한다', () => {
@@ -1441,7 +1441,7 @@ describe('parseEnv', () => {
 })
 ```
 
-- [ ] **Step 3: 실패하는 테스트 — `src/lib/phone.test.ts`**
+- [x] **Step 3: 실패하는 테스트 — `src/lib/phone.test.ts`**
 
 ```ts
 import { normalizePhone, isValidMobile, formatPhone, maskPhone } from './phone'
@@ -1479,7 +1479,7 @@ describe('phone', () => {
 })
 ```
 
-- [ ] **Step 4: 실패하는 테스트 — `src/lib/errors.test.ts`**
+- [x] **Step 4: 실패하는 테스트 — `src/lib/errors.test.ts`**
 
 ```ts
 import { toUserMessage } from './errors'
@@ -1505,20 +1505,21 @@ describe('toUserMessage', () => {
 })
 ```
 
-- [ ] **Step 5: 실패 확인**
+- [x] **Step 5: 실패 확인**
 
 ```bash
 npm test
 ```
 Expected: 세 파일 모두 FAIL — `Failed to resolve import "./env"` 등.
 
-- [ ] **Step 6: 구현 — `src/lib/env.ts`**
+- [x] **Step 6: 구현 — `src/lib/env.ts`**
 
 ```ts
 import { z } from 'zod'
 
+// zod v4 기준. z.string().url() 은 v4 에서 deprecated 라 z.url() 을 쓴다.
 const schema = z.object({
-  VITE_SUPABASE_URL: z.string().url(),
+  VITE_SUPABASE_URL: z.url(),
   VITE_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
   VITE_ENABLE_DEV_LOGIN: z.enum(['true', 'false']).default('false'),
 })
@@ -1529,6 +1530,7 @@ export type Env = {
   enableDevLogin: boolean
 }
 
+/** 환경변수를 검증해 앱에서 쓰기 좋은 모양으로 바꾼다. 빠진 키는 메시지에 그대로 적어 준다. */
 export function parseEnv(raw: Record<string, unknown>): Env {
   const result = schema.safeParse(raw)
   if (!result.success) {
@@ -1542,10 +1544,11 @@ export function parseEnv(raw: Record<string, unknown>): Env {
   }
 }
 
+// 모듈을 처음 읽을 때 검증한다 (빠른 실패). 테스트에서는 vite.config.ts 의 test.env 가 값을 준다.
 export const env: Env = parseEnv(import.meta.env as Record<string, unknown>)
 ```
 
-- [ ] **Step 7: 구현 — `src/lib/supabase.ts`**
+- [x] **Step 7: 구현 — `src/lib/supabase.ts`**
 
 ```ts
 import { createClient } from '@supabase/supabase-js'
@@ -1562,7 +1565,7 @@ export const supabase = createClient<Database>(env.supabaseUrl, env.supabasePubl
 })
 ```
 
-- [ ] **Step 8: 구현 — `src/lib/phone.ts`**
+- [x] **Step 8: 구현 — `src/lib/phone.ts`**
 
 ```ts
 const MOBILE = /^01[0-9]{8,9}$/
@@ -1574,6 +1577,7 @@ export function normalizePhone(input: string): string {
   return intl ? `0${intl[1]}` : digits
 }
 
+/** DB 의 is_valid_mobile() 과 같은 규칙. 정규화된 숫자열을 넣는다. */
 export function isValidMobile(digits: string): boolean {
   return MOBILE.test(digits)
 }
@@ -1596,7 +1600,7 @@ export function maskPhone(digits: string | null | undefined): string {
 }
 ```
 
-- [ ] **Step 9: 구현 — `src/lib/errors.ts`**
+- [x] **Step 9: 구현 — `src/lib/errors.ts`**
 
 ```ts
 const MESSAGES: Record<string, string> = {
@@ -1611,6 +1615,7 @@ const MESSAGES: Record<string, string> = {
 
 // PostgREST 권한 오류(세션 만료·비로그인). code 가 42501 로 오고 message 는 영문 권한 문구다.
 const PERMISSION_DENIED = /permission denied/i
+const NETWORK_FAILURE = /failed to fetch|networkerror|load failed/i
 
 const FALLBACK = '잠시 후 다시 시도해 주세요.'
 const NETWORK = '통신이 불안정해요. 잠시 후 다시 시도해 주세요.'
@@ -1622,24 +1627,26 @@ export function messageOf(err: unknown): string | undefined {
   return typeof m === 'string' ? m : undefined
 }
 
+/** 어떤 오류든 사용자에게 보여 줄 한국어 문구로 바꾼다. 모르는 오류는 일반 문구. */
 export function toUserMessage(err: unknown): string {
   const message = messageOf(err)
   if (!message) return FALLBACK
-  if (message in MESSAGES) return MESSAGES[message]
+  // 평범한 객체의 프로토타입 키(toString 등)에 걸리지 않도록 hasOwn 으로 본다.
+  if (Object.hasOwn(MESSAGES, message)) return MESSAGES[message]
   if (PERMISSION_DENIED.test(message)) return MESSAGES.not_authenticated
-  if (/failed to fetch|networkerror|load failed/i.test(message)) return NETWORK
+  if (NETWORK_FAILURE.test(message)) return NETWORK
   return FALLBACK
 }
 ```
 
-- [ ] **Step 10: 통과 확인**
+- [x] **Step 10: 통과 확인**
 
 ```bash
 npm test
 ```
 Expected: env 3 · phone 5 · errors 4 · App 1 → `13 passed`.
 
-- [ ] **Step 11: 커밋**
+- [x] **Step 11: 커밋**
 
 ```bash
 git add -A
