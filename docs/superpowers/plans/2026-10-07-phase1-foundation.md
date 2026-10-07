@@ -3845,7 +3845,7 @@ git commit -m "test: Playwright 스모크 E2E (개발 로그인 → 가입 → �
 - Create: `supabase/migrations/20261007000004_ping.sql`
 - Test: `supabase/tests/database/050_ping.sql`
 
-- [ ] **Step 1: 실패하는 테스트 — `supabase/tests/database/050_ping.sql`**
+- [x] **Step 1: 실패하는 테스트 — `supabase/tests/database/050_ping.sql`**
 
 ```sql
 begin;
@@ -3865,23 +3865,29 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 ```bash
 npm run db:test
 ```
 Expected: `050_ping.sql` FAIL — `function public.ping() does not exist`.
 
-- [ ] **Step 3: 마이그레이션 — `supabase/migrations/20261007000004_ping.sql`**
+- [x] **Step 3: 마이그레이션 — `supabase/migrations/20261007000004_ping.sql`**
 
 ```sql
--- keep-alive 용. 무료 플랜의 7일 미사용 일시정지를 막기 위해 GitHub Actions가 3일마다 호출한다.
+-- keep-alive 용. 무료 플랜의 7일 미사용 일시정지를 막기 위해 GitHub Actions가 2일마다 호출한다 (.github/workflows/keep-alive.yml).
+-- 데이터에 접근하지 않는 상수 함수라 anon 노출이 안전하다 (public 함수 중 유일한 anon 예외).
+-- 참조하는 객체가 없으므로 search_path 는 빈 값으로 못박는다 (search_path 가변 경고도 함께 사라진다).
 create or replace function public.ping()
 returns integer
 language sql
 stable
+set search_path = ''
 as $$ select 1 $$;
 
+comment on function public.ping() is 'keep-alive 핑. 상수 1 만 돌려주며 데이터에 접근하지 않는다.';
+
+-- auto_expose_new_tables=true 가 붙여 주는 anon=X 에 의존하지 않고, 권한을 여기서 명시적으로 고정한다.
 revoke execute on function public.ping() from public;
 grant execute on function public.ping() to anon, authenticated;
 ```
@@ -3893,7 +3899,7 @@ npm run db:reset && npm run db:test
 ```
 Expected: 5개 파일 모두 `ok` (78 + 2 = 80 단언).
 
-- [ ] **Step 4: `.github/workflows/ci.yml`**
+- [x] **Step 4: `.github/workflows/ci.yml`**
 
 PR과 `workflow_call`(배포 워크플로가 호출)에서 돈다.
 
@@ -3903,6 +3909,15 @@ name: CI
 on:
   pull_request:
   workflow_call:
+
+# deploy.yml 이 이 워크플로를 호출할 때 그쪽의 pages·id-token write 를 물려받지 않도록 여기서 최소 권한으로 못박는다.
+permissions:
+  contents: read
+
+# PR 에 연달아 push 하면 앞선 실행을 취소한다. main push(deploy.yml 호출)는 취소하지 않는다.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -3924,10 +3939,14 @@ jobs:
 
       - name: 로컬 환경변수 작성
         run: |
-          eval "$(npx supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)=')"
+          set -euo pipefail
+          status="$(npx supabase status -o env)"
+          api_url="$(printf '%s\n' "$status" | sed -n 's/^API_URL="\(.*\)"$/\1/p')"
+          key="$(printf '%s\n' "$status" | sed -n 's/^PUBLISHABLE_KEY="\(.*\)"$/\1/p')"
+          [ -n "$api_url" ] && [ -n "$key" ] || { echo "supabase status 에서 API_URL/PUBLISHABLE_KEY 를 읽지 못했습니다"; exit 1; }
           {
-            echo "VITE_SUPABASE_URL=$API_URL"
-            echo "VITE_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
+            echo "VITE_SUPABASE_URL=$api_url"
+            echo "VITE_SUPABASE_PUBLISHABLE_KEY=$key"
             echo "VITE_ENABLE_DEV_LOGIN=true"
             echo "VITE_BASE_PATH=/"
           } > .env.local
@@ -3944,11 +3963,16 @@ jobs:
       - name: 빌드 (타입 검사 포함)
         run: npm run build
 
+      # 운영은 /<repo>/ 하위에 배포된다. 기본 '/' 빌드만 검사하면 하위 경로에서 자산 404 가 나는 회귀를 놓친다.
+      # dist 를 덮어쓰지만 E2E 는 개발 서버로 돌기 때문에 영향이 없다.
+      - name: 하위 경로 빌드 확인 (GitHub Pages 프로젝트 사이트)
+        run: VITE_BASE_PATH=/meal-ticket/ npm run build && grep -q '/meal-ticket/assets/' dist/index.html
+
       - name: Playwright 브라우저 설치
         run: npx playwright install chromium --with-deps
 
       # E2E 는 반드시 개발 서버(npm run dev, playwright webServer)로 돈다. 개발 로그인 폼은 import.meta.env.DEV 뒤에 있어
-      # vite preview / 운영 번들에는 없다. 운영 산출물은 바로 위의 npm run build 가 검사한다.
+      # vite preview / 운영 번들에는 없다. 운영 산출물은 위의 두 빌드 단계가 검사한다.
       - name: E2E
         run: npm run e2e
 
@@ -3967,7 +3991,7 @@ jobs:
         run: npx supabase stop --no-backup
 ```
 
-- [ ] **Step 5: `.github/workflows/deploy.yml`**
+- [x] **Step 5: `.github/workflows/deploy.yml`**
 
 main에 push되면 테스트 → DB 마이그레이션 → Pages 배포 순서로 돈다.
 
@@ -3985,8 +4009,6 @@ concurrency:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   test:
@@ -3994,12 +4016,17 @@ jobs:
 
   migrate:
     name: 운영 DB 마이그레이션
+    # workflow_dispatch 는 아무 브랜치에서나 돌 수 있다. 운영 DB·사이트를 건드리는 두 작업은 main 에서만 실행한다.
+    if: github.ref == 'refs/heads/main'
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: production
     env:
+      # 비밀번호는 SUPABASE_DB_PASSWORD 환경변수로 넘긴다 (argv 에 남지 않는다). 값은 Postgres DB 비밀번호여야 하며, 액세스 토큰이 아니다.
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -4007,15 +4034,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: 프로젝트 연결
-        run: npx supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" -p "$SUPABASE_DB_PASSWORD"
+      # --project-ref 로 대상을 직접 지정하므로 별도의 link 단계가 필요 없다.
+      # --yes 는 TTY 가 없는 러너에서 확인 프롬프트에 걸려 멈추지 않게 한다. --include-seed 는 절대 쓰지 않는다 (테스트 시드가 운영에 들어간다).
       - name: 마이그레이션 적용
-        run: npx supabase db push -p "$SUPABASE_DB_PASSWORD"
+        run: npx supabase db push --project-ref "$SUPABASE_PROJECT_REF" --yes
 
   deploy:
     name: GitHub Pages 배포
+    if: github.ref == 'refs/heads/main'
     needs: migrate
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # 작업 단위 permissions 는 워크플로 단위 설정을 대체한다. checkout 에 필요한 contents: read 도 함께 적어야 한다.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -4027,17 +4061,34 @@ jobs:
           cache: npm
       - run: npm ci
       - name: 배포 환경변수 확인 (빈 값이면 조용히 깨진 사이트가 배포되므로 여기서 실패시킨다)
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: |
-          test -n "${{ vars.VITE_SUPABASE_URL }}" || { echo "VITE_SUPABASE_URL 변수가 비어 있습니다"; exit 1; }
-          test -n "${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}" || { echo "VITE_SUPABASE_PUBLISHABLE_KEY 변수가 비어 있습니다"; exit 1; }
+          test -n "$VITE_SUPABASE_URL" || { echo "VITE_SUPABASE_URL 변수가 비어 있습니다"; exit 1; }
+          test -n "$VITE_SUPABASE_PUBLISHABLE_KEY" || { echo "VITE_SUPABASE_PUBLISHABLE_KEY 변수가 비어 있습니다"; exit 1; }
+      # 빌드보다 먼저 돌려 base_path 를 받는다. 프로젝트 사이트는 '/<repo>', 루트 사이트는 '/' 가 나오며
+      # 저장소 이름을 워크플로에 박아 두지 않아도 된다 (vite 가 뒤쪽 슬래시를 알아서 맞춘다).
+      - id: pages
+        uses: actions/configure-pages@v5
       - name: 빌드
         run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_ENABLE_DEV_LOGIN: 'false'
-          VITE_BASE_PATH: /${{ github.event.repository.name }}/
-      - uses: actions/configure-pages@v5
+          VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+      # 출력 이름이 바뀌면 vite 가 조용히 base '/' 로 돌아가고, 프로젝트 사이트에서는 자산이 전부 404 난다.
+      - name: 빌드에 base_path 가 반영됐는지 확인
+        env:
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: |
+          set -euo pipefail
+          # configure-pages 는 루트 사이트에서 base_path 를 빈 문자열로 내보낸다. "출력 자체가 없음"은 base_url 로 판별한다.
+          [ -n "${BASE_URL:-}" ] || { echo "configure-pages 가 base_url 을 내보내지 않았습니다 (출력 이름 변경?)"; exit 1; }
+          base="${BASE_PATH%/}"
+          grep -q "\"$base/assets/" dist/index.html || { echo "base_path('$BASE_PATH') 가 빌드에 반영되지 않았습니다"; exit 1; }
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
@@ -4045,7 +4096,7 @@ jobs:
         uses: actions/deploy-pages@v4
 ```
 
-- [ ] **Step 6: `.github/workflows/keep-alive.yml`**
+- [x] **Step 6: `.github/workflows/keep-alive.yml`**
 
 설계 문서는 keep-alive를 5단계에 두었지만, 운영 DB가 생기는 순간부터 일시정지 위험이 있으므로 여기서 함께 넣는다.
 
@@ -4054,25 +4105,37 @@ name: Keep alive
 
 on:
   schedule:
-    - cron: '17 3 */3 * *'   # 3일마다 03:17 UTC
+    # 2일마다 03:17 UTC. */3 은 매월 1일에 간격이 초기화되어 29→1 일처럼 최대 4일이 벌어지고,
+    # 거기서 실행 한 번이 밀리면 무료 플랜의 7일 미사용 일시정지 선에 닿는다. */2 는 최대 간격이 2일이다.
+    - cron: '17 3 */2 * *'
   workflow_dispatch:
+
+permissions: {}
 
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
+      # ping() 은 상수 1 만 돌려주는 anon 전용 함수다 (20261007000004_ping.sql).
+      # 두 실패 모두 단계를 빨갛게 만든다 (조용히 건너뛰지 않는다).
+      #   URL 변수가 비어 있으면 curl 의 URL 파싱에서 걸린다 ("URL rejected: No host part in the URL", exit 3).
+      #   키가 틀리면 -f 가 401 을 오류로 바꾼다 (exit 22).
       - name: Supabase ping
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: |
-          curl -fsS -X POST "${{ vars.VITE_SUPABASE_URL }}/rest/v1/rpc/ping" \
-            -H "apikey: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}" \
-            -H "Authorization: Bearer ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}" \
+          curl -fsS -X POST "$VITE_SUPABASE_URL/rest/v1/rpc/ping" \
+            -H "apikey: $VITE_SUPABASE_PUBLISHABLE_KEY" \
+            -H "Authorization: Bearer $VITE_SUPABASE_PUBLISHABLE_KEY" \
             -H "Content-Type: application/json" \
             -d '{}'
 ```
 
 GitHub는 저장소에 60일간 커밋이 없으면 schedule 워크플로를 자동으로 끈다. README의 운영 체크리스트에 적는다.
 
-- [ ] **Step 7: 워크플로 문법 확인**
+- [x] **Step 7: 워크플로 문법 확인**
 
 ```bash
 # 파일당 한 번씩 실행한다 (여러 파일을 한 번에 넘기면 usage 만 찍고 exit 1 이라 오류가 가려진다)
@@ -4080,7 +4143,7 @@ for f in ci deploy keep-alive; do npx --yes @action-validator/cli ".github/workf
 ```
 Expected: 출력 없이 모두 통과. 검증기가 실제로 동작하는지 `steps:`를 `stepz:`로 바꿔 한 번 실패를 확인해 본다.
 
-- [ ] **Step 8: 커밋**
+- [x] **Step 8: 커밋**
 
 ```bash
 git add -A
