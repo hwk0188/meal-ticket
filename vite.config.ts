@@ -37,6 +37,8 @@ export default defineConfig(({ mode }) => {
           'src/test/**',
           'src/main.tsx',
           'src/lib/database.types.ts',
+          // 설정만 담은 배선 파일(테스트 대상 로직이 없다).
+          'src/lib/supabase.ts',
         ],
         thresholds: { lines: 80, functions: 80, branches: 70, statements: 80 },
       },

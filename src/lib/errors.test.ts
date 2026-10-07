@@ -1,4 +1,4 @@
-import { toUserMessage } from './errors'
+import { messageOf, toUserMessage } from './errors'
 
 describe('toUserMessage', () => {
   it('DB 오류 코드를 사용자 문구로 바꾼다', () => {
@@ -17,5 +17,21 @@ describe('toUserMessage', () => {
 
   it('권한 거부(세션 만료·비로그인)는 로그인 안내', () => {
     expect(toUserMessage({ code: '42501', message: 'permission denied for function claim_person' })).toBe('로그인이 필요해요.')
+    // 코드가 없어도 영문 문구로 알아본다 (코드 매핑의 예비 수단).
+    expect(toUserMessage({ message: 'permission denied for table people' })).toBe('로그인이 필요해요.')
+  })
+
+  it('인증 오류는 영문 문구가 달라도 코드로 알아본다', () => {
+    expect(toUserMessage({ code: 'PGRST301', message: 'JWT expired' })).toBe('로그인이 필요해요.')
+    expect(
+      toUserMessage({ code: '42501', message: 'new row violates row-level security policy for table "people"' }),
+    ).toBe('로그인이 필요해요.')
+  })
+})
+
+describe('messageOf', () => {
+  it('객체의 message 문자열만 꺼낸다', () => {
+    expect(messageOf({ message: 'already_registered' })).toBe('already_registered')
+    expect(messageOf('str')).toBeUndefined()
   })
 })

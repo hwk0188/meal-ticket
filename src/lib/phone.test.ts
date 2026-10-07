@@ -30,4 +30,9 @@ describe('phone', () => {
     expect(maskPhone('0101234567')).toBe('010-***-4567')
     expect(maskPhone(null)).toBe('')
   })
+
+  it('입력 중(형식 미완성)인 번호는 그대로 두고, 마스킹은 형식을 드러내지 않는다', () => {
+    expect(formatPhone('010')).toBe('010')
+    expect(maskPhone('010')).toBe('***')
+  })
 })

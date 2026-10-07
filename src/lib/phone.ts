@@ -12,19 +12,16 @@ export function isValidMobile(digits: string): boolean {
   return MOBILE.test(digits)
 }
 
-/** 01012345678 → 010-1234-5678, 0101234567 → 010-123-4567 */
+/** 완성된 휴대폰 번호만 하이픈을 넣는다. 입력 중(형식 미완성)이면 그대로 돌려준다. */
 export function formatPhone(digits: string): string {
-  if (!digits) return ''
-  const head = digits.slice(0, 3)
-  const tail = digits.slice(-4)
-  const mid = digits.slice(3, -4)
-  return [head, mid, tail].filter(Boolean).join('-')
+  if (!isValidMobile(digits)) return digits
+  return `${digits.slice(0, 3)}-${digits.slice(3, -4)}-${digits.slice(-4)}`
 }
 
-/** 010-****-5678 */
+/** 010-****-5678. 모르는 형식은 드러내지 않는다. */
 export function maskPhone(digits: string | null | undefined): string {
   if (!digits) return ''
-  const formatted = formatPhone(digits)
-  const [head, mid, tail] = formatted.split('-')
-  return [head, '*'.repeat(mid.length), tail].join('-')
+  if (!isValidMobile(digits)) return '***'
+  const mid = digits.slice(3, -4)
+  return `${digits.slice(0, 3)}-${'*'.repeat(mid.length)}-${digits.slice(-4)}`
 }
