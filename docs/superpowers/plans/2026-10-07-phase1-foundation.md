@@ -2842,11 +2842,13 @@ git commit -m "feat: 카카오·개발용 로그인과 시작 화면, 교회 설
 - Modify: `src/features/onboarding/OnboardingPage.tsx`
 - Test: `src/features/onboarding/onboardingSchema.test.ts`, `src/features/onboarding/OnboardingPage.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트 — `src/features/onboarding/onboardingSchema.test.ts`**
+- [x] **Step 1: 실패하는 테스트 — `src/features/onboarding/onboardingSchema.test.ts`**
 
 ```ts
-import { validateOnboarding } from './onboardingSchema'
+import { validateOnboarding, type OnboardingInput } from './onboardingSchema'
 
+// 결과 전체를 한 번에 비교한다. `if (!r.ok) expect(...)` 는 좁히기엔 편하지만
+// 조건부 expect 라서 (vitest/no-conditional-expect) 검사가 아예 안 돌아도 테스트가 통과한다.
 describe('validateOnboarding', () => {
   it('정상 입력은 번호를 정규화해 돌려준다', () => {
     const r = validateOnboarding({ name: ' 김철수 ', phone: '010-1234-5678', consent: true })
@@ -2855,55 +2857,97 @@ describe('validateOnboarding', () => {
 
   it('이름이 비면 이름 오류', () => {
     const r = validateOnboarding({ name: '  ', phone: '01012345678', consent: true })
-    expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.errors.name).toBe('이름을 입력해 주세요')
+    expect(r).toEqual({ ok: false, errors: { name: '이름을 입력해 주세요' } })
   })
 
   it('이름이 20자를 넘으면 오류', () => {
     const r = validateOnboarding({ name: '가'.repeat(21), phone: '01012345678', consent: true })
-    expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.errors.name).toBe('이름은 20자 이내로 입력해 주세요')
+    expect(r).toEqual({ ok: false, errors: { name: '이름은 20자 이내로 입력해 주세요' } })
   })
 
   it('휴대폰 형식이 아니면 번호 오류', () => {
     const r = validateOnboarding({ name: '김철수', phone: '02-123-4567', consent: true })
-    expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.errors.phone).toBe('휴대폰 번호를 확인해 주세요')
+    expect(r).toEqual({ ok: false, errors: { phone: '휴대폰 번호를 확인해 주세요' } })
+  })
+
+  it('+82 국제 표기도 010 으로 정규화한다', () => {
+    const r = validateOnboarding({ name: '김철수', phone: '+82 10-1234-5678', consent: true })
+    expect(r).toEqual({ ok: true, values: { name: '김철수', phone: '01012345678', consent: true } })
   })
 
   it('동의하지 않으면 동의 오류', () => {
     const r = validateOnboarding({ name: '김철수', phone: '01012345678', consent: false })
-    expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.errors.consent).toBe('개인정보 동의가 필요해요')
+    expect(r).toEqual({ ok: false, errors: { consent: '개인정보 동의가 필요해요' } })
+  })
+
+  it('조합형(NFD) 한글 이름도 완성형으로 세어 20자까지 받는다', () => {
+    // NFD 는 '김' 한 자가 3자로 세어진다. 정규화하지 않으면 7자 이름이 21자로 걸린다.
+    const nfd = '김김김김김김김'.normalize('NFD')
+    expect(nfd.length).toBe(21)
+    const r = validateOnboarding({ name: nfd, phone: '01012345678', consent: true })
+    expect(r).toEqual({ ok: true, values: { name: '김김김김김김김', phone: '01012345678', consent: true } })
+  })
+
+  it('필드를 가리키지 않는 오류는 일반 문구로 바꾼다', () => {
+    // 타입이 막아 주지만 경계에서 한 번 더 본다. 객체가 아니면 zod 는 경로 없는 오류를 돌려준다.
+    const r = validateOnboarding(null as unknown as OnboardingInput)
+    expect(r).toEqual({ ok: false, errors: { name: '입력 내용을 확인해 주세요' } })
+  })
+
+  it('여러 오류가 있으면 필드별로 첫 메시지만 담는다', () => {
+    const r = validateOnboarding({ name: '', phone: 'abc', consent: false })
+    expect(r).toEqual({
+      ok: false,
+      errors: {
+        name: '이름을 입력해 주세요',
+        phone: '휴대폰 번호를 확인해 주세요',
+        consent: '개인정보 동의가 필요해요',
+      },
+    })
   })
 })
 ```
 
-- [ ] **Step 2: 실패하는 테스트 — `src/features/onboarding/OnboardingPage.test.tsx`**
+- [x] **Step 2: 실패하는 테스트 — `src/features/onboarding/OnboardingPage.test.tsx`**
 
 ```tsx
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
+import { church } from '../../config/church'
+import { personQueryKey } from '../auth/usePerson'
 import { OnboardingPage } from './OnboardingPage'
 
-const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }))
+type RpcResult = { data: unknown; error: { code: string; message: string } | null }
+
+const { rpc } = vi.hoisted(() => ({
+  rpc: vi.fn<(fn: string, args: Record<string, string>) => Promise<RpcResult>>(),
+}))
 vi.mock('../../lib/supabase', () => ({ supabase: { rpc } }))
+// 가입 화면은 로그인된 사람만 들어온다 (RequireSession). 돌려받은 사람 행을 그 사용자 키에 넣는다.
+vi.mock('../auth/AuthProvider', () => ({
+  useAuth: () => ({ status: 'ready', session: { user: { id: 'u1' } } }),
+}))
 
 function renderPage() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/onboarding']}>
-        <Routes>
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          <Route path="/" element={<p>home</p>} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  )
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: 0 } } })
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/onboarding']}>
+          <Routes>
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/" element={<p>home</p>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  }
 }
+
+const submitButton = () => screen.getByRole('button', { name: '동의하고 시작하기' })
 
 async function fillValid() {
   await userEvent.type(screen.getByLabelText('이름'), '김철수')
@@ -2911,61 +2955,126 @@ async function fillValid() {
   await userEvent.click(screen.getByLabelText(/개인정보 수집·이용 동의/))
 }
 
-describe('OnboardingPage', () => {
-  beforeEach(() => vi.clearAllMocks())
+async function submitBadPhone() {
+  await userEvent.type(screen.getByLabelText('이름'), '김철수')
+  await userEvent.type(screen.getByLabelText('휴대폰 번호'), '02-123-4567')
+  await userEvent.click(screen.getByLabelText(/개인정보 수집·이용 동의/))
+  await userEvent.click(submitButton())
+}
 
+describe('OnboardingPage', () => {
   it('고지 4요소와 처리방침 링크를 보여주고, 동의 전에는 버튼이 비활성이다', () => {
     renderPage()
     expect(screen.getByText(/이름, 휴대폰 번호/)).toBeInTheDocument()
     expect(screen.getByText(/식권 발급·사용 확인/)).toBeInTheDocument()
     expect(screen.getByText(/탈퇴 시까지/)).toBeInTheDocument()
     expect(screen.getByText(/동의하지 않으면/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '자세히' })).toHaveAttribute('href', '/privacy')
-    expect(screen.getByRole('button', { name: '동의하고 시작하기' })).toBeDisabled()
+    const link = screen.getByRole('link', { name: '자세히' })
+    expect(link).toHaveAttribute('href', expect.stringContaining('privacy'))
+    // 같은 탭에서 열면 적어 둔 이름·번호가 사라진다.
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(submitButton()).toBeDisabled()
+    expect(screen.getByText('동의에 체크하면 시작할 수 있어요')).toBeInTheDocument()
   })
 
   it('번호가 틀리면 오류를 보여주고 서버를 호출하지 않는다', async () => {
     renderPage()
-    await userEvent.type(screen.getByLabelText('이름'), '김철수')
-    await userEvent.type(screen.getByLabelText('휴대폰 번호'), '02-123-4567')
-    await userEvent.click(screen.getByLabelText(/개인정보 수집·이용 동의/))
-    await userEvent.click(screen.getByRole('button', { name: '동의하고 시작하기' }))
+    await submitBadPhone()
     expect(await screen.findByRole('alert')).toHaveTextContent('휴대폰 번호를 확인해 주세요')
+    expect(screen.getByLabelText('휴대폰 번호')).toHaveAttribute('aria-invalid', 'true')
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('성공하면 claim_person을 정규화된 값으로 호출하고 홈으로 간다', async () => {
-    rpc.mockResolvedValue({ data: { id: 'p1' }, error: null })
+  it('잘못된 입력을 제출하면 첫 오류 필드로 포커스를 옮긴다', async () => {
     renderPage()
+    await submitBadPhone()
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    // 이름은 정상이므로 건너뛰고 번호로 간다.
+    expect(document.activeElement).toBe(screen.getByLabelText('휴대폰 번호'))
+  })
+
+  it('이름과 번호가 모두 비면 둘 다 알리고 이름으로 포커스를 옮긴다', async () => {
+    renderPage()
+    await userEvent.click(screen.getByLabelText(/개인정보 수집·이용 동의/))
+    await userEvent.click(submitButton())
+    expect(await screen.findAllByRole('alert')).toHaveLength(2)
+    expect(document.activeElement).toBe(screen.getByLabelText('이름'))
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('입력을 고치기 시작하면 그 필드의 오류 표시가 사라진다', async () => {
+    renderPage()
+    await submitBadPhone()
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('휴대폰 번호'), '8')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('휴대폰 번호')).not.toHaveAttribute('aria-invalid')
+  })
+
+  it('성공하면 claim_person을 정규화된 값으로 호출하고, 돌려받은 행을 캐시에 넣고 홈으로 간다', async () => {
+    const person = { id: 'p1', name: '김철수', phone: '01012345678' }
+    rpc.mockResolvedValue({ data: person, error: null })
+    const { client } = renderPage()
     await fillValid()
-    await userEvent.click(screen.getByRole('button', { name: '동의하고 시작하기' }))
+    await userEvent.click(submitButton())
     expect(rpc).toHaveBeenCalledWith('claim_person', {
       p_name: '김철수',
       p_phone: '01012345678',
-      p_consent_version: '2026-10-07',
+      p_consent_version: church.consentVersion,
     })
     expect(await screen.findByText('home')).toBeInTheDocument()
+    // 홈이 같은 행을 다시 조회하지 않게 한다.
+    expect(client.getQueryData(personQueryKey('u1'))).toEqual(person)
   })
 
-  it('서버 오류 코드를 사용자 문구로 보여준다', async () => {
-    rpc.mockResolvedValue({ data: null, error: { message: 'phone_taken' } })
+  it('서버 오류 코드를 사용자 문구로 보여주고 버튼을 다시 연다', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'phone_taken' } })
     renderPage()
     await fillValid()
-    await userEvent.click(screen.getByRole('button', { name: '동의하고 시작하기' }))
+    await userEvent.click(submitButton())
     expect(await screen.findByRole('alert')).toHaveTextContent('이미 등록된 번호예요. 권사님께 문의해 주세요.')
+    expect(submitButton()).not.toBeDisabled()
+    // 적어 둔 값은 그대로 남아 있어야 고쳐서 다시 낼 수 있다.
+    expect(screen.getByLabelText('이름')).toHaveValue('김철수')
+  })
+
+  it('서버 안내도 번호를 고치기 시작하면 사라진다', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'phone_taken' } })
+    renderPage()
+    await fillValid()
+    await userEvent.click(submitButton())
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('휴대폰 번호'), '9')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('already_registered 는 실패가 아니라 이미 성공한 것이므로 홈으로 간다', async () => {
-    rpc.mockResolvedValue({ data: null, error: { message: 'already_registered' } })
+    rpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'already_registered' } })
     renderPage()
     await fillValid()
-    await userEvent.click(screen.getByRole('button', { name: '동의하고 시작하기' }))
+    await userEvent.click(submitButton())
+    expect(await screen.findByText('home')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('처리 중에는 버튼이 비활성이고 문구가 바뀐다', async () => {
+    let settle: (v: { data: unknown; error: null }) => void = () => {}
+    rpc.mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve
+      }),
+    )
+    renderPage()
+    await fillValid()
+    await userEvent.click(submitButton())
+    expect(screen.getByRole('button', { name: '처리 중…' })).toBeDisabled()
+    settle({ data: { id: 'p1' }, error: null })
     expect(await screen.findByText('home')).toBeInTheDocument()
   })
 })
 ```
 
-- [ ] **Step 3: 실패 확인**
+- [x] **Step 3: 실패 확인**
 
 ```bash
 npm test
@@ -2974,15 +3083,23 @@ Expected: 두 파일 FAIL.
 
 `QueryClientProvider` + `MemoryRouter` 조합이 이 Task부터 여러 테스트에 반복되면, `src/test/renderWithProviders.tsx`(테스트마다 새 `QueryClient({ defaultOptions: { queries: { retry: false } } })` + `MemoryRouter`)로 뽑아 공용으로 쓴다. 테스트 코드 중복이 두 파일을 넘기 전에는 만들지 않는다.
 
-- [ ] **Step 4: 구현 — `src/features/onboarding/onboardingSchema.ts`**
+- [x] **Step 4: 구현 — `src/features/onboarding/onboardingSchema.ts`**
 
 ```ts
 import { z } from 'zod'
 import { isValidMobile, normalizePhone } from '../../lib/phone'
 
+// 가입 화면의 입력 규칙. 문구는 사용자에게 그대로 보이므로 DB 오류 코드와 따로 둔다.
 export const onboardingSchema = z.object({
-  name: z.string().trim().min(1, '이름을 입력해 주세요').max(20, '이름은 20자 이내로 입력해 주세요'),
+  // 한글은 조합형(NFD)으로도 들어온다 (iOS 자판·붙여넣기). 그때는 '김' 한 자가 3자로 세어져
+  // 20자 제한에 억울하게 걸린다. 완성형(NFC)으로 맞춘 뒤 길이를 센다. DB 에 가는 값도 NFC 가 된다.
+  name: z
+    .string()
+    .transform((s) => s.normalize('NFC'))
+    .pipe(z.string().trim().min(1, '이름을 입력해 주세요').max(20, '이름은 20자 이내로 입력해 주세요')),
+  // 하이픈·공백·국제 표기를 먼저 숫자열로 정리한 뒤 형식을 본다 (DB 의 normalize_phone 과 같은 규칙).
   phone: z.string().transform(normalizePhone).refine(isValidMobile, '휴대폰 번호를 확인해 주세요'),
+  // z.literal(true) 로 쓰면 입력 타입까지 true 로 좁혀져 boolean 폼 상태를 넣을 수 없다. refine 으로 둔다.
   consent: z.boolean().refine((v) => v === true, '개인정보 동의가 필요해요'),
 })
 
@@ -2990,6 +3107,7 @@ export type OnboardingInput = z.input<typeof onboardingSchema>
 export type OnboardingValues = z.output<typeof onboardingSchema>
 export type OnboardingErrors = Partial<Record<keyof OnboardingInput, string>>
 
+/** 폼 입력을 검사해 정규화된 값 또는 필드별 첫 오류 문구를 돌려준다. */
 export function validateOnboarding(
   input: OnboardingInput,
 ): { ok: true; values: OnboardingValues } | { ok: false; errors: OnboardingErrors } {
@@ -2998,23 +3116,35 @@ export function validateOnboarding(
   const errors: OnboardingErrors = {}
   for (const issue of result.error.issues) {
     const key = issue.path[0] as keyof OnboardingInput | undefined
-    if (key && !errors[key]) errors[key] = issue.message
+    if (!key) {
+      // 입력이 객체가 아닐 때처럼 어느 필드인지 모르는 오류. 화면이 아무 말도 못 하는 편보다
+      // 첫 칸에 일반 문구라도 띄우는 편이 낫다 (타입이 막아 주므로 사실상 닿지 않는다).
+      errors.name ??= '입력 내용을 확인해 주세요'
+      continue
+    }
+    // 한 필드에 여러 오류가 걸리면 첫 문구만 보여 준다 (화면에 한 줄씩만 둔다).
+    if (!errors[key]) errors[key] = issue.message
   }
   return { ok: false, errors }
 }
 ```
 
-- [ ] **Step 5: 구현 — `src/features/onboarding/OnboardingPage.tsx`**
+- [x] **Step 5: 구현 — `src/features/onboarding/OnboardingPage.tsx`**
 
 ```tsx
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Button, Checkbox, TextField } from '../../components/ui'
 import { church } from '../../config/church'
 import { messageOf, toUserMessage } from '../../lib/errors'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../auth/AuthProvider'
+import { personQueryKey } from '../auth/usePerson'
 import { validateOnboarding, type OnboardingErrors, type OnboardingValues } from './onboardingSchema'
+
+// 오류가 여러 개면 이 순서로 첫 칸을 찾아 포커스를 옮긴다 (화면에 보이는 순서와 같게 둔다).
+const FIELD_ORDER = ['name', 'phone', 'consent'] as const
 
 async function claimPerson(values: OnboardingValues) {
   const { data, error } = await supabase.rpc('claim_person', {
@@ -3022,39 +3152,68 @@ async function claimPerson(values: OnboardingValues) {
     p_phone: values.phone,
     p_consent_version: church.consentVersion,
   })
-  if (error) throw error
+  // PostgREST 오류는 Error 가 아닌 평범한 객체다 (usePerson 과 같은 방식으로 감싼다).
+  // react-query 는 error 를 Error 로 타이핑하므로, 날것을 던지면 타입과 실제가 어긋난다.
+  if (error) throw Object.assign(new Error(error.message), { code: error.code, cause: error })
   return data
 }
 
 export function OnboardingPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const auth = useAuth()
+  const userId = auth.status === 'ready' ? auth.session?.user.id : undefined
+  const formRef = useRef<HTMLFormElement>(null)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [consent, setConsent] = useState(false)
   const [errors, setErrors] = useState<OnboardingErrors>({})
 
+  async function goHome() {
+    // 돌려받은 행이 없을 때만 쓴다. Gate 가 사람 행을 다시 읽게 한다
+    // (키 접두사 ['person'] 으로 모든 사용자 캐시를 무효화).
+    await queryClient.invalidateQueries({ queryKey: ['person'] })
+    navigate('/', { replace: true })
+  }
+
   const mutation = useMutation({
     mutationFn: claimPerson,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['person'] })
+    // claim_person 은 만든 사람 행을 그대로 돌려준다. 캐시에 넣어 두면 홈이 같은 행을 다시 묻지 않는다.
+    onSuccess: (person) => {
+      if (userId) queryClient.setQueryData(personQueryKey(userId), person)
       navigate('/', { replace: true })
     },
     // 더블 탭 등으로 먼저 간 요청이 이미 가입을 끝냈으면 서버는 already_registered 를 돌려준다.
-    // 이것은 실패가 아니라 "이미 성공" 이므로 홈으로 보낸다 (Gate 가 사람 행을 다시 읽는다).
+    // 이것은 실패가 아니라 "이미 성공" 이므로 홈으로 보낸다 (행을 못 받았으니 Gate 가 다시 읽는다).
     onError: async (err) => {
-      if (messageOf(err) === 'already_registered') {
-        await queryClient.invalidateQueries({ queryKey: ['person'] })
-        navigate('/', { replace: true })
-      }
+      if (messageOf(err) === 'already_registered') await goHome()
     },
   })
+
+  function clearError(key: keyof OnboardingErrors) {
+    setErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev))
+  }
+
+  /** 고치는 중에 지난 오류가 남아 있으면 혼란스럽다. 그 칸의 오류와 서버 안내를 함께 치운다. */
+  function onEdit(key: 'name' | 'phone') {
+    clearError(key)
+    // 서버 안내는 방금 보낸 이름·번호에 대한 것이다. 입력이 바뀌면 더 이상 맞는 말이 아니다.
+    if (mutation.isError) mutation.reset()
+  }
+
+  function focusFirstError(found: OnboardingErrors) {
+    const first = FIELD_ORDER.find((key) => found[key])
+    // TextField·Checkbox 의 id 를 name 과 같게 두었다. 폼 안에서만 찾는다.
+    if (first) formRef.current?.querySelector<HTMLElement>(`#${first}`)?.focus()
+  }
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const result = validateOnboarding({ name, phone, consent })
     if (!result.ok) {
       setErrors(result.errors)
+      // 어느 칸을 고쳐야 하는지 바로 알 수 있게 커서를 옮긴다 (화면을 읽어 주는 기기에도 알려진다).
+      focusFirstError(result.errors)
       return
     }
     setErrors({})
@@ -3062,68 +3221,115 @@ export function OnboardingPage() {
   }
 
   const notice = church.consentNotice
-  const serverError = mutation.isError ? toUserMessage(mutation.error) : null
+  const serverError =
+    mutation.isError && messageOf(mutation.error) !== 'already_registered' ? toUserMessage(mutation.error) : null
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col gap-4 p-6">
       <h1 className="text-2xl font-extrabold">처음 오셨네요</h1>
-      <p className="text-sm text-gray-500">권사님이 식권을 발급할 때 쓰는 정보예요. 입금하신 이름과 같게 적어 주세요.</p>
+      <p className="text-sm text-gray-600">권사님이 식권을 발급할 때 쓰는 정보예요. 입금하신 이름과 같게 적어 주세요.</p>
 
-      <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+      <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <TextField
           label="이름"
           name="name"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value)
+            onEdit('name')
+          }}
           autoComplete="name"
           maxLength={20}
+          required
           error={errors.name}
         />
         <TextField
           label="휴대폰 번호"
           name="phone"
           type="tel"
-          inputMode="numeric"
+          // tel 은 + 가 있는 자판을 띄운다 (numeric 은 숫자만 나와 국제 표기를 적을 수 없다).
+          inputMode="tel"
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={(e) => {
+            setPhone(e.target.value)
+            onEdit('phone')
+          }}
           autoComplete="tel"
           placeholder="010-0000-0000"
+          required
           error={errors.phone}
         />
 
         <section className="rounded-xl border border-blue-600 bg-white p-3 text-xs leading-relaxed">
-          <Checkbox name="consent" checked={consent} onChange={(e) => setConsent(e.target.checked)}>
-            <b>[필수] 개인정보 수집·이용 동의</b>{' '}
-            <Link to="/privacy" className="text-blue-600 underline">자세히</Link>
-          </Checkbox>
-          <dl className="mt-2 grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-1 pl-6 text-gray-500">
-            <dt>항목</dt><dd>{notice.items}</dd>
-            <dt>목적</dt><dd>{notice.purpose}</dd>
-            <dt>보유</dt><dd>{notice.retention}</dd>
-            <dt>거부 시</dt><dd>{notice.refusal}</dd>
+          <div className="flex items-start justify-between gap-2">
+            <Checkbox
+              id="consent"
+              name="consent"
+              required
+              checked={consent}
+              onChange={(e) => {
+                setConsent(e.target.checked)
+                clearError('consent')
+              }}
+            >
+              <strong>[필수] 개인정보 수집·이용 동의</strong>
+            </Checkbox>
+            {/* 링크를 레이블 안에 두면 체크박스 이름에 '자세히' 가 섞인다. 밖에 두고 새 창으로 연다
+                (같은 탭에서 열면 적어 둔 이름·번호가 사라진다). */}
+            <Link to="/privacy" target="_blank" rel="noreferrer" className="shrink-0 text-blue-600 underline">
+              자세히
+            </Link>
+          </div>
+          <dl className="mt-2 grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-1 pl-6 text-gray-600">
+            <dt>항목</dt>
+            <dd>{notice.items}</dd>
+            <dt>목적</dt>
+            <dd>{notice.purpose}</dd>
+            <dt>보유</dt>
+            <dd>{notice.retention}</dd>
+            <dt>거부 시</dt>
+            <dd>{notice.refusal}</dd>
           </dl>
-          {errors.consent && <p role="alert" className="mt-2 pl-6 text-red-600">{errors.consent}</p>}
+          {/* 지금은 화면에서 닿지 않는다 (동의 전에는 제출 버튼이 잠겨 consent 오류가 생기지 않는다).
+              규칙은 스키마가 갖고 있으니, 잠금 방식이 바뀌어도 문구가 비지 않도록 남겨 둔다. */}
+          {errors.consent && (
+            <p role="alert" className="mt-2 pl-6 text-red-600">
+              {errors.consent}
+            </p>
+          )}
         </section>
 
         {serverError && <p role="alert" className="text-sm text-red-600">{serverError}</p>}
 
-        <Button type="submit" disabled={!consent || mutation.isPending}>
-          {mutation.isPending ? '처리 중…' : '동의하고 시작하기'}
-        </Button>
+        <div>
+          <Button
+            type="submit"
+            disabled={!consent || mutation.isPending}
+            aria-describedby={consent ? undefined : 'submit-hint'}
+          >
+            {mutation.isPending ? '처리 중…' : '동의하고 시작하기'}
+          </Button>
+          {/* 버튼이 왜 눌리지 않는지 말해 준다. 잠긴 버튼만 보이면 사용자는 길을 잃는다. */}
+          {!consent && (
+            <p id="submit-hint" className="mt-2 text-center text-xs text-gray-600">
+              동의에 체크하면 시작할 수 있어요
+            </p>
+          )}
+        </div>
       </form>
     </main>
   )
 }
 ```
 
-- [ ] **Step 6: 통과 확인**
+- [x] **Step 6: 통과 확인**
 
 ```bash
 npm test
 ```
 Expected: 모두 통과.
 
-- [ ] **Step 7: 커밋**
+- [x] **Step 7: 커밋**
 
 ```bash
 git add -A
