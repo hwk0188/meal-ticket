@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+}
+
+html, body, #root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #f5f5f7;
+  color: #1d1d1f;
+  font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}

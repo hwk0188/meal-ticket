@@ -1,11 +1,13 @@
 node_modules/
 dist/
+coverage/
+playwright-report/
+test-results/
 .env
 .env.*
 !.env.example
 .superpowers/
-coverage/
-playwright-report/
-test-results/
-.DS_Store
 supabase/.temp/
+supabase/.branches/
+.DS_Store
+*.local
