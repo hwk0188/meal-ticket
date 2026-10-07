@@ -14,7 +14,8 @@ immutable
 as $$
   select case
     when d is null then null
-    when d ~ '^82(1[0-9]{8,9})$' then '0' || substring(d from 3)
+    -- 국제 표기: 국제접속부호(00) · 국가번호 82 · 선택적 0 을 떼고 국내 표기(0 접두)로 바꾼다
+    when d ~ '^(00)?820?(1[0-9]{8,9})$' then '0' || regexp_replace(d, '^(00)?820?', '')
     else d
   end
   from (select nullif(regexp_replace(coalesce(p, ''), '\D', '', 'g'), '')) as t(d)
@@ -38,9 +39,16 @@ create table public.people (
   -- 미성년자는 보호자와 보호자 동의가 반드시 있어야 한다
   constraint people_minor_requires_guardian
     check (is_minor = false or (guardian_id is not null and guardian_consented_at is not null)),
+  -- 탈퇴·삭제된 사람은 계정 연결을 반드시 끊는다 (익명화). 끊지 않으면 그 계정은
+  -- current_person_id() 가 null 이어서 가입 화면으로 가는데, auth_user_id unique 때문에 재가입도 영구히 막힌다.
+  constraint people_deleted_is_anonymized
+    check (deleted_at is null or auth_user_id is null),
   -- 계정이 연결된 어른은 본인 동의가 있어야 한다 (선발급자는 계정이 없으므로 예외)
   constraint people_adult_requires_consent
-    check (is_minor = true or auth_user_id is null or deleted_at is not null or consented_at is not null)
+    check (is_minor or auth_user_id is null or consented_at is not null),
+  -- 보호자는 본인일 수 없다 (보호자가 미성년자가 아니어야 한다는 규칙은 함수에서 검사)
+  constraint people_guardian_not_self
+    check (guardian_id is null or guardian_id <> id)
 );
 
 create unique index people_phone_unique
@@ -56,7 +64,7 @@ create or replace function public.people_before_write()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 begin
   if tg_op = 'INSERT' and new.family_id is null then
@@ -70,6 +78,8 @@ begin
 end
 $$;
 
+-- 주의: public.people 에는 ON CONFLICT DO NOTHING 을 쓰지 않는다.
+-- BEFORE 트리거가 충돌 판정보다 먼저 돌아서, 행이 버려져도 families 행은 남는다.
 create trigger people_before_write
   before insert or update on public.people
   for each row execute function public.people_before_write();
@@ -82,7 +92,7 @@ returns uuid
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select id from public.people
    where auth_user_id = auth.uid() and deleted_at is null
@@ -94,7 +104,7 @@ returns uuid
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select family_id from public.people
    where auth_user_id = auth.uid() and deleted_at is null
@@ -106,7 +116,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select exists (
     select 1 from public.people
@@ -115,7 +125,10 @@ as $$
 $$;
 
 revoke execute on function public.current_person_id(), public.current_family_id(), public.is_admin() from public;
-grant execute on function public.current_person_id(), public.current_family_id(), public.is_admin() to authenticated, anon;
+grant execute on function public.current_person_id(), public.current_family_id(), public.is_admin() to authenticated, anon, service_role;
+-- normalize_phone 과 트리거 함수는 PostgREST RPC 로 노출할 이유가 없다
+revoke execute on function public.normalize_phone(text), public.people_before_write() from public, anon, authenticated;
+grant execute on function public.normalize_phone(text) to authenticated, anon, service_role;
 
 -- =========================================================
 -- 기본 차단: RLS 켜고 API 역할 권한 회수. 정책과 세부 권한은 다음 마이그레이션(RLS)에서 부여한다.

@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(19);
 
 select has_table('public', 'families', 'families 테이블이 있다');
 select has_table('public', 'people', 'people 테이블이 있다');
@@ -21,6 +21,7 @@ select is(
   '전화번호는 숫자만 남겨 저장한다'
 );
 select is(public.normalize_phone('+82 10-9876-5432'), '01098765432', '+82 국제 표기는 010 으로 바꾼다');
+select is(public.normalize_phone('0082-010-9876-5432'), '01098765432', '0082 + 0 표기도 010 으로');
 select is(public.normalize_phone(''), null, '빈 문자열은 null');
 
 -- 잘못된 번호 거부 (check 위반 23514)
@@ -45,6 +46,27 @@ select throws_ok(
   $$ insert into public.people (name, is_minor) values ('김민준', true) $$,
   '23514', null, '보호자 없는 미성년자는 거부한다'
 );
+
+-- 기본 차단: auto_expose_new_tables=true 라서 새 테이블은 anon 전체 권한으로 태어난다. revoke 를 잊으면 여기서 잡힌다.
+select table_privs_are('public','people','anon', '{}'::text[], 'anon은 people에 아무 권한이 없다');
+select table_privs_are('public','people','authenticated','{}'::text[], 'authenticated는 people에 아무 권한이 없다');
+select table_privs_are('public','families','anon','{}'::text[], 'anon은 families에 아무 권한이 없다');
+select is((select relrowsecurity from pg_class where oid='public.people'::regclass), true, 'people에 RLS가 켜져 있다');
+select is((select relrowsecurity from pg_class where oid='public.families'::regclass), true, 'families에 RLS가 켜져 있다');
+
+-- 계정 연결된 어른은 동의 필수
+select tests.create_user('noconsent@test.local') as u \gset
+select throws_ok(
+  format($$ insert into public.people (name, auth_user_id) values ('동의없는어른', %L) $$, :'u'),
+  '23514', null, '계정이 연결된 어른은 동의 없이 만들 수 없다');
+
+-- 트리거 UPDATE 경로: 번호 재정규화(+82 010 형태 포함), updated_at 은 트리거가 덮어쓴다
+insert into public.people (name, phone) values ('수정대상','010-1111-2222');
+update public.people set phone = '+82 010-3333-4444', updated_at = '2000-01-01' where name='수정대상';
+select results_eq(
+  $$ select phone, updated_at > '2020-01-01'::timestamptz from public.people where name='수정대상' $$,
+  $$ values ('01033334444'::text, true) $$,
+  'update 시 번호를 다시 정규화하고 updated_at 을 트리거가 덮어쓴다');
 
 select * from finish();
 rollback;
