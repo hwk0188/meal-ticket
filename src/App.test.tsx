@@ -19,14 +19,14 @@ afterEach(() => {
 describe('App', () => {
   it('비로그인 상태에서 시작 화면을 보여준다', async () => {
     render(<App />)
-    expect(await screen.findByRole('heading', { name: '시작' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'OO교회 식권' })).toBeInTheDocument()
   })
 
   // 오래된 링크나 오타로 들어와도 빈 화면을 보여 주지 않고 홈 주소로 정리한다.
   it('모르는 주소는 홈으로 되돌린다', async () => {
     window.location.hash = '#/nope'
     render(<App />)
-    expect(await screen.findByRole('heading', { name: '시작' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'OO교회 식권' })).toBeInTheDocument()
     expect(window.location.hash).toBe('#/')
   })
 

@@ -1,0 +1,19 @@
+// 교회마다 바뀌는 값만 모아 둔다. 처리방침 페이지와 가입 화면이 이 값을 읽는다.
+// 값은 교회에서 확인한 뒤 바꾼다.
+export const church = {
+  /** 교회 공식 명칭 (교회 확인 필요) */
+  name: 'OO교회',
+  /** 카카오 동의 화면과 앱 상단에 보이는 이름 */
+  appName: 'OO교회 식권',
+  /** 개인정보 담당자 (교회 확인 필요) */
+  privacyOfficer: { role: '식당 담당 권사', name: '', phone: '' },
+  /** 동의 문구를 바꾸면 이 날짜도 바꾼다. people.consent_version 에 저장된다 (YYYY-MM-DD, DB 가 형식을 검사한다) */
+  consentVersion: '2026-10-07',
+  /** 가입 화면과 처리방침에 공통으로 쓰는 고지 4요소 */
+  consentNotice: {
+    items: '이름, 휴대폰 번호',
+    purpose: '식권 발급·사용 확인, 본인 식별',
+    retention: '탈퇴 시까지 (탈퇴 후 이름·번호는 익명 처리)',
+    refusal: '동의하지 않으면 서비스를 이용할 수 없습니다',
+  },
+} as const
