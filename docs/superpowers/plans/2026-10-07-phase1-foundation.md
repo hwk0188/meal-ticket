@@ -371,7 +371,7 @@ git commit -m "test: Vitest + Testing Library 설정"
 - Create: `supabase/config.toml`, `supabase/seeds/.gitkeep`, `.env.example`, `.env.local`(비추적)
 - Modify: `package.json` (scripts)
 
-- [ ] **Step 1: Supabase CLI를 devDependency로 설치하고 초기화**
+- [x] **Step 1: Supabase CLI를 devDependency로 설치하고 초기화**
 
 ```bash
 npm install -D supabase@2.120.0 --save-exact
@@ -379,7 +379,7 @@ npx supabase init
 ```
 Expected: `supabase/config.toml` 생성. "Generate VS Code settings?" 질문은 `N`.
 
-- [ ] **Step 2: `supabase/config.toml`에서 다음 값을 찾아 수정한다** (나머지는 기본값 유지)
+- [x] **Step 2: `supabase/config.toml`에서 다음 값을 찾아 수정한다** (나머지는 기본값 유지)
 
 ```toml
 [api]
@@ -416,7 +416,7 @@ enabled = false   # supabase logs / Studio Logs 도 꺼진다
 
 카카오 provider는 로컬에 설정하지 않는다. 로컬은 이메일 개발 로그인을 쓰고, 운영 Supabase 대시보드에서만 카카오를 켠다(Task 17의 README 참고).
 
-- [ ] **Step 3: 시드 폴더와 기동**
+- [x] **Step 3: 시드 폴더와 기동**
 
 ```bash
 mkdir -p supabase/seeds && touch supabase/seeds/.gitkeep
@@ -424,7 +424,7 @@ npx supabase start
 ```
 Expected(약 1~3분): `API URL: http://127.0.0.1:54321`, `anon key: ...` 등 출력.
 
-- [ ] **Step 4: `.env.example`과 `.env.local` 작성**
+- [x] **Step 4: `.env.example`과 `.env.local` 작성**
 
 `.env.example`:
 ```bash
@@ -443,7 +443,7 @@ npx supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)='
 ```
 출력된 `PUBLISHABLE_KEY`(`sb_publishable_…`) 값을 `VITE_SUPABASE_PUBLISHABLE_KEY=`에 넣고 나머지는 `.env.example`과 같게 둔다. 레거시 `ANON_KEY`(JWT)는 2026년 말 폐기 예정이라 쓰지 않는다.
 
-- [ ] **Step 5: `package.json` scripts에 DB 명령 추가**
+- [x] **Step 5: `package.json` scripts에 DB 명령 추가**
 
 ```json
 "db:start": "supabase start",
@@ -453,7 +453,7 @@ npx supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)='
 "db:types": "mkdir -p src/lib && supabase gen types typescript --local > src/lib/database.types.ts.tmp && mv src/lib/database.types.ts.tmp src/lib/database.types.ts"
 ```
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add -A
