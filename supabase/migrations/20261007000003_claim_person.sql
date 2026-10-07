@@ -1,5 +1,6 @@
 -- 어른 가입: 카카오(또는 이메일) 로그인 직후 이름·번호·동의를 받아 사람 행을 만들거나 선발급 행에 연결한다.
 -- 오류는 message에 코드 문자열을 담는다. 프론트가 사용자 문구로 바꾼다.
+-- 무차별 대입 완화(실패 횟수 제한)는 후속 단계 과제. 1단계는 이름+번호 일치로만 방어한다.
 create or replace function public.claim_person(
   p_name text,
   p_phone text,
@@ -32,6 +33,7 @@ begin
     raise exception 'consent_required';
   end if;
 
+  -- 이 검사는 행 잠금 전에 돌기 때문에 순차 재시도만 잡는다. 동시 요청은 아래 두 곳에서 걸러진다.
   if exists (select 1 from public.people where auth_user_id = v_uid and deleted_at is null) then
     raise exception 'already_registered';
   end if;
@@ -44,6 +46,11 @@ begin
    for update;
 
   if found then
+    -- 같은 사용자의 중복 요청(더블 탭·재시도)은 성공으로 본다. 동시 요청에서 뒤늦게 잠금을 얻은
+    -- 쪽이 여기 닿는다 (위의 already_registered 검사는 상대가 커밋하기 전에 지나갔다).
+    if v_person.auth_user_id = v_uid then
+      return v_person;
+    end if;
     if v_person.auth_user_id is not null or v_person.is_minor or btrim(v_person.name) <> v_name then
       raise exception 'phone_taken';
     end if;
@@ -55,9 +62,23 @@ begin
      where id = v_person.id
      returning * into v_person;
   else
-    insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
-    values (v_name, v_phone, v_uid, now(), p_consent_version)
-    returning * into v_person;
+    -- 번호가 아직 없을 때는 잠글 행이 없어서 동시 insert 를 막을 수 없다. 부분 유일 인덱스가
+    -- 중재하므로, 그 충돌을 원시 23505 대신 약속된 코드 문자열로 바꿔 준다.
+    begin
+      insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
+      values (v_name, v_phone, v_uid, now(), p_consent_version)
+      returning * into v_person;
+    exception when unique_violation then
+      -- people_auth_user_id_key 충돌: 같은 사용자가 동시에 두 번 보냈다 → 먼저 만들어진 자기 행을 돌려준다.
+      select * into v_person
+        from public.people
+       where auth_user_id = v_uid and deleted_at is null;
+      if found then
+        return v_person;
+      end if;
+      -- people_phone_unique 충돌: 같은 번호로 가입한 다른 사용자가 먼저 들어갔다.
+      raise exception 'phone_taken';
+    end;
   end if;
 
   return v_person;
