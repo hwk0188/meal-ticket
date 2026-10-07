@@ -603,7 +603,7 @@ git commit -m "test: pgTAP 테스트 헬퍼(사용자 생성·인증) 추가"
 
 ```sql
 begin;
-select plan(20);
+select plan(21);
 
 select has_table('public', 'families', 'families 테이블이 있다');
 select has_table('public', 'people', 'people 테이블이 있다');
@@ -658,6 +658,15 @@ select table_privs_are('public','families','anon','{}'::text[], 'anon은 familie
 select table_privs_are('public','families','authenticated','{SELECT}'::text[], 'authenticated는 families를 읽기만 할 수 있다');
 select is((select relrowsecurity from pg_class where oid='public.people'::regclass), true, 'people에 RLS가 켜져 있다');
 select is((select relrowsecurity from pg_class where oid='public.families'::regclass), true, 'families에 RLS가 켜져 있다');
+
+-- auto_expose_new_tables=true 는 새 함수에도 anon=X 를 자동으로 붙인다. grant 에서 anon 을 빼는 것만으론
+-- 지워지지 않으므로 revoke 가 필요하다. 1단계에는 anon RPC 가 하나도 없다.
+select is(
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('current_person_id','current_family_id','is_admin','normalize_phone','people_before_write')
+      and has_function_privilege('anon', p.oid, 'EXECUTE')),
+  0::bigint, 'anon은 public 헬퍼 함수를 실행할 수 없다');
 
 -- 계정 연결된 어른은 동의 필수
 select tests.create_user('noconsent@test.local') as u \gset
@@ -746,13 +755,11 @@ create unique index people_phone_unique
   on public.people (phone)
   where phone is not null and deleted_at is null;
 create index people_family_idx on public.people (family_id);
+-- auth_user_id 는 unique 제약이 이미 인덱스를 만든다 (people_auth_user_id_key).
 create index people_guardian_idx on public.people (guardian_id);
--- auth_user_id 는 unique 제약이 이미 인덱스를 만든다.
 
 -- insert: 가족이 없으면 1인 가족 생성 / insert·update: 번호 정규화, updated_at 갱신
 -- security definer: 관리자가 authenticated 역할로 사람을 insert할 때도 families에 쓸 수 있어야 한다
--- 주의: public.people 에는 ON CONFLICT DO NOTHING 을 쓰지 않는다.
--- BEFORE 트리거가 충돌 판정보다 먼저 돌아서, 행이 버려져도 families 행은 남는다.
 create or replace function public.people_before_write()
 returns trigger
 language plpgsql
@@ -771,6 +778,8 @@ begin
 end
 $$;
 
+-- 주의: public.people 에는 ON CONFLICT DO NOTHING 을 쓰지 않는다.
+-- BEFORE 트리거가 충돌 판정보다 먼저 돌아서, 행이 버려져도 families 행은 남는다.
 create trigger people_before_write
   before insert or update on public.people
   for each row execute function public.people_before_write();
@@ -815,15 +824,16 @@ as $$
   )
 $$;
 
-revoke execute on function public.current_person_id(), public.current_family_id(), public.is_admin() from public;
+-- auto_expose_new_tables=true 는 ALTER DEFAULT PRIVILEGES 로 새 함수에 anon=X 를 자동으로 붙인다.
+-- 그래서 grant 목록에서 anon 을 빼는 것만으로는 부족하고, anon 에서 명시적으로 revoke 해야 한다.
+revoke execute on function public.current_person_id(), public.current_family_id(), public.is_admin() from public, anon;
 grant execute on function public.current_person_id(), public.current_family_id(), public.is_admin() to authenticated, service_role;
--- normalize_phone 과 트리거 함수는 PostgREST RPC 로 노출할 이유가 없다. anon 에게는 어떤 RPC 도 주지 않는다 (ping 은 뒤에 따로).
+-- normalize_phone 과 트리거 함수는 PostgREST RPC 로 노출할 이유가 없다
 revoke execute on function public.normalize_phone(text), public.people_before_write() from public, anon, authenticated;
 grant execute on function public.normalize_phone(text) to authenticated, service_role;
 
 -- =========================================================
 -- 기본 차단: RLS 켜고 API 역할 권한 회수. 정책과 세부 권한은 다음 마이그레이션(RLS)에서 부여한다.
--- 테이블 생성과 같은 마이그레이션에 두어, 두 마이그레이션 사이에 열린 창이 생기지 않게 한다.
 -- =========================================================
 alter table public.families enable row level security;
 alter table public.people enable row level security;
@@ -837,7 +847,7 @@ revoke all on public.people from anon, authenticated;
 npm run db:reset
 npm run db:test
 ```
-Expected: `020_people_schema.sql .. ok`, 전체 `All tests successful.` (5 + 20 단언)
+Expected: `020_people_schema.sql .. ok`, 전체 `All tests successful.` (5 + 21 단언)
 
 - [x] **Step 5: 커밋**
 
@@ -858,7 +868,7 @@ git commit -m "feat(db): families·people 테이블, 전화번호 정규화 트�
 
 ```sql
 begin;
-select plan(15);
+select plan(19);
 
 -- 준비: 사용자 A(김철수), B(이영희, 다른 가족), 관리자(권사). uid 는 역할 전환 전에 \gset 으로 받아 둔다.
 select tests.create_user('a@test.local') as a_uid \gset
@@ -879,14 +889,20 @@ select is((select count(*) from public.people), 1::bigint, 'A는 자기 가족(�
 select is((select name from public.people), '김철수', '보이는 사람은 본인이다');
 select is((select count(*) from public.families), 1::bigint, 'A는 자기 가족 행만 본다');
 
--- 같은 가족의 탈퇴한 구성원은 보이지 않는다 (정책의 deleted_at is null 절)
+-- A 가족에 식구를 붙인다: 탈퇴한 구성원 · 살아 있는 형제 · 자녀 계정(익명 로그인)
 select tests.clear_auth();
 insert into public.people (name, family_id, deleted_at)
 values ('탈퇴가족원', (select family_id from public.people where auth_user_id = :'a_uid'), now());
 insert into public.people (name, family_id)
 values ('가족형제', (select family_id from public.people where auth_user_id = :'a_uid'));
+select tests.create_user() as kid_uid \gset
+insert into public.people (name, family_id, auth_user_id, is_minor, guardian_id, guardian_consented_at)
+values ('서연', (select family_id from public.people where auth_user_id = :'a_uid'), :'kid_uid', true,
+        (select id from public.people where auth_user_id = :'a_uid'), now());
 select tests.authenticate_as(:'a_uid');
-select is((select count(*) from public.people), 2::bigint, 'A는 살아 있는 가족 구성원만 본다 (탈퇴자 제외)');
+
+-- 탈퇴한 구성원은 보이지 않는다 (정책의 deleted_at is null 절)
+select is((select count(*) from public.people), 3::bigint, 'A는 살아 있는 가족 구성원만 본다 (탈퇴자 제외)');
 
 -- 같은 가족이라도 남의 행은 고칠 수 없다 (people_update_self 의 USING 범위)
 update public.people set name = '해킹' where name = '가족형제';
@@ -905,18 +921,44 @@ select throws_ok(
   '42501', null, 'A는 사람을 만들 수 없다'
 );
 
--- 실패한 insert 가 트리거로 만든 가족 행을 남기지 않았는지 (문장 단위 롤백)
+-- 자녀 계정: 가족은 보이지만 자기 행도 고칠 수 없다 (is_minor = false 절)
+select tests.authenticate_as(:'kid_uid');
+select is((select count(*) from public.people), 3::bigint, '자녀 계정도 가족 구성원을 본다');
+update public.people set name = '내가정한이름' where auth_user_id = (select auth.uid());
+select is((select name from public.people where auth_user_id = (select auth.uid())), '서연', '자녀 계정은 자기 이름을 바꿀 수 없다 (조회만)');
+
+-- 거부된 insert 가 트리거로 만든 가족 행을 남기지 않았는지 (문장 단위 롤백)
 select tests.clear_auth();
-select is((select count(*) from public.families), 4::bigint, '거부된 insert 는 families 행을 남기지 않는다');
+select is(
+  (select count(*) from public.families f
+    where not exists (select 1 from public.people p where p.family_id = f.id)),
+  0::bigint, '구성원 없는 가족 행이 남지 않는다 (거부된 insert 의 트리거 흔적 없음)');
 
 -- 관리자로서
 select tests.authenticate_as(:'admin_uid');
-select is((select count(*) from public.people), 6::bigint, '관리자는 모든 사람을 본다 (탈퇴자 포함)');
+select set_eq(
+  $$ select name from public.people $$,
+  $$ values ('김철수A'::text),('이영희'),('권사'),('이순자'),('탈퇴가족원'),('가족형제'),('서연') $$,
+  '관리자는 모든 사람을 본다 (탈퇴자·타가족·자녀 포함)');
 select lives_ok(
   $$ insert into public.people (name, phone) values ('방문자', '01099990000') $$,
   '관리자는 선발급용 사람을 만들 수 있다'
 );
-select is((select count(*) from public.families), 5::bigint, '관리자는 모든 가족을 본다 (방금 만든 1인 가족 포함)');
+select isnt_empty(
+  $$ select id from public.families where id <> (select public.current_family_id()) $$,
+  '관리자는 자기 가족이 아닌 가족 행도 본다');
+
+select throws_ok(
+  $$ delete from public.people where name = '이순자' $$,
+  '42501', null, '관리자도 행을 지울 수 없다 (소프트 삭제만)'
+);
+
+-- 익명화(파기)된 행은 관리자도 되살릴 수 없다 (people_update_admin 의 deleted_at is null 절)
+select tests.clear_auth();
+update public.people set name = '탈퇴한 사용자', phone = null, auth_user_id = null where name = '탈퇴가족원';
+select tests.authenticate_as(:'admin_uid');
+update public.people set name = '복구시도' where name = '탈퇴한 사용자';
+select is((select count(*) from public.people where name = '복구시도'), 0::bigint, '관리자도 익명화된 행은 고칠 수 없다');
 
 -- 정책 구조를 고정한다: 정책이 늘거나 사라지면 여기서 잡힌다
 select policies_are('public', 'people',
@@ -949,12 +991,11 @@ Expected: `030_people_rls.sql` FAIL — 앞 마이그레이션이 기본 차단 
 -- RLS 활성화와 권한 회수는 앞 마이그레이션(테이블 생성)에서 이미 했다. 여기서는 필요한 권한과 정책만 부여한다.
 grant select on public.families to authenticated;
 grant select on public.people to authenticated;
--- 본인 수정은 이름·전화만, 관리자 선발급 입력도 이름·전화만 (나머지는 함수로)
+-- 본인 수정은 이름·전화만, 관리자 선발급 입력도 이름·전화만 (나머지 열은 함수로만 바꾼다)
 -- phone 은 인증된 값이 아니다 (SMS 인증 없음). 본인이 미사용 번호로 바꿀 수 있으며, 식별은 관리자 확인에 의존한다.
 grant update (name, phone) on public.people to authenticated;
 grant insert (name, phone) on public.people to authenticated;
 
--- families
 -- 정책 안의 함수 호출은 (select …) 로 감싼다. 감싸지 않으면 행마다 함수를 다시 실행해
 -- 2만 행 기준 253ms vs 1.7ms 차이가 난다 (InitPlan 으로 한 번만 평가됨). 이후 모든 테이블에 같은 규칙.
 -- 쿼리 조건에서도 같다: where auth_user_id = auth.uid() 는 Seq Scan, (select auth.uid()) 는 Index Scan 을 탄다.
@@ -980,7 +1021,7 @@ create policy people_insert_admin on public.people
   for insert to authenticated
   with check ((select public.is_admin()));
 
--- 관리자도 익명화(탈퇴)된 행은 직접 고칠 수 없다 (개인정보 재부착 방지). 필요하면 4단계의 관리자 함수로만.
+-- 익명화(파기)된 행은 관리자도 손대지 못한다. 되살리는 일은 4단계의 definer 함수만 한다.
 create policy people_update_admin on public.people
   for update to authenticated
   using ((select public.is_admin()) and deleted_at is null)
@@ -995,7 +1036,7 @@ create policy people_update_admin on public.people
 npm run db:reset
 npm run db:test
 ```
-Expected: `030_people_rls.sql .. ok`, 전체 성공 (5 + 20 + 15 = 40 단언).
+Expected: `030_people_rls.sql .. ok`, 전체 성공 (5 + 21 + 19 = 45 단언).
 
 참고: `people_update_self`의 `and deleted_at is null`은 `people_deleted_is_anonymized` 제약 때문에 논리적으로 도달 불가한 방어 조항이다(탈퇴 행은 항상 `auth_user_id`가 NULL). 변이 테스트에서 살아남는 '동치 변이'이므로 테스트로 잡으려 하지 않는다.
 
@@ -1009,6 +1050,8 @@ git commit -m "feat(db): people·families RLS 정책 및 열 단위 권한"
 ---
 
 ### Task 7: 마이그레이션 ③ `claim_person` RPC
+
+> **새 함수 체크리스트(이후 모든 마이그레이션 공통).** `auto_expose_new_tables = true`는 `ALTER DEFAULT PRIVILEGES`로 새 함수에 `anon=X`, `authenticated=X`를 자동으로 붙인다. 따라서 grant 목록에서 anon을 빼는 것만으로는 부족하고 **`revoke execute … from public, anon`을 명시**해야 한다(RPC를 anon에게 열 의도가 있는 `ping()`만 예외). SECURITY DEFINER 함수는 `set search_path = public, pg_temp`. 정책·쿼리의 `auth.uid()`/헬퍼 호출은 `(select …)`로 감싼다.
 
 **Files:**
 - Create: `supabase/migrations/20261007000003_claim_person.sql`
@@ -1174,7 +1217,7 @@ grant execute on function public.claim_person(text, text, text) to authenticated
 npm run db:reset
 npm run db:test
 ```
-Expected: 4개 파일 모두 `ok`, `All tests successful.`
+Expected: 4개 파일 모두 `ok`, `All tests successful.` (5 + 21 + 19 + 12 = 57 단언)
 
 - [ ] **Step 5: DB 타입 생성**
 
