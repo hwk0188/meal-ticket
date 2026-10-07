@@ -3906,6 +3906,8 @@ jobs:
       - name: Playwright 브라우저 설치
         run: npx playwright install chromium --with-deps
 
+      # E2E 는 반드시 개발 서버(npm run dev, playwright webServer)로 돈다. 개발 로그인 폼은 import.meta.env.DEV 뒤에 있어
+      # vite preview / 운영 번들에는 없다. 운영 산출물은 바로 위의 npm run build 가 검사한다.
       - name: E2E
         run: npm run e2e
 
