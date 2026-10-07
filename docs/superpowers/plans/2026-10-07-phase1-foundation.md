@@ -603,7 +603,7 @@ git commit -m "test: pgTAP 테스트 헬퍼(사용자 생성·인증) 추가"
 
 ```sql
 begin;
-select plan(24);
+select plan(25);
 
 select has_table('public', 'families', 'families 테이블이 있다');
 select has_table('public', 'people', 'people 테이블이 있다');
@@ -627,6 +627,7 @@ select is(
 select is(public.normalize_phone('+82 10-9876-5432'), '01098765432', '+82 국제 표기는 010 으로 바꾼다');
 select is(public.normalize_phone('0082-010-9876-5432'), '01098765432', '0082 + 0 표기도 010 으로');
 select is(public.normalize_phone(''), null, '빈 문자열은 null');
+select is(public.is_valid_mobile(null), false, 'is_valid_mobile(null) 은 false');
 
 -- 이름 정규화: 비교 키는 공백을 지우고 NFC 로 맞춘다 (iOS 가 보내는 NFD 자모 분해 대응)
 select is(public.normalize_name(' 김 철수 '), '김철수', 'normalize_name 은 공백을 제거한다');
@@ -730,7 +731,7 @@ $$;
 -- 휴대폰 형식 검사 (제약과 함수가 같은 규칙을 쓴다)
 create or replace function public.is_valid_mobile(p text)
 returns boolean language sql immutable
-as $$ select p ~ '^01[0-9]{8,9}$' $$;
+as $$ select coalesce(p ~ '^01[0-9]{8,9}$', false) $$;
 
 -- 이름 비교 키: 공백 제거 + NFC 정규화. iOS/macOS 는 한글을 NFD(자모 분해)로 보낼 수 있어
 -- NFC 로 저장된 선발급 행과 문자열 비교가 어긋난다. 비교 전용이며 표시용 이름은 그대로 둔다.
@@ -850,6 +851,7 @@ grant execute on function public.current_person_id(), public.current_family_id()
 -- normalize_phone 과 트리거 함수는 PostgREST RPC 로 노출할 이유가 없다
 revoke execute on function public.normalize_phone(text), public.is_valid_mobile(text),
   public.normalize_name(text), public.people_before_write() from public, anon, authenticated;
+-- CHECK 제약 안에서 호출되는 함수는 "쓰는 역할"에게 EXECUTE 가 있어야 한다 (트리거의 security definer 로는 대체되지 않음). 정리한다고 지우지 말 것.
 grant execute on function public.normalize_phone(text), public.is_valid_mobile(text),
   public.normalize_name(text) to authenticated, service_role;
 
@@ -868,7 +870,7 @@ revoke all on public.people from anon, authenticated;
 npm run db:reset
 npm run db:test
 ```
-Expected: `020_people_schema.sql .. ok`, 전체 `All tests successful.` (5 + 24 단언)
+Expected: `020_people_schema.sql .. ok`, 전체 `All tests successful.` (5 + 25 단언)
 
 - [x] **Step 5: 커밋**
 
@@ -949,6 +951,7 @@ update public.people set name = '내가정한이름' where auth_user_id = (selec
 select is((select name from public.people where auth_user_id = (select auth.uid())), '서연', '자녀 계정은 자기 이름을 바꿀 수 없다 (조회만)');
 
 -- 거부된 insert 가 트리거로 만든 가족 행을 남기지 않았는지 (문장 단위 롤백)
+-- now() 는 트랜잭션 시각이라, 이 테스트 트랜잭션에서 만든 가족 행만 고른다.
 select tests.clear_auth();
 select is(
   (select count(*) from public.families f
@@ -1058,7 +1061,7 @@ create policy people_update_admin on public.people
 npm run db:reset
 npm run db:test
 ```
-Expected: `030_people_rls.sql .. ok`, 전체 성공 (5 + 24 + 19 = 48 단언).
+Expected: `030_people_rls.sql .. ok`, 전체 성공 (5 + 25 + 19 = 49 단언).
 
 참고: `people_update_self`의 `and deleted_at is null`은 `people_deleted_is_anonymized` 제약 때문에 논리적으로 도달 불가한 방어 조항이다(탈퇴 행은 항상 `auth_user_id`가 NULL). 변이 테스트에서 살아남는 '동치 변이'이므로 테스트로 잡으려 하지 않는다.
 
@@ -1375,7 +1378,7 @@ grant execute on function public.claim_person(text, text, text) to authenticated
 npm run db:reset
 npm run db:test
 ```
-Expected: 4개 파일 모두 `ok`, `All tests successful.` (5 + 24 + 19 + 29 = 77 단언)
+Expected: 4개 파일 모두 `ok`, `All tests successful.` (5 + 25 + 19 + 29 = 78 단언)
 
 - [x] **Step 5: DB 타입 생성**
 
