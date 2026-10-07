@@ -467,12 +467,14 @@ git commit -m "chore: 로컬 Supabase 초기화 및 환경변수 예시"
 **Files:**
 - Create: `supabase/seeds/000_test_helpers.sql`, `supabase/tests/database/010_helpers.sql`
 
-- [ ] **Step 1: 헬퍼 시드 작성 — `supabase/seeds/000_test_helpers.sql`**
+- [x] **Step 1: 헬퍼 시드 작성 — `supabase/seeds/000_test_helpers.sql`**
 
 운영 DB에는 `db push`로 올라가지 않는다(시드는 로컬 전용).
 
 ```sql
--- 테스트 전용 헬퍼. 로컬 db reset 때만 적용된다.
+-- 테스트 전용 헬퍼. 로컬 db reset 때만 적용된다 (db push 로는 올라가지 않는다).
+-- 주의: set_config(…, true) 와 set local 은 트랜잭션 안에서만 유지된다.
+-- pgTAP 파일처럼 begin … rollback 블록 안에서 호출해야 하며, psql autocommit 에서는 바로 풀린다.
 create schema if not exists tests;
 
 -- 가짜 auth 사용자 생성. 이메일이 null이면 익명 사용자.
@@ -497,17 +499,29 @@ begin
 end
 $$;
 
--- 이후 문장을 해당 사용자로 실행 (auth.uid() = p_user)
+-- 이후 문장을 해당 사용자로 실행 (auth.uid() = p_user). 연속 호출 가능, 없는 사용자는 예외.
 create or replace function tests.authenticate_as(p_user uuid)
 returns void
 language plpgsql
 as $$
 declare
   v_anon boolean;
+  v_email text;
 begin
-  select is_anonymous into v_anon from auth.users where id = p_user;
+  -- 이미 authenticated 역할이어도 재인증할 수 있도록 먼저 postgres 로 돌아간다 (auth.users 를 읽어야 함)
+  execute 'reset role';
+  select is_anonymous, email into v_anon, v_email from auth.users where id = p_user;
+  if not found then
+    raise exception 'tests.authenticate_as: auth 사용자가 없다 (%)', p_user;
+  end if;
   perform set_config('request.jwt.claims',
-    json_build_object('sub', p_user, 'role', 'authenticated', 'is_anonymous', coalesce(v_anon, false))::text,
+    json_build_object(
+      'sub', p_user,
+      'role', 'authenticated',
+      'aud', 'authenticated',
+      'email', v_email,
+      'is_anonymous', v_anon
+    )::text,
     true);
   execute 'set local role authenticated';
 end
@@ -523,22 +537,26 @@ begin
   perform set_config('request.jwt.claims', '', true);
 end
 $$;
+
+-- 함수 EXECUTE 는 기본 PUBLIC 이지만 스키마 USAGE 는 따로 줘야 한다.
+-- authenticated 로 전환된 뒤 clear_auth() 를 부르려면 필수. anon 은 Task 6 의 anon 테스트용.
+grant usage on schema tests to authenticated, anon;
 ```
 
-- [ ] **Step 2: 실패하는 테스트 작성 — `supabase/tests/database/010_helpers.sql`**
+- [x] **Step 2: 실패하는 테스트 작성 — `supabase/tests/database/010_helpers.sql`**
 
 ```sql
 begin;
-select plan(3);
+select plan(5);
 
-select ok(
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'tests' and p.proname in ('create_user','authenticate_as','clear_auth')) = 3,
-  'tests 헬퍼 함수 3개가 존재한다'
-);
+select has_function('tests', 'create_user',     array['text'], 'tests.create_user(text)가 있다');
+select has_function('tests', 'authenticate_as', array['uuid'], 'tests.authenticate_as(uuid)가 있다');
+select has_function('tests', 'clear_auth',      'tests.clear_auth()가 있다');
 
-select tests.authenticate_as(tests.create_user('helper@test.local'));
-select is(auth.uid(), (select id from auth.users where email = 'helper@test.local'), 'authenticate_as 후 auth.uid()가 그 사용자다');
+select tests.create_user('helper@test.local') as uid \gset
+
+select tests.authenticate_as(:'uid');
+select is(auth.uid(), :'uid'::uuid, 'authenticate_as 후 auth.uid()가 그 사용자다');
 
 select tests.clear_auth();
 select is(auth.uid(), null, 'clear_auth 후 auth.uid()는 null');
@@ -547,22 +565,26 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 3: 실패 확인 (시드가 아직 적용되지 않음)**
+- [x] **Step 3: 실패 확인 (시드가 아직 적용되지 않음)**
 
 ```bash
 npm run db:test
 ```
 Expected: FAIL — `schema "tests" does not exist` 또는 헬퍼 개수 0.
 
-- [ ] **Step 4: 시드를 적용하고 통과 확인**
+- [x] **Step 4: 시드를 적용하고 통과 확인**
 
 ```bash
 npm run db:reset
 npm run db:test
 ```
-Expected: `010_helpers.sql .. ok`, `All tests successful.`
+Expected: `010_helpers.sql .. ok`, `All tests successful.` (5개 단언)
 
-- [ ] **Step 5: 커밋**
+시드 폴더에 실제 파일이 생겼으므로 `git rm supabase/seeds/.gitkeep`.
+
+`\gset`은 psql 전용 문법으로 쿼리 결과를 변수에 담는다. `supabase test db`(pg_prove → psql)에서 동작하며, 이후 테스트들도 역할 전환 **전에** uid 를 `\gset` 으로 받아 둔다(`authenticated` 역할은 `auth.users` 를 읽을 수 없다).
+
+- [x] **Step 5: 커밋**
 
 ```bash
 git add supabase
@@ -829,12 +851,13 @@ select is((select count(*) from public.families), 5::bigint, '관리자는 모�
 select tests.clear_auth();
 set local role anon;
 select throws_ok($$ select count(*) from public.people $$, '42501', null, 'anon은 people을 읽을 수 없다');
+reset role;
 
 select * from finish();
 rollback;
 ```
 
-`\gset`은 psql 전용 문법이며 `supabase test db`(pg_prove → psql)에서 동작한다.
+`\gset`은 psql 전용 문법이며 `supabase test db`(pg_prove → psql)에서 동작한다. uid 는 반드시 `authenticate_as` 호출 **전에** `\gset` 으로 받아 둔다(`authenticated` 역할은 `auth.users` 를 읽을 수 없다). `authenticate_as` 는 연속 호출이 가능하므로 사용자 전환 사이의 `clear_auth()` 는 "postgres 로 돌아가서 전체 데이터를 보고 싶을 때"만 필요하다.
 
 - [ ] **Step 2: 실패 확인**
 
