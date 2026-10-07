@@ -145,7 +145,7 @@ GitHub Actions ─────────────────────�
 | deleted_at | timestamptz, nullable | 탈퇴·삭제 |
 | created_at, updated_at | timestamptz | |
 
-제약: `is_minor = true`이면 `guardian_id`와 `guardian_consented_at` 필수. `is_minor = false`이고 `auth_user_id`가 있으면 `consented_at` 필수(선발급자는 가입 전이라 NULL). `deleted_at`이 있으면 `auth_user_id`는 반드시 NULL(익명화 강제. 안 그러면 그 계정은 재가입이 영구히 막힌다). `guardian_id`는 본인일 수 없다. `phone`의 고유 제약은 `deleted_at is null`인 행에만 적용(부분 유니크 인덱스). 전화번호 정규화는 숫자만 남기고 `+82 10…`, `+82 010…`, `0082…` 국제 표기를 `010…`으로 바꾼다.
+제약: `is_minor = true`이면 `guardian_id`와 `guardian_consented_at` 필수. `is_minor = false`이고 `auth_user_id`가 있으면 `consented_at` 필수(선발급자는 가입 전이라 NULL). `deleted_at`이 있으면 `auth_user_id`는 반드시 NULL(익명화 강제. 안 그러면 그 계정은 재가입이 영구히 막힌다). `guardian_id`는 본인일 수 없다. `phone`의 고유 제약은 `deleted_at is null`인 행에만 적용(부분 유니크 인덱스). 전화번호 정규화는 숫자만 남기고 `+82 10…`, `+82 010…`, `0082…` 국제 표기를 `010…`으로 바꾼다. 이름은 저장 시 앞뒤 공백 제거 + NFC 정규화(iOS 는 한글을 NFD 로 보낼 수 있음)하고, 선발급 연결 비교는 공백을 모두 뺀 NFC 키로 한다(표시용 이름은 그대로). `consent_version`은 `YYYY-MM-DD` 형식만 받는다.
 
 **meals** — 식사
 | 열 | 타입 | 비고 |

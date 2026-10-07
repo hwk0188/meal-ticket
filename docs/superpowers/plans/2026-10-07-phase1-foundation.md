@@ -603,7 +603,7 @@ git commit -m "test: pgTAP 테스트 헬퍼(사용자 생성·인증) 추가"
 
 ```sql
 begin;
-select plan(21);
+select plan(24);
 
 select has_table('public', 'families', 'families 테이블이 있다');
 select has_table('public', 'people', 'people 테이블이 있다');
@@ -627,6 +627,12 @@ select is(
 select is(public.normalize_phone('+82 10-9876-5432'), '01098765432', '+82 국제 표기는 010 으로 바꾼다');
 select is(public.normalize_phone('0082-010-9876-5432'), '01098765432', '0082 + 0 표기도 010 으로');
 select is(public.normalize_phone(''), null, '빈 문자열은 null');
+
+-- 이름 정규화: 비교 키는 공백을 지우고 NFC 로 맞춘다 (iOS 가 보내는 NFD 자모 분해 대응)
+select is(public.normalize_name(' 김 철수 '), '김철수', 'normalize_name 은 공백을 제거한다');
+select is(public.normalize_name(normalize('김철수', NFD)), '김철수', 'normalize_name 은 NFC 로 맞춘다');
+insert into public.people (name, phone) values (normalize('홍길동', NFD), '01077770001');
+select is((select name from public.people where phone = '01077770001'), '홍길동', '트리거가 이름을 NFC 로 저장한다');
 
 -- 잘못된 번호 거부 (check 위반 23514)
 select throws_ok(
@@ -661,12 +667,12 @@ select is((select relrowsecurity from pg_class where oid='public.families'::regc
 
 -- auto_expose_new_tables=true 는 새 함수에도 anon=X 를 자동으로 붙인다. grant 에서 anon 을 빼는 것만으론
 -- 지워지지 않으므로 revoke 가 필요하다. 1단계에는 anon RPC 가 하나도 없다.
+-- 함수 이름을 열거하지 않으므로, 함수가 새로 늘어나도 revoke 를 잊으면 여기서 잡힌다.
 select is(
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public'
-      and p.proname in ('current_person_id','current_family_id','is_admin','normalize_phone','people_before_write')
-      and has_function_privilege('anon', p.oid, 'EXECUTE')),
-  0::bigint, 'anon은 public 헬퍼 함수를 실행할 수 없다');
+  (select coalesce(array_agg(p.proname order by p.proname), '{}')
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'EXECUTE')),
+  '{}'::name[], 'public 스키마의 어떤 함수도 anon 에게 열려 있지 않다');
 
 -- 계정 연결된 어른은 동의 필수
 select tests.create_user('noconsent@test.local') as u \gset
@@ -721,11 +727,22 @@ as $$
   from (select nullif(regexp_replace(coalesce(p, ''), '\D', '', 'g'), '')) as t(d)
 $$;
 
+-- 휴대폰 형식 검사 (제약과 함수가 같은 규칙을 쓴다)
+create or replace function public.is_valid_mobile(p text)
+returns boolean language sql immutable
+as $$ select p ~ '^01[0-9]{8,9}$' $$;
+
+-- 이름 비교 키: 공백 제거 + NFC 정규화. iOS/macOS 는 한글을 NFD(자모 분해)로 보낼 수 있어
+-- NFC 로 저장된 선발급 행과 문자열 비교가 어긋난다. 비교 전용이며 표시용 이름은 그대로 둔다.
+create or replace function public.normalize_name(p text)
+returns text language sql immutable
+as $$ select nullif(normalize(regexp_replace(coalesce(p, ''), '\s', '', 'g'), NFC), '') $$;
+
 create table public.people (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id),
   name text not null check (char_length(name) between 1 and 20),
-  phone text check (phone ~ '^01[0-9]{8,9}$'),
+  phone text check (phone is null or public.is_valid_mobile(phone)),
   auth_user_id uuid unique references auth.users(id) on delete set null,
   role text not null default 'member' check (role in ('member', 'admin')),
   is_minor boolean not null default false,
@@ -770,6 +787,8 @@ begin
   if tg_op = 'INSERT' and new.family_id is null then
     insert into public.families default values returning id into new.family_id;
   end if;
+  -- 이름은 NFC 로 맞춰 저장한다 (비교는 public.normalize_name 이 공백까지 무시한다)
+  new.name := normalize(btrim(new.name), NFC);
   new.phone := public.normalize_phone(new.phone);
   if tg_op = 'UPDATE' then
     new.updated_at := now();
@@ -829,8 +848,10 @@ $$;
 revoke execute on function public.current_person_id(), public.current_family_id(), public.is_admin() from public, anon;
 grant execute on function public.current_person_id(), public.current_family_id(), public.is_admin() to authenticated, service_role;
 -- normalize_phone 과 트리거 함수는 PostgREST RPC 로 노출할 이유가 없다
-revoke execute on function public.normalize_phone(text), public.people_before_write() from public, anon, authenticated;
-grant execute on function public.normalize_phone(text) to authenticated, service_role;
+revoke execute on function public.normalize_phone(text), public.is_valid_mobile(text),
+  public.normalize_name(text), public.people_before_write() from public, anon, authenticated;
+grant execute on function public.normalize_phone(text), public.is_valid_mobile(text),
+  public.normalize_name(text) to authenticated, service_role;
 
 -- =========================================================
 -- 기본 차단: RLS 켜고 API 역할 권한 회수. 정책과 세부 권한은 다음 마이그레이션(RLS)에서 부여한다.
@@ -847,7 +868,7 @@ revoke all on public.people from anon, authenticated;
 npm run db:reset
 npm run db:test
 ```
-Expected: `020_people_schema.sql .. ok`, 전체 `All tests successful.` (5 + 21 단언)
+Expected: `020_people_schema.sql .. ok`, 전체 `All tests successful.` (5 + 24 단언)
 
 - [x] **Step 5: 커밋**
 
@@ -931,7 +952,8 @@ select is((select name from public.people where auth_user_id = (select auth.uid(
 select tests.clear_auth();
 select is(
   (select count(*) from public.families f
-    where not exists (select 1 from public.people p where p.family_id = f.id)),
+    where f.created_at = now()
+      and not exists (select 1 from public.people p where p.family_id = f.id)),
   0::bigint, '구성원 없는 가족 행이 남지 않는다 (거부된 insert 의 트리거 흔적 없음)');
 
 -- 관리자로서
@@ -1036,7 +1058,7 @@ create policy people_update_admin on public.people
 npm run db:reset
 npm run db:test
 ```
-Expected: `030_people_rls.sql .. ok`, 전체 성공 (5 + 21 + 19 = 45 단언).
+Expected: `030_people_rls.sql .. ok`, 전체 성공 (5 + 24 + 19 = 48 단언).
 
 참고: `people_update_self`의 `and deleted_at is null`은 `people_deleted_is_anonymized` 제약 때문에 논리적으로 도달 불가한 방어 조항이다(탈퇴 행은 항상 `auth_user_id`가 NULL). 변이 테스트에서 살아남는 '동치 변이'이므로 테스트로 잡으려 하지 않는다.
 
@@ -1061,7 +1083,7 @@ git commit -m "feat(db): people·families RLS 정책 및 열 단위 권한"
 
 ```sql
 begin;
-select plan(21);
+select plan(29);
 
 -- 권한 구조 고정: 새 함수에 anon 이 자동으로 붙지 않았는지 확인한다 (auto_expose_new_tables=true 대응)
 select is(has_function_privilege('anon', 'public.claim_person(text,text,text)', 'EXECUTE'), false, 'anon은 claim_person 을 실행할 수 없다');
@@ -1070,6 +1092,8 @@ select tests.create_user('new@test.local') as new_uid \gset
 select tests.create_user('pre@test.local') as pre_uid \gset
 select tests.create_user('dup@test.local') as dup_uid \gset
 select tests.create_user() as anon_uid \gset
+select tests.create_user('space@test.local') as space_uid \gset
+select tests.create_user('nfd@test.local') as nfd_uid \gset
 
 -- 선발급자(관리자가 미리 만든 사람)
 insert into public.people (name, phone) values ('이순자', '01022220001');
@@ -1109,6 +1133,8 @@ select is(
 );
 select is((select count(*) from public.people), :'people_before'::bigint, '선발급 연결은 사람 수를 늘리지 않는다');
 select is((select count(*) from public.families), :'families_before'::bigint, '선발급 연결은 가족 수를 늘리지 않는다');
+select isnt((select consented_at from public.people where phone = '01022220001'), null, '선발급 연결에도 동의 시각이 기록된다');
+select is((select consent_version from public.people where phone = '01022220001'), '2026-10-07', '선발급 연결에도 동의 버전이 기록된다');
 
 -- 같은 사용자가 순차로 다시 호출하면 잠금 전 검사가 먼저 걸린다.
 -- 멱등 분기(auth_user_id = v_uid → 그 행을 그대로 돌려준다)는 동시 요청에서만 닿으므로 pgTAP 로는 재현하지 않는다.
@@ -1158,15 +1184,53 @@ select throws_ok(
   $$ select public.claim_person('김철수', '01022220008', '') $$,
   'P0001', 'consent_required', '동의 버전이 없으면 거부한다'
 );
+select throws_ok(
+  $$ select public.claim_person('김철수', '01022220008', '   ') $$,
+  'P0001', 'consent_required', '공백뿐인 동의 버전도 거부한다'
+);
+select throws_ok(
+  $$ select public.claim_person('김철수', '01022220008', 'v1') $$,
+  'P0001', 'consent_required', '날짜(YYYY-MM-DD) 형식이 아닌 동의 버전은 거부한다'
+);
 select tests.clear_auth();
 
--- 5) 익명 계정 → anonymous_cannot_claim
+-- 5) 이름 비교는 공백과 유니코드 합성 방식을 무시한다 (표시용 이름은 선발급 행 그대로 둔다)
+insert into public.people (name, phone) values ('김 철수', '01022220011');
+insert into public.people (name, phone) values ('박순희', '01022220012');
+select tests.authenticate_as(:'space_uid');
+select is(
+  (select (public.claim_person('김철수', '01022220011', '2026-10-07')).name), '김 철수',
+  '공백만 다른 이름으로 연결되고, 선발급 행의 표시용 이름은 그대로 남는다'
+);
+select tests.clear_auth();
+-- iOS/macOS 가 보내는 NFD(자모 분해) 입력이 NFC 로 저장된 선발급 행과 맞아야 한다
+select tests.authenticate_as(:'nfd_uid');
+select lives_ok(
+  $$ select public.claim_person(normalize('박순희', NFD), '01022220012', '2026-10-07') $$,
+  'NFD 로 분해된 이름도 NFC 선발급 행에 연결된다'
+);
+select throws_ok(
+  $$ select public.claim_person('김철수', '01022220013', '   ') $$,
+  'P0001', 'already_registered', '가입을 마친 계정은 형식 검사보다 already_registered 가 먼저 나온다'
+);
+select tests.clear_auth();
+
+-- 6) 익명 계정 → anonymous_cannot_claim
 select tests.authenticate_as(:'anon_uid');
 select throws_ok(
   $$ select public.claim_person('아이', '01022220009', '2026-10-07') $$,
   'P0001', 'anonymous_cannot_claim', '익명 계정은 어른 가입을 할 수 없다'
 );
 select tests.clear_auth();
+
+-- 7) JWT 없이 authenticated 역할로 직접 호출. PostgREST 로는 42501 에서 먼저 막히지만 함수 가드도 고정한다.
+select tests.clear_auth();
+set local role authenticated;
+select throws_ok(
+  $$ select public.claim_person('김철수', '01022220010', '2026-10-07') $$,
+  'P0001', 'not_authenticated', 'JWT 가 없으면 not_authenticated'
+);
+reset role;
 
 select * from finish();
 rollback;
@@ -1182,9 +1246,23 @@ Expected: `040_claim_person.sql` FAIL — `function public.claim_person(...) doe
 - [x] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261007000003_claim_person.sql`**
 
 ```sql
+-- =========================================================
+-- RPC 규약 (모든 SECURITY DEFINER 함수 공통)
+--   오류: raise exception '<snake_case 코드>' — 메시지는 코드 문자열만. 값 보간(%) 금지.
+--         PostgREST 가 {"code":"P0001","message":"<코드>"} + HTTP 400 으로 내보내고 프론트가 문구로 바꾼다.
+--         DB 원시 오류(23503·23505 등)가 그대로 새어 나가면 규약 위반 — 알려진 실패는 전부 코드로 번역한다.
+--   멱등: 같은 호출자의 재시도는 성공으로 본다. 가능하면 기존 행을 그대로 반환하고,
+--         반환할 수 없을 때만 already_registered 로 알린다 (프론트는 성공으로 처리).
+--   보안: security definer + set search_path = public, pg_temp. 모든 객체는 스키마 한정.
+--         revoke execute … from public, anon (auto_expose_new_tables=true 대응) 후 필요한 역할에만 grant.
+--   반환: returns public.<table> 은 그 테이블의 모든 열을 호출자에게 노출한다 (RLS·열 권한 적용 안 됨).
+--         민감한 열을 추가할 때는 반환형을 좁힌다.
+-- =========================================================
 -- 어른 가입: 카카오(또는 이메일) 로그인 직후 이름·번호·동의를 받아 사람 행을 만들거나 선발급 행에 연결한다.
--- 오류는 message에 코드 문자열을 담는다. 프론트가 사용자 문구로 바꾼다.
--- 무차별 대입 완화(실패 횟수 제한)는 후속 단계 과제. 1단계는 이름+번호 일치로만 방어한다.
+-- claim_person 코드: not_authenticated | anonymous_cannot_claim | invalid_phone | invalid_name
+--                    consent_required | already_registered | phone_taken
+-- TODO(후속 단계): 무차별 대입 완화 — phone_taken 경로에서 claim_attempts(auth_user_id, attempted_at) 에 기록하고
+--                 최근 N회 초과 시 거부. 1단계는 이름+번호 일치로만 방어한다.
 create or replace function public.claim_person(
   p_name text,
   p_phone text,
@@ -1198,28 +1276,41 @@ as $$
 declare
   v_uid uuid := auth.uid();
   v_phone text := public.normalize_phone(p_phone);
-  v_name text := btrim(coalesce(p_name, ''));
+  -- 표시용 이름은 공백을 살리고 NFC 로만 맞춘다. 비교는 공백까지 무시하는 v_name_key 로 한다.
+  v_name text := normalize(btrim(coalesce(p_name, '')), NFC);
+  v_name_key text := public.normalize_name(p_name);
+  v_consent text := btrim(coalesce(p_consent_version, ''));
+  v_is_anonymous boolean;
   v_person public.people;
 begin
   if v_uid is null then
     raise exception 'not_authenticated';
   end if;
-  if coalesce((select is_anonymous from auth.users where id = v_uid), false) then
+
+  select is_anonymous into v_is_anonymous from auth.users where id = v_uid;
+  if not found then
+    -- 토큰은 유효하지만 계정이 지워졌다. FK 원시 오류(23503) 대신 약속된 코드로 바꾼다.
+    raise exception 'not_authenticated';
+  end if;
+  if v_is_anonymous then
     raise exception 'anonymous_cannot_claim';
   end if;
-  if v_phone is null or v_phone !~ '^01[0-9]{8,9}$' then
-    raise exception 'invalid_phone';
-  end if;
-  if char_length(v_name) not between 1 and 20 then
-    raise exception 'invalid_name';
-  end if;
-  if p_consent_version is null or p_consent_version = '' then
-    raise exception 'consent_required';
-  end if;
 
-  -- 이 검사는 행 잠금 전에 돌기 때문에 순차 재시도만 잡는다. 동시 요청은 아래 두 곳에서 걸러진다.
+  -- 형식 검사보다 먼저 본다. 이미 가입한 사람이 번호를 잘못 적었을 때 invalid_phone 대신
+  -- 더 도움이 되는 already_registered 를 받게 한다. 행 잠금 전이라 순차 재시도만 잡는다 (동시 요청은 아래 두 곳).
   if exists (select 1 from public.people where auth_user_id = v_uid and deleted_at is null) then
     raise exception 'already_registered';
+  end if;
+
+  if v_phone is null or not public.is_valid_mobile(v_phone) then
+    raise exception 'invalid_phone';
+  end if;
+  if v_name_key is null or char_length(v_name) not between 1 and 20 then
+    raise exception 'invalid_name';
+  end if;
+  -- 동의 버전은 공개된 날짜(YYYY-MM-DD)만 받는다. 아무 문자열이나 법적 동의 기록으로 남지 않게 한다.
+  if v_consent !~ '^\d{4}-\d{2}-\d{2}$' then
+    raise exception 'consent_required';
   end if;
 
   -- 같은 번호의 사람이 있으면 (선발급) 연결. 이미 다른 계정이거나 이름이 다르면 거부.
@@ -1235,14 +1326,15 @@ begin
     if v_person.auth_user_id = v_uid then
       return v_person;
     end if;
-    if v_person.auth_user_id is not null or v_person.is_minor or btrim(v_person.name) <> v_name then
+    if v_person.auth_user_id is not null or v_person.is_minor
+       or public.normalize_name(v_person.name) <> v_name_key then
       raise exception 'phone_taken';
     end if;
     -- auth_user_id 와 consented_at 은 같은 문장에서 넣어야 people_adult_requires_consent 를 통과한다
     update public.people
        set auth_user_id = v_uid,
            consented_at = now(),
-           consent_version = p_consent_version
+           consent_version = v_consent
      where id = v_person.id
      returning * into v_person;
   else
@@ -1250,7 +1342,7 @@ begin
     -- 중재하므로, 그 충돌을 원시 23505 대신 약속된 코드 문자열로 바꿔 준다.
     begin
       insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
-      values (v_name, v_phone, v_uid, now(), p_consent_version)
+      values (v_name, v_phone, v_uid, now(), v_consent)
       returning * into v_person;
     exception when unique_violation then
       -- people_auth_user_id_key 충돌: 같은 사용자가 동시에 두 번 보냈다 → 먼저 만들어진 자기 행을 돌려준다.
@@ -1269,6 +1361,8 @@ begin
 end
 $$;
 
+comment on function public.claim_person(text, text, text) is '어른 가입: 선발급 행 연결 또는 새 사람 생성. 오류 코드는 파일 헤더 참고.';
+
 -- auto_expose_new_tables=true 는 ALTER DEFAULT PRIVILEGES 로 새 함수에 anon=X 를 자동으로 붙인다.
 -- 그래서 grant 목록에서 anon 을 빼는 것만으로는 부족하고, anon 에서 명시적으로 revoke 해야 한다.
 revoke execute on function public.claim_person(text, text, text) from public, anon;
@@ -1281,7 +1375,7 @@ grant execute on function public.claim_person(text, text, text) to authenticated
 npm run db:reset
 npm run db:test
 ```
-Expected: 4개 파일 모두 `ok`, `All tests successful.` (5 + 21 + 19 + 21 = 66 단언)
+Expected: 4개 파일 모두 `ok`, `All tests successful.` (5 + 24 + 19 + 29 = 77 단언)
 
 - [x] **Step 5: DB 타입 생성**
 
