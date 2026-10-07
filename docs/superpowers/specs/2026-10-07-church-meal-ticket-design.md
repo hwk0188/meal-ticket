@@ -145,7 +145,7 @@ GitHub Actions ─────────────────────�
 | deleted_at | timestamptz, nullable | 탈퇴·삭제 |
 | created_at, updated_at | timestamptz | |
 
-제약: `is_minor = true`이면 `guardian_id`와 `guardian_consented_at` 필수. `is_minor = false`이고 `auth_user_id`가 있으면 `consented_at` 필수(선발급자는 가입 전이라 NULL). `phone`의 고유 제약은 `deleted_at is null`인 행에만 적용(부분 유니크 인덱스).
+제약: `is_minor = true`이면 `guardian_id`와 `guardian_consented_at` 필수. `is_minor = false`이고 `auth_user_id`가 있으면 `consented_at` 필수(선발급자는 가입 전이라 NULL). `deleted_at`이 있으면 `auth_user_id`는 반드시 NULL(익명화 강제. 안 그러면 그 계정은 재가입이 영구히 막힌다). `guardian_id`는 본인일 수 없다. `phone`의 고유 제약은 `deleted_at is null`인 행에만 적용(부분 유니크 인덱스). 전화번호 정규화는 숫자만 남기고 `+82 10…`, `+82 010…`, `0082…` 국제 표기를 `010…`으로 바꾼다.
 
 **meals** — 식사
 | 열 | 타입 | 비고 |
@@ -246,6 +246,7 @@ issuances·usages·pairing_codes에는 insert/update 정책을 두지 않는다(
 
 - 매시간: `pairing_codes`에서 만료·사용된 코드 삭제.
 - 매일: 생성 24시간이 지났고 `people`에 연결되지 않은 **익명** `auth.users` 삭제.
+- 매일: 구성원이 없는 `families` 행 삭제(가족 이동이나 실패한 삽입이 남긴 빈 가족 정리).
 
 ## 8. 화면 설계
 

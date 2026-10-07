@@ -603,7 +603,7 @@ git commit -m "test: pgTAP 테스트 헬퍼(사용자 생성·인증) 추가"
 
 ```sql
 begin;
-select plan(11);
+select plan(19);
 
 select has_table('public', 'families', 'families 테이블이 있다');
 select has_table('public', 'people', 'people 테이블이 있다');
@@ -625,6 +625,7 @@ select is(
   '전화번호는 숫자만 남겨 저장한다'
 );
 select is(public.normalize_phone('+82 10-9876-5432'), '01098765432', '+82 국제 표기는 010 으로 바꾼다');
+select is(public.normalize_phone('0082-010-9876-5432'), '01098765432', '0082 + 0 표기도 010 으로');
 select is(public.normalize_phone(''), null, '빈 문자열은 null');
 
 -- 잘못된 번호 거부 (check 위반 23514)
@@ -650,9 +651,32 @@ select throws_ok(
   '23514', null, '보호자 없는 미성년자는 거부한다'
 );
 
+-- 기본 차단: auto_expose_new_tables=true 라서 새 테이블은 anon 전체 권한으로 태어난다. revoke 를 잊으면 여기서 잡힌다.
+select table_privs_are('public','people','anon', '{}'::text[], 'anon은 people에 아무 권한이 없다');
+select table_privs_are('public','people','authenticated','{}'::text[], 'authenticated는 people에 아무 권한이 없다');
+select table_privs_are('public','families','anon','{}'::text[], 'anon은 families에 아무 권한이 없다');
+select is((select relrowsecurity from pg_class where oid='public.people'::regclass), true, 'people에 RLS가 켜져 있다');
+select is((select relrowsecurity from pg_class where oid='public.families'::regclass), true, 'families에 RLS가 켜져 있다');
+
+-- 계정 연결된 어른은 동의 필수
+select tests.create_user('noconsent@test.local') as u \gset
+select throws_ok(
+  format($$ insert into public.people (name, auth_user_id) values ('동의없는어른', %L) $$, :'u'),
+  '23514', null, '계정이 연결된 어른은 동의 없이 만들 수 없다');
+
+-- 트리거 UPDATE 경로: 번호 재정규화(+82 010 형태 포함), updated_at 은 트리거가 덮어쓴다
+insert into public.people (name, phone) values ('수정대상','010-1111-2222');
+update public.people set phone = '+82 010-3333-4444', updated_at = '2000-01-01' where name='수정대상';
+select results_eq(
+  $$ select phone, updated_at > '2020-01-01'::timestamptz from public.people where name='수정대상' $$,
+  $$ values ('01033334444'::text, true) $$,
+  'update 시 번호를 다시 정규화하고 updated_at 을 트리거가 덮어쓴다');
+
 select * from finish();
 rollback;
 ```
+
+`updated_at`은 `now()`(트랜잭션 시각)라서 한 트랜잭션 안에서는 "값이 커졌는지"를 검사할 수 없다. 대신 "수동으로 넣은 값을 트리거가 덮어쓰는지"를 검사한다.
 
 - [ ] **Step 2: 실패 확인**
 
@@ -680,7 +704,8 @@ immutable
 as $$
   select case
     when d is null then null
-    when d ~ '^82(1[0-9]{8,9})$' then '0' || substring(d from 3)
+    -- 국제 표기: 국제접속부호(00) · 국가번호 82 · 선택적 0 을 떼고 국내 표기(0 접두)로 바꾼다
+    when d ~ '^(00)?820?(1[0-9]{8,9})$' then '0' || regexp_replace(d, '^(00)?820?', '')
     else d
   end
   from (select nullif(regexp_replace(coalesce(p, ''), '\D', '', 'g'), '')) as t(d)
@@ -704,9 +729,16 @@ create table public.people (
   -- 미성년자는 보호자와 보호자 동의가 반드시 있어야 한다
   constraint people_minor_requires_guardian
     check (is_minor = false or (guardian_id is not null and guardian_consented_at is not null)),
+  -- 탈퇴·삭제된 사람은 계정 연결을 반드시 끊는다 (익명화). 끊지 않으면 그 계정은
+  -- current_person_id() 가 null 이어서 가입 화면으로 가는데, auth_user_id unique 때문에 재가입도 영구히 막힌다.
+  constraint people_deleted_is_anonymized
+    check (deleted_at is null or auth_user_id is null),
   -- 계정이 연결된 어른은 본인 동의가 있어야 한다 (선발급자는 계정이 없으므로 예외)
   constraint people_adult_requires_consent
-    check (is_minor = true or auth_user_id is null or deleted_at is not null or consented_at is not null)
+    check (is_minor or auth_user_id is null or consented_at is not null),
+  -- 보호자는 본인일 수 없다 (보호자가 미성년자가 아니어야 한다는 규칙은 함수에서 검사)
+  constraint people_guardian_not_self
+    check (guardian_id is null or guardian_id <> id)
 );
 
 create unique index people_phone_unique
@@ -718,11 +750,13 @@ create index people_guardian_idx on public.people (guardian_id);
 
 -- insert: 가족이 없으면 1인 가족 생성 / insert·update: 번호 정규화, updated_at 갱신
 -- security definer: 관리자가 authenticated 역할로 사람을 insert할 때도 families에 쓸 수 있어야 한다
+-- 주의: public.people 에는 ON CONFLICT DO NOTHING 을 쓰지 않는다.
+-- BEFORE 트리거가 충돌 판정보다 먼저 돌아서, 행이 버려져도 families 행은 남는다.
 create or replace function public.people_before_write()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 begin
   if tg_op = 'INSERT' and new.family_id is null then
@@ -748,7 +782,7 @@ returns uuid
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select id from public.people
    where auth_user_id = auth.uid() and deleted_at is null
@@ -760,7 +794,7 @@ returns uuid
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select family_id from public.people
    where auth_user_id = auth.uid() and deleted_at is null
@@ -772,7 +806,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select exists (
     select 1 from public.people
@@ -781,7 +815,10 @@ as $$
 $$;
 
 revoke execute on function public.current_person_id(), public.current_family_id(), public.is_admin() from public;
-grant execute on function public.current_person_id(), public.current_family_id(), public.is_admin() to authenticated, anon;
+grant execute on function public.current_person_id(), public.current_family_id(), public.is_admin() to authenticated, anon, service_role;
+-- normalize_phone 과 트리거 함수는 PostgREST RPC 로 노출할 이유가 없다
+revoke execute on function public.normalize_phone(text), public.people_before_write() from public, anon, authenticated;
+grant execute on function public.normalize_phone(text) to authenticated, anon, service_role;
 
 -- =========================================================
 -- 기본 차단: RLS 켜고 API 역할 권한 회수. 정책과 세부 권한은 다음 마이그레이션(RLS)에서 부여한다.
@@ -799,7 +836,7 @@ revoke all on public.people from anon, authenticated;
 npm run db:reset
 npm run db:test
 ```
-Expected: `020_people_schema.sql .. ok`, 전체 `All tests successful.` (5 + 11 단언)
+Expected: `020_people_schema.sql .. ok`, 전체 `All tests successful.` (5 + 19 단언)
 
 - [ ] **Step 5: 커밋**
 
@@ -894,31 +931,33 @@ grant update (name, phone) on public.people to authenticated;
 grant insert (name, phone) on public.people to authenticated;
 
 -- families
+-- 정책 안의 함수 호출은 (select …) 로 감싼다. 감싸지 않으면 행마다 함수를 다시 실행해
+-- 2만 행 기준 253ms vs 1.7ms 차이가 난다 (InitPlan 으로 한 번만 평가됨). 이후 모든 테이블에 같은 규칙.
 create policy families_select_own_or_admin on public.families
   for select to authenticated
-  using (id = public.current_family_id() or public.is_admin());
+  using (id = (select public.current_family_id()) or (select public.is_admin()));
 
 -- people
 create policy people_select_family_or_admin on public.people
   for select to authenticated
   using (
-    (family_id = public.current_family_id() and deleted_at is null)
-    or public.is_admin()
+    (family_id = (select public.current_family_id()) and deleted_at is null)
+    or (select public.is_admin())
   );
 
 create policy people_update_self on public.people
   for update to authenticated
-  using (auth_user_id = auth.uid() and deleted_at is null)
-  with check (auth_user_id = auth.uid());
+  using (auth_user_id = (select auth.uid()) and deleted_at is null)
+  with check (auth_user_id = (select auth.uid()));
 
 create policy people_insert_admin on public.people
   for insert to authenticated
-  with check (public.is_admin());
+  with check ((select public.is_admin()));
 
 create policy people_update_admin on public.people
   for update to authenticated
-  using (public.is_admin())
-  with check (public.is_admin());
+  using ((select public.is_admin()))
+  with check ((select public.is_admin()));
 ```
 
 관리자도 직접 고칠 수 있는 열은 이름·전화뿐이다. 역할·가족·보호자·계정 연결 같은 열은 뒤 단계의 관리자 전용 함수(`merge_people`, `link_person`, `admin_reset_person` 등)로만 바꾼다. 설계 문서 7.4의 "관리자 update 전부"는 이 함수들을 포함한 의미다.
@@ -1036,7 +1075,7 @@ create or replace function public.claim_person(
 returns public.people
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_uid uuid := auth.uid();
@@ -1175,9 +1214,10 @@ describe('phone', () => {
     expect(normalizePhone(' 010 1234 5678 ')).toBe('01012345678')
   })
 
-  it('+82 국제 표기는 010 으로 바꾼다 (DB normalize_phone 과 동일 규칙)', () => {
+  it('국제 표기는 010 으로 바꾼다 (DB normalize_phone 과 동일 규칙)', () => {
     expect(normalizePhone('+82 10-9876-5432')).toBe('01098765432')
-    expect(normalizePhone('+82-10-123-4567')).toBe('0101234567')
+    expect(normalizePhone('+82 010-9876-5432')).toBe('01098765432')
+    expect(normalizePhone('0082-10-123-4567')).toBe('0101234567')
   })
 
   it('휴대폰 번호 형식을 검사한다', () => {
@@ -1285,10 +1325,10 @@ export const supabase = createClient<Database>(env.supabaseUrl, env.supabasePubl
 ```ts
 const MOBILE = /^01[0-9]{8,9}$/
 
-/** 숫자만 남기고, +82 국제 표기는 010 으로 바꾼다. DB 의 normalize_phone() 과 같은 규칙. */
+/** 숫자만 남기고, 국제 표기(+82 10…, +82 010…, 0082…)는 010 으로 바꾼다. DB 의 normalize_phone() 과 같은 규칙. */
 export function normalizePhone(input: string): string {
   const digits = input.replace(/\D/g, '')
-  const intl = /^82(1[0-9]{8,9})$/.exec(digits)
+  const intl = /^(?:00)?820?(1[0-9]{8,9})$/.exec(digits)
   return intl ? `0${intl[1]}` : digits
 }
 
