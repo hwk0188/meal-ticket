@@ -80,16 +80,17 @@ jobs:
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_ENABLE_DEV_LOGIN: 'false'
           VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}
-      # base_path 가 비거나 출력 이름이 바뀌면 vite 가 조용히 base '/' 로 돌아가고, 프로젝트 사이트에서는 자산이 전부 404 난다.
-      # 빈 값은 '/' 로 지은 산출물과 구분되지 않으므로 먼저 비었는지부터 본다. 루트 사이트의 '/' 는 뒤 슬래시를 떼어 '"/assets/' 로 맞춘다.
+      # 출력 이름이 바뀌면 vite 가 조용히 base '/' 로 돌아가고, 프로젝트 사이트에서는 자산이 전부 404 난다.
       - name: 빌드에 base_path 가 반영됐는지 확인
         env:
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
           BASE_PATH: ${{ steps.pages.outputs.base_path }}
         run: |
           set -euo pipefail
-          [ -n "${BASE_PATH:-}" ] || { echo "configure-pages 가 base_path 를 내보내지 않았습니다"; exit 1; }
+          # configure-pages 는 루트 사이트에서 base_path 를 빈 문자열로 내보낸다. "출력 자체가 없음"은 base_url 로 판별한다.
+          [ -n "${BASE_URL:-}" ] || { echo "configure-pages 가 base_url 을 내보내지 않았습니다 (출력 이름 변경?)"; exit 1; }
           base="${BASE_PATH%/}"
-          grep -q "\"$base/assets/" dist/index.html || { echo "base_path($BASE_PATH) 가 빌드에 반영되지 않았습니다"; exit 1; }
+          grep -q "\"$base/assets/" dist/index.html || { echo "base_path('$BASE_PATH') 가 빌드에 반영되지 않았습니다"; exit 1; }
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
