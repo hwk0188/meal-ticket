@@ -1714,10 +1714,10 @@ git commit -m "feat: 환경변수 검증, Supabase 클라이언트, 전화번호
 - Modify: `src/App.tsx`, `src/App.test.tsx`
 - Test: `src/features/auth/AuthProvider.test.tsx`, `src/features/auth/Gate.test.tsx`
 
-- [ ] **Step 1: UI 기본 컴포넌트 — `src/components/ui.tsx`**
+- [x] **Step 1: UI 기본 컴포넌트 — `src/components/ui.tsx`**
 
 ```tsx
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
+import { useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react'
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'kakao' | 'ghost' }
 
@@ -1728,29 +1728,35 @@ export function Button({ variant = 'primary', className = '', ...rest }: ButtonP
     kakao: 'bg-[#FEE500] text-[#191919]',
     ghost: 'bg-white text-gray-900 border border-gray-300',
   }[variant]
-  return <button className={`${base} ${look} ${className}`} {...rest} />
+  // type 을 먼저 두어 기본값은 button 이 되고, 제출 버튼은 호출하는 쪽에서 덮어쓴다.
+  // (HTML 기본값 submit 이면 폼 안의 모든 버튼이 뜻하지 않게 폼을 제출한다.)
+  return <button type="button" className={`${base} ${look} ${className}`} {...rest} />
 }
 
 type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }
 
-export function TextField({ label, error, id, ...rest }: TextFieldProps) {
-  const inputId = id ?? rest.name
+export function TextField({ label, error, id, 'aria-describedby': describedBy, ...rest }: TextFieldProps) {
+  const autoId = useId()
+  const inputId = id ?? rest.name ?? autoId
+  const errorId = `${inputId}-error`
   return (
-    <label className="block" htmlFor={inputId}>
-      <span className="mb-1 block text-xs font-semibold text-gray-500">{label}</span>
+    <div className="block">
+      <label className="mb-1 block text-xs font-semibold text-gray-500" htmlFor={inputId}>
+        {label}
+      </label>
       <input
         id={inputId}
         className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base outline-none focus:border-blue-600"
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${inputId}-error` : undefined}
         {...rest}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={[describedBy, error ? errorId : undefined].filter(Boolean).join(' ') || undefined}
       />
       {error && (
-        <span id={`${inputId}-error`} role="alert" className="mt-1 block text-xs text-red-600">
+        <p id={errorId} role="alert" className="mt-1 text-xs text-red-600">
           {error}
-        </span>
+        </p>
       )}
-    </label>
+    </div>
   )
 }
 
@@ -1765,23 +1771,26 @@ export function Checkbox({ children, ...rest }: CheckboxProps) {
   )
 }
 
-export function Spinner({ label = '불러오는 중' }: { label?: string }) {
+export function Spinner({ label = '불러오는 중…' }: { label?: string }) {
   return (
     <div role="status" aria-live="polite" className="flex min-h-dvh items-center justify-center text-sm text-gray-500">
-      {label}…
+      {label}
     </div>
   )
 }
 ```
 
-- [ ] **Step 2: 실패하는 테스트 — `src/features/auth/AuthProvider.test.tsx`**
+- [x] **Step 2: 실패하는 테스트 — `src/features/auth/AuthProvider.test.tsx`**
 
 ```tsx
 import { act, render, screen, waitFor } from '@testing-library/react'
 import type { Session } from '@supabase/supabase-js'
 import { AuthProvider, useAuth } from './AuthProvider'
 
-type GetSession = () => Promise<{ data: { session: Session | null } }>
+type GetSession = () => Promise<{
+  data: { session: Session | null }
+  error?: { message: string } | null
+}>
 type OnAuthStateChange = (
   callback: (event: string, session: Session | null) => void,
 ) => { data: { subscription: { unsubscribe: () => void } } }
@@ -1804,6 +1813,11 @@ function Probe() {
 
 beforeEach(() => {
   onAuthStateChange.mockReturnValue({ data: { subscription: { unsubscribe } } })
+})
+
+// 주소를 만지는 테스트가 다음 테스트로 새지 않게 되돌린다.
+afterEach(() => {
+  window.history.replaceState(null, '', '/')
 })
 
 describe('AuthProvider', () => {
@@ -1832,6 +1846,17 @@ describe('AuthProvider', () => {
 
     act(() => notify('SIGNED_OUT', null))
     expect(screen.getByText('no-session')).toBeInTheDocument()
+  })
+
+  it('세션 확인이 오류를 함께 돌려주면 기록하고 비로그인으로 둔다', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // getSession 은 보통 reject 하지 않고 { data, error } 로 알려 준다. 조용히 넘기면 안 된다.
+    getSession.mockResolvedValue({ data: { session: null }, error: { message: 'storage unavailable' } })
+
+    render(<AuthProvider><Probe /></AuthProvider>)
+
+    await waitFor(() => expect(screen.getByText('no-session')).toBeInTheDocument())
+    expect(consoleError).toHaveBeenCalled()
   })
 
   it('세션 확인이 실패해도 멈추지 않고 비로그인으로 넘긴다', async () => {
@@ -1876,19 +1901,31 @@ describe('AuthProvider', () => {
     expect(unsubscribe).toHaveBeenCalled()
   })
 
-  it('OAuth 콜백 파라미터(?code=)를 주소에서 지운다 (해시 유지)', async () => {
+  it('OAuth 콜백 파라미터만 지우고 나머지 파라미터와 해시는 남긴다', async () => {
     getSession.mockResolvedValue({ data: { session: null } })
-    window.history.replaceState(null, '', '/?code=abc&state=xyz#/')
+    window.history.replaceState(null, '', '/?code=abc&state=xyz&utm_source=kakao#/')
+
     render(<AuthProvider><Probe /></AuthProvider>)
+
+    await waitFor(() => expect(screen.getByText('no-session')).toBeInTheDocument())
+    expect(window.location.search).toBe('?utm_source=kakao')
+    expect(window.location.hash).toBe('#/')
+  })
+
+  it('실패한 콜백의 오류 파라미터도 지운다', async () => {
+    getSession.mockResolvedValue({ data: { session: null } })
+    window.history.replaceState(null, '', '/?error=access_denied&error_description=denied#/')
+
+    render(<AuthProvider><Probe /></AuthProvider>)
+
     await waitFor(() => expect(screen.getByText('no-session')).toBeInTheDocument())
     expect(window.location.search).toBe('')
     expect(window.location.hash).toBe('#/')
-    window.history.replaceState(null, '', '/')
   })
 })
 ```
 
-- [ ] **Step 3: 실패하는 테스트 — `src/features/auth/Gate.test.tsx`**
+- [x] **Step 3: 실패하는 테스트 — `src/features/auth/Gate.test.tsx`**
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -1897,8 +1934,8 @@ import { Gate, RequireSession } from './Gate'
 
 // 훅을 통째로 가짜로 바꾸므로 실제 타입(Session, UseQueryResult) 전체를 만들 필요가 없다.
 // Gate 가 읽는 필드만 담은 느슨한 타입으로 둔다.
-type FakeAuth = { status: string; session?: { user: { id: string } } | null }
-type FakePerson = { status: string; data?: { id: string; name: string } | null }
+type FakeAuth = { status: 'loading' | 'ready'; session?: { user: { id: string } } | null }
+type FakePerson = { status: 'pending' | 'error' | 'success'; data?: { id: string; name: string } | null }
 
 const { useAuth, usePerson } = vi.hoisted(() => ({
   useAuth: vi.fn<() => FakeAuth>(),
@@ -1935,6 +1972,13 @@ describe('Gate', () => {
     expect(screen.getByText('start')).toBeInTheDocument()
   })
 
+  it('사람을 불러오는 중이면 스피너', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'pending', data: undefined })
+    renderAt('/')
+    expect(screen.getByRole('status')).toBeInTheDocument()
+  })
+
   it('세션은 있고 사람이 없으면 가입 화면으로 보낸다', () => {
     useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
     usePerson.mockReturnValue({ status: 'success', data: null })
@@ -1954,6 +1998,23 @@ describe('Gate', () => {
     usePerson.mockReturnValue({ status: 'error', data: undefined })
     renderAt('/')
     expect(screen.getByRole('status')).toHaveTextContent('연결에 문제가 있어요')
+  })
+
+  it('RequireSession: 세션 확인 중이면 스피너', () => {
+    useAuth.mockReturnValue({ status: 'loading' })
+    usePerson.mockReturnValue({ status: 'pending', data: undefined })
+    renderAt('/onboarding')
+    expect(screen.queryByText('onboarding')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeInTheDocument()
+  })
+
+  it('RequireSession: 사람을 불러오는 중이면 스피너', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'pending', data: undefined })
+    renderAt('/onboarding')
+    // 가입 여부를 모르는 채로 가입 화면을 깜빡이며 보여 주지 않는다.
+    expect(screen.queryByText('onboarding')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeInTheDocument()
   })
 
   it('RequireSession: 세션이 없으면 /로 보낸다', () => {
@@ -1981,14 +2042,14 @@ describe('Gate', () => {
 })
 ```
 
-- [ ] **Step 4: 실패 확인**
+- [x] **Step 4: 실패 확인**
 
 ```bash
 npm test
 ```
 Expected: 두 파일 FAIL — 모듈을 찾을 수 없음.
 
-- [ ] **Step 5: 구현 — `src/features/auth/AuthProvider.tsx`**
+- [x] **Step 5: 구현 — `src/features/auth/AuthProvider.tsx`**
 
 ```tsx
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
@@ -1999,16 +2060,20 @@ export type AuthState = { status: 'loading' } | { status: 'ready'; session: Sess
 
 const AuthContext = createContext<AuthState | null>(null)
 
+// 콜백에만 쓰이는 파라미터. 이것만 골라 지우고 utm_source 같은 나머지는 건드리지 않는다.
+const OAUTH_PARAMS = ['code', 'error', 'error_code', 'error_description', 'state'] as const
+
 /**
- * OAuth 콜백으로 붙은 ?code= / ?error= 를 주소에서 지운다 (해시 라우트는 유지).
+ * OAuth 콜백으로 붙은 파라미터를 주소에서 지운다 (해시 라우트와 다른 파라미터는 유지).
  * supabase-js 는 교환에 성공했을 때만 code 를 지우므로, 실패하거나 새로고침·공유된 콜백 URL 은
  * 매번 다시 실패한다. 세션 확인이 끝나면 성공·실패와 무관하게 지운다.
  */
 function stripOAuthParams() {
-  if (typeof window === 'undefined') return
   const params = new URLSearchParams(window.location.search)
-  if (!params.has('code') && !params.has('error')) return
-  window.history.replaceState(null, '', window.location.pathname + window.location.hash)
+  if (!OAUTH_PARAMS.some((key) => params.has(key))) return
+  for (const key of OAUTH_PARAMS) params.delete(key)
+  const query = params.toString()
+  window.history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : '') + window.location.hash)
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -2021,7 +2086,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     supabase.auth
       .getSession()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        // getSession 은 보통 reject 하지 않고 error 필드로 알려 준다. 조용히 넘기지 않는다.
+        if (error) console.error('세션 확인 실패', error)
         if (!active || settledByListener) return
         setState({ status: 'ready', session: data.session })
         stripOAuthParams()
@@ -2059,7 +2126,7 @@ export function useAuth(): AuthState {
 }
 ```
 
-- [ ] **Step 6: 구현 — `src/features/auth/usePerson.ts`**
+- [x] **Step 6: 구현 — `src/features/auth/usePerson.ts`**
 
 ```ts
 import { useQuery } from '@tanstack/react-query'
@@ -2076,21 +2143,24 @@ export function usePerson(userId: string | undefined) {
     queryKey: personQueryKey(userId),
     enabled: Boolean(userId),
     queryFn: async (): Promise<Person | null> => {
-      if (!userId) return null
+      // enabled 가 막아 주지만, 키 없이 호출되면 조용히 null 을 돌려주는 대신 드러낸다.
+      if (!userId) throw new Error('usePerson: userId 없이 조회할 수 없습니다')
       const { data, error } = await supabase
         .from('people')
         .select('*')
         .eq('auth_user_id', userId)
+        // 제약으로 이미 보장되지만(살아 있는 행만 auth_user_id 를 가진다) 이중 방어로 둔다.
         .is('deleted_at', null)
         .maybeSingle()
-      if (error) throw error
+      // PostgREST 오류는 Error 가 아닌 평범한 객체다. message/code 를 보존해 Error 로 감싼다.
+      if (error) throw Object.assign(new Error(error.message), { code: error.code, cause: error })
       return data
     },
   })
 }
 ```
 
-- [ ] **Step 7: 구현 — `src/features/auth/Gate.tsx`**
+- [x] **Step 7: 구현 — `src/features/auth/Gate.tsx`**
 
 ```tsx
 import type { ReactNode } from 'react'
@@ -2133,7 +2203,7 @@ export function RequireSession({ children }: { children: ReactNode }) {
 }
 ```
 
-- [ ] **Step 8: 페이지 스텁 4개**
+- [x] **Step 8: 페이지 스텁 4개**
 
 `src/pages/StartPage.tsx`:
 ```tsx
@@ -2165,18 +2235,22 @@ export function OnboardingPage() {
 }
 ```
 
-- [ ] **Step 9: `src/App.tsx`를 Provider + 라우터로 교체**
+- [x] **Step 9: `src/App.tsx`를 Provider + 라우터로 교체**
 
 ```tsx
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { HashRouter, Route, Routes } from 'react-router'
+import { HashRouter, Navigate, Route, Routes } from 'react-router'
 import { AuthProvider } from './features/auth/AuthProvider'
 import { Gate, RequireSession } from './features/auth/Gate'
 import { OnboardingPage } from './features/onboarding/OnboardingPage'
 import { PrivacyPage } from './pages/PrivacyPage'
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true, staleTime: 5_000 } },
+  defaultOptions: {
+    queries: { retry: 1, refetchOnWindowFocus: true, staleTime: 5_000 },
+    // 가입·발권 같은 쓰기는 자동 재시도하면 중복될 수 있다. 재시도는 사용자가 결정한다.
+    mutations: { retry: 0 },
+  },
 })
 
 export default function App() {
@@ -2188,7 +2262,8 @@ export default function App() {
             <Route path="/" element={<Gate />} />
             <Route path="/onboarding" element={<RequireSession><OnboardingPage /></RequireSession>} />
             <Route path="/privacy" element={<PrivacyPage />} />
-            <Route path="*" element={<Gate />} />
+            {/* 모르는 주소는 홈 주소로 정리한다 (Gate 를 그대로 띄우면 주소가 그대로 남는다). */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </HashRouter>
       </AuthProvider>
@@ -2197,7 +2272,7 @@ export default function App() {
 }
 ```
 
-- [ ] **Step 9-1: `src/main.tsx` — 환경변수 오류 시 흰 화면 대신 안내 문구**
+- [x] **Step 9-1: `src/main.tsx` — 환경변수 오류 시 흰 화면 대신 안내 문구**
 
 `src/lib/env.ts`는 모듈 평가 시점에 throw 하므로, 빌드에 환경변수가 빠지면 콘솔에만 오류가 남고 화면은 비어 있다. 진입점에서 잡아 보여 준다.
 
@@ -2223,13 +2298,21 @@ import('./App')
     root.render(
       <main style={{ padding: 24, fontFamily: 'system-ui' }}>
         <h1 style={{ fontSize: 18 }}>앱을 시작할 수 없어요</h1>
-        <p style={{ color: '#555' }}>설정이 올바르지 않습니다. 관리자에게 알려 주세요.</p>
+        <p style={{ color: '#555' }}>잠시 후 새로고침해 주세요. 계속되면 관리자에게 알려 주세요.</p>
+        <button
+          type="button"
+          onClick={() => {
+            window.location.reload()
+          }}
+        >
+          새로고침
+        </button>
       </main>,
     )
   })
 ```
 
-- [ ] **Step 10: `src/App.test.tsx`를 라우팅 스모크로 교체**
+- [x] **Step 10: `src/App.test.tsx`를 라우팅 스모크로 교체**
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -2256,6 +2339,14 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: '시작' })).toBeInTheDocument()
   })
 
+  // 오래된 링크나 오타로 들어와도 빈 화면을 보여 주지 않고 홈 주소로 정리한다.
+  it('모르는 주소는 홈으로 되돌린다', async () => {
+    window.location.hash = '#/nope'
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: '시작' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('#/')
+  })
+
   // 개인정보 처리방침은 동의 화면과 카카오 심사에서 링크로 열리므로 로그인 없이 닿아야 한다.
   it('로그인 전에도 개인정보 처리방침을 볼 수 있다', async () => {
     window.location.hash = '#/privacy'
@@ -2267,14 +2358,14 @@ describe('App', () => {
 
 추가 테스트 파일(커버리지 80% 유지용): `src/components/ui.test.tsx`, `src/features/auth/usePerson.test.tsx`.
 
-- [ ] **Step 11: 통과 확인**
+- [x] **Step 11: 통과 확인**
 
 ```bash
 npm test
 ```
-Expected: 모두 통과 (49 passed).
+Expected: 모두 통과 (58 passed).
 
-- [ ] **Step 12: 커밋**
+- [x] **Step 12: 커밋**
 
 ```bash
 git add -A
