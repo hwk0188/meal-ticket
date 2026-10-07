@@ -3719,10 +3719,12 @@ revoke execute on function public.ping() from public;
 grant execute on function public.ping() to anon, authenticated;
 ```
 
+`020_people_schema.sql`의 "public 스키마의 어떤 함수도 anon 에게 열려 있지 않다" 단언은 `ping`을 의도적 예외로 둔다. 기대값을 `'{ping}'::name[]`으로 바꾸고 설명을 `'anon 에게 열린 public 함수는 ping 뿐이다 (keep-alive)'`로 고친다. (`ping`은 데이터에 접근하지 않는 상수 함수라 anon 노출이 안전하다.)
+
 ```bash
 npm run db:reset && npm run db:test
 ```
-Expected: 5개 파일 모두 `ok`.
+Expected: 5개 파일 모두 `ok` (78 + 2 = 80 단언).
 
 - [ ] **Step 4: `.github/workflows/ci.yml`**
 
