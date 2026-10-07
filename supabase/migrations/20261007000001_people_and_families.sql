@@ -124,11 +124,13 @@ as $$
   )
 $$;
 
-revoke execute on function public.current_person_id(), public.current_family_id(), public.is_admin() from public;
-grant execute on function public.current_person_id(), public.current_family_id(), public.is_admin() to authenticated, anon, service_role;
+-- auto_expose_new_tables=true 는 ALTER DEFAULT PRIVILEGES 로 새 함수에 anon=X 를 자동으로 붙인다.
+-- 그래서 grant 목록에서 anon 을 빼는 것만으로는 부족하고, anon 에서 명시적으로 revoke 해야 한다.
+revoke execute on function public.current_person_id(), public.current_family_id(), public.is_admin() from public, anon;
+grant execute on function public.current_person_id(), public.current_family_id(), public.is_admin() to authenticated, service_role;
 -- normalize_phone 과 트리거 함수는 PostgREST RPC 로 노출할 이유가 없다
 revoke execute on function public.normalize_phone(text), public.people_before_write() from public, anon, authenticated;
-grant execute on function public.normalize_phone(text) to authenticated, anon, service_role;
+grant execute on function public.normalize_phone(text) to authenticated, service_role;
 
 -- =========================================================
 -- 기본 차단: RLS 켜고 API 역할 권한 회수. 정책과 세부 권한은 다음 마이그레이션(RLS)에서 부여한다.

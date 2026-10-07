@@ -1,5 +1,5 @@
 begin;
-select plan(20);
+select plan(21);
 
 select has_table('public', 'families', 'families 테이블이 있다');
 select has_table('public', 'people', 'people 테이블이 있다');
@@ -54,6 +54,15 @@ select table_privs_are('public','families','anon','{}'::text[], 'anon은 familie
 select table_privs_are('public','families','authenticated','{SELECT}'::text[], 'authenticated는 families를 읽기만 할 수 있다');
 select is((select relrowsecurity from pg_class where oid='public.people'::regclass), true, 'people에 RLS가 켜져 있다');
 select is((select relrowsecurity from pg_class where oid='public.families'::regclass), true, 'families에 RLS가 켜져 있다');
+
+-- auto_expose_new_tables=true 는 새 함수에도 anon=X 를 자동으로 붙인다. grant 에서 anon 을 빼는 것만으론
+-- 지워지지 않으므로 revoke 가 필요하다. 1단계에는 anon RPC 가 하나도 없다.
+select is(
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('current_person_id','current_family_id','is_admin','normalize_phone','people_before_write')
+      and has_function_privilege('anon', p.oid, 'EXECUTE')),
+  0::bigint, 'anon은 public 헬퍼 함수를 실행할 수 없다');
 
 -- 계정 연결된 어른은 동의 필수
 select tests.create_user('noconsent@test.local') as u \gset
