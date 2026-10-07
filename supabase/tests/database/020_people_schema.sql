@@ -63,13 +63,13 @@ select is((select relrowsecurity from pg_class where oid='public.people'::regcla
 select is((select relrowsecurity from pg_class where oid='public.families'::regclass), true, 'families에 RLS가 켜져 있다');
 
 -- auto_expose_new_tables=true 는 새 함수에도 anon=X 를 자동으로 붙인다. grant 에서 anon 을 빼는 것만으론
--- 지워지지 않으므로 revoke 가 필요하다. 1단계에는 anon RPC 가 하나도 없다.
+-- 지워지지 않으므로 revoke 가 필요하다. anon 에게 열어 둔 함수는 keep-alive 용 ping 하나뿐이다.
 -- 함수 이름을 열거하지 않으므로, 함수가 새로 늘어나도 revoke 를 잊으면 여기서 잡힌다.
 select is(
   (select coalesce(array_agg(p.proname order by p.proname), '{}')
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'EXECUTE')),
-  '{}'::name[], 'public 스키마의 어떤 함수도 anon 에게 열려 있지 않다');
+  '{ping}'::name[], 'anon 에게 열린 public 함수는 ping 뿐이다 (keep-alive)');
 
 -- 계정 연결된 어른은 동의 필수
 select tests.create_user('noconsent@test.local') as u \gset

@@ -1,0 +1,79 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  migrate:
+    name: 운영 DB 마이그레이션
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      # CLI 2.120 의 DB 비밀번호 해석 순서는 --password 플래그 → SUPABASE_DB_PASSWORD 환경변수 → 프로젝트 env 다.
+      # 환경변수로 넘기면 비밀번호가 프로세스 argv 에 남지 않으므로 -p 플래그는 쓰지 않는다.
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 프로젝트 연결
+        run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+      # --linked 는 바로 위 link 단계가 남긴 supabase/.temp/project-ref 를 쓴다는 뜻이다 (플래그가 없을 때의 기본값과 같지만
+      # 의존 관계를 드러낸다). --yes 는 TTY 가 없는 러너에서 확인 프롬프트에 걸려 멈추지 않게 한다.
+      - name: 마이그레이션 적용
+        run: npx supabase db push --linked --yes
+
+  deploy:
+    name: GitHub Pages 배포
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 배포 환경변수 확인 (빈 값이면 조용히 깨진 사이트가 배포되므로 여기서 실패시킨다)
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          test -n "$VITE_SUPABASE_URL" || { echo "VITE_SUPABASE_URL 변수가 비어 있습니다"; exit 1; }
+          test -n "$VITE_SUPABASE_PUBLISHABLE_KEY" || { echo "VITE_SUPABASE_PUBLISHABLE_KEY 변수가 비어 있습니다"; exit 1; }
+      - name: 빌드
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_ENABLE_DEV_LOGIN: 'false'
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

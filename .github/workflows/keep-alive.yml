@@ -1,0 +1,23 @@
+name: Keep alive
+
+on:
+  schedule:
+    - cron: '17 3 */3 * *'   # 3일마다 03:17 UTC
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      # ping() 은 상수 1 만 돌려주는 anon 전용 함수다 (20261007000004_ping.sql).
+      # -f 가 있어 변수가 비어 있거나 키가 틀리면 워크플로가 실패로 남는다 (조용히 건너뛰지 않는다).
+      - name: Supabase ping
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          curl -fsS -X POST "$VITE_SUPABASE_URL/rest/v1/rpc/ping" \
+            -H "apikey: $VITE_SUPABASE_PUBLISHABLE_KEY" \
+            -H "Authorization: Bearer $VITE_SUPABASE_PUBLISHABLE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{}'

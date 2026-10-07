@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+
+jobs:
+  test:
+    name: DB · 단위 · E2E 테스트
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: 로컬 Supabase 기동
+        run: npx supabase start -x studio,postgres-meta,mailpit
+
+      - name: 로컬 환경변수 작성
+        run: |
+          eval "$(npx supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)=')"
+          {
+            echo "VITE_SUPABASE_URL=$API_URL"
+            echo "VITE_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
+            echo "VITE_ENABLE_DEV_LOGIN=true"
+            echo "VITE_BASE_PATH=/"
+          } > .env.local
+
+      - name: DB 테스트 (pgTAP)
+        run: npx supabase test db
+
+      - name: 린트
+        run: npm run lint
+
+      - name: 단위·컴포넌트 테스트 + 커버리지
+        run: npm run test:coverage
+
+      - name: 빌드 (타입 검사 포함)
+        run: npm run build
+
+      - name: Playwright 브라우저 설치
+        run: npx playwright install chromium --with-deps
+
+      # E2E 는 반드시 개발 서버(npm run dev, playwright webServer)로 돈다. 개발 로그인 폼은 import.meta.env.DEV 뒤에 있어
+      # vite preview / 운영 번들에는 없다. 운영 산출물은 바로 위의 npm run build 가 검사한다.
+      - name: E2E
+        run: npm run e2e
+
+      - name: E2E 리포트·트레이스 보관 (실패 시)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
+
+      - name: 로컬 Supabase 종료
+        if: always()
+        run: npx supabase stop --no-backup
