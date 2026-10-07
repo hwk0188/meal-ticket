@@ -6,6 +6,7 @@ test-results/
 .env
 .env.*
 !.env.example
+!.env.production
 .superpowers/
 supabase/.temp/
 supabase/.branches/

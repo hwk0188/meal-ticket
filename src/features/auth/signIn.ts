@@ -23,9 +23,9 @@ export async function signInWithKakao(): Promise<void> {
 
 /** 로컬·테스트 전용. 아직 없는 계정이면 가입을 시도한다 (로컬은 이메일 확인이 꺼져 있어 바로 세션이 생긴다). */
 export async function devSignIn(email: string, password: string): Promise<void> {
-  // 화면의 플래그 조건만으로는 이 함수가 번들에서 사라지지 않는다. 운영 빌드에서 플래그가
-  // 잘못 켜지더라도 카카오 본인 확인을 건너뛰는 계정이 생기지 않게 여기서 한 번 더 막는다.
-  if (!env.enableDevLogin) throw new Error('dev_login_disabled')
+  // import.meta.env.DEV 는 운영 빌드에서 리터럴 false 로 치환되어 아래 전체가 번들에서 사라진다.
+  // 환경변수 오설정으로는 되살릴 수 없다.
+  if (!import.meta.env.DEV || !env.enableDevLogin) throw new Error('dev_login_disabled')
 
   const signedIn = await supabase.auth.signInWithPassword({ email, password })
   if (!signedIn.error) return

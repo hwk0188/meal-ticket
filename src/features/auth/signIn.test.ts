@@ -25,8 +25,16 @@ describe('signIn', () => {
     env.enableDevLogin = true
   })
 
-  it('redirectUrl은 origin + BASE_URL', () => {
-    expect(redirectUrl()).toBe(`${window.location.origin}${import.meta.env.BASE_URL}`)
+  // GitHub Pages 프로젝트 사이트(/<repo>/)와 루트 배포(/) 둘 다 맞아야 한다.
+  // BASE_URL 을 그대로 기대값에 넣으면 구현을 베낀 셈이라 아무것도 검증하지 못한다.
+  it('redirectUrl은 하위 경로 배포에서 origin + 그 경로', () => {
+    vi.stubEnv('BASE_URL', '/meal-ticket/')
+    expect(redirectUrl()).toBe(`${window.location.origin}/meal-ticket/`)
+  })
+
+  it('redirectUrl은 루트 배포에서 origin + /', () => {
+    vi.stubEnv('BASE_URL', '/')
+    expect(redirectUrl()).toBe(`${window.location.origin}/`)
   })
 
   it('카카오 로그인은 kakao provider와 redirectTo를 넘긴다', async () => {
@@ -65,6 +73,14 @@ describe('signIn', () => {
   it('개발 로그인: 플래그가 꺼져 있으면 supabase 를 건드리지 않고 거절한다', async () => {
     env.enableDevLogin = false
     // 화면 조건만으로는 번들에서 사라지지 않는다. 운영 빌드에서 플래그가 잘못 켜져도 여기서 막힌다.
+    await expect(devSignIn('x@test.local', 'password123')).rejects.toThrow('dev_login_disabled')
+    expect(signInWithPassword).not.toHaveBeenCalled()
+    expect(signUp).not.toHaveBeenCalled()
+  })
+
+  it('개발 로그인: 운영 빌드(DEV=false)에서는 플래그가 켜져 있어도 거절한다', async () => {
+    vi.stubEnv('DEV', false)
+    // 환경변수 오설정만으로 개발 로그인이 되살아나지 않아야 한다.
     await expect(devSignIn('x@test.local', 'password123')).rejects.toThrow('dev_login_disabled')
     expect(signInWithPassword).not.toHaveBeenCalled()
     expect(signUp).not.toHaveBeenCalled()
