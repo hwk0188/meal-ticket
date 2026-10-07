@@ -1,32 +1,8 @@
-# React + TypeScript + Vite
+# 교회 식권
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+교회 주일 식사 식권의 발급·사용·관리를 모바일 웹에서 처리하는 서비스.
 
-Currently, two official plugins are available:
+- 설계: `docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md`
+- 구현 계획: `docs/superpowers/plans/`
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+로컬 개발·운영 설정 안내는 1단계 구현이 끝나면 이 파일에 정리된다.
