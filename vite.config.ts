@@ -16,11 +16,28 @@ export default defineConfig(({ mode }) => {
       globals: true,
       setupFiles: ['./src/test/setup.ts'],
       include: ['src/**/*.test.{ts,tsx}'],
+      // 테스트에서 import.meta.env 를 읽는 모듈(src/lib/env.ts)이 깨지지 않도록 기본값을 준다.
+      // 테스트별로 바꿀 때는 vi.stubEnv 를 쓴다 (unstubEnvs 로 자동 복원).
+      env: {
+        VITE_SUPABASE_URL: 'http://127.0.0.1:54321',
+        VITE_SUPABASE_ANON_KEY: 'test-anon-key',
+        VITE_ENABLE_DEV_LOGIN: 'false',
+      },
+      clearMocks: true,
+      restoreMocks: true,
+      unstubEnvs: true,
+      unstubGlobals: true,
       coverage: {
         provider: 'v8',
         reporter: ['text', 'lcov'],
+        reportOnFailure: true,
         include: ['src/**/*.{ts,tsx}'],
-        exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/main.tsx', 'src/lib/database.types.ts'],
+        exclude: [
+          'src/**/*.test.{ts,tsx}',
+          'src/test/**',
+          'src/main.tsx',
+          'src/lib/database.types.ts',
+        ],
         thresholds: { lines: 80, functions: 80, branches: 70, statements: 80 },
       },
     },
