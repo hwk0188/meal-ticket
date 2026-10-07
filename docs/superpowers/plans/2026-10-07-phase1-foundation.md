@@ -599,7 +599,7 @@ git commit -m "test: pgTAP 테스트 헬퍼(사용자 생성·인증) 추가"
 - Create: `supabase/migrations/20261007000001_people_and_families.sql`
 - Test: `supabase/tests/database/020_people_schema.sql`
 
-- [ ] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/020_people_schema.sql`**
+- [x] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/020_people_schema.sql`**
 
 ```sql
 begin;
@@ -678,14 +678,14 @@ rollback;
 
 `updated_at`은 `now()`(트랜잭션 시각)라서 한 트랜잭션 안에서는 "값이 커졌는지"를 검사할 수 없다. 대신 "수동으로 넣은 값을 트리거가 덮어쓰는지"를 검사한다.
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 ```bash
 npm run db:test
 ```
 Expected: `020_people_schema.sql` FAIL — `relation "public.people" does not exist`.
 
-- [ ] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261007000001_people_and_families.sql`**
+- [x] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261007000001_people_and_families.sql`**
 
 ```sql
 -- =========================================================
@@ -830,7 +830,7 @@ revoke all on public.families from anon, authenticated;
 revoke all on public.people from anon, authenticated;
 ```
 
-- [ ] **Step 4: 적용하고 통과 확인**
+- [x] **Step 4: 적용하고 통과 확인**
 
 ```bash
 npm run db:reset
@@ -838,7 +838,7 @@ npm run db:test
 ```
 Expected: `020_people_schema.sql .. ok`, 전체 `All tests successful.` (5 + 19 단언)
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add supabase
