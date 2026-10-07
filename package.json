@@ -13,7 +13,12 @@
     "lint": "oxlint --deny-warnings",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:test": "supabase test db",
+    "db:types": "supabase gen types typescript --local > src/lib/database.types.ts"
   },
   "dependencies": {
     "react": "^19.2.8",
@@ -31,6 +36,7 @@
     "@vitest/coverage-v8": "^4.1.11",
     "jsdom": "^29.1.1",
     "oxlint": "^1.81.0",
+    "supabase": "^2.120.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
