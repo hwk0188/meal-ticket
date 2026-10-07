@@ -59,6 +59,7 @@ update public.people set name = '내가정한이름' where auth_user_id = (selec
 select is((select name from public.people where auth_user_id = (select auth.uid())), '서연', '자녀 계정은 자기 이름을 바꿀 수 없다 (조회만)');
 
 -- 거부된 insert 가 트리거로 만든 가족 행을 남기지 않았는지 (문장 단위 롤백)
+-- now() 는 트랜잭션 시각이라, 이 테스트 트랜잭션에서 만든 가족 행만 고른다.
 select tests.clear_auth();
 select is(
   (select count(*) from public.families f

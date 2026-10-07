@@ -24,7 +24,7 @@ $$;
 -- 휴대폰 형식 검사 (제약과 함수가 같은 규칙을 쓴다)
 create or replace function public.is_valid_mobile(p text)
 returns boolean language sql immutable
-as $$ select p ~ '^01[0-9]{8,9}$' $$;
+as $$ select coalesce(p ~ '^01[0-9]{8,9}$', false) $$;
 
 -- 이름 비교 키: 공백 제거 + NFC 정규화. iOS/macOS 는 한글을 NFD(자모 분해)로 보낼 수 있어
 -- NFC 로 저장된 선발급 행과 문자열 비교가 어긋난다. 비교 전용이며 표시용 이름은 그대로 둔다.
@@ -144,6 +144,7 @@ grant execute on function public.current_person_id(), public.current_family_id()
 -- normalize_phone 과 트리거 함수는 PostgREST RPC 로 노출할 이유가 없다
 revoke execute on function public.normalize_phone(text), public.is_valid_mobile(text),
   public.normalize_name(text), public.people_before_write() from public, anon, authenticated;
+-- CHECK 제약 안에서 호출되는 함수는 "쓰는 역할"에게 EXECUTE 가 있어야 한다 (트리거의 security definer 로는 대체되지 않음). 정리한다고 지우지 말 것.
 grant execute on function public.normalize_phone(text), public.is_valid_mobile(text),
   public.normalize_name(text) to authenticated, service_role;
 

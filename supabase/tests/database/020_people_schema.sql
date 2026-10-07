@@ -1,5 +1,5 @@
 begin;
-select plan(24);
+select plan(25);
 
 select has_table('public', 'families', 'families 테이블이 있다');
 select has_table('public', 'people', 'people 테이블이 있다');
@@ -23,6 +23,7 @@ select is(
 select is(public.normalize_phone('+82 10-9876-5432'), '01098765432', '+82 국제 표기는 010 으로 바꾼다');
 select is(public.normalize_phone('0082-010-9876-5432'), '01098765432', '0082 + 0 표기도 010 으로');
 select is(public.normalize_phone(''), null, '빈 문자열은 null');
+select is(public.is_valid_mobile(null), false, 'is_valid_mobile(null) 은 false');
 
 -- 이름 정규화: 비교 키는 공백을 지우고 NFC 로 맞춘다 (iOS 가 보내는 NFD 자모 분해 대응)
 select is(public.normalize_name(' 김 철수 '), '김철수', 'normalize_name 은 공백을 제거한다');
