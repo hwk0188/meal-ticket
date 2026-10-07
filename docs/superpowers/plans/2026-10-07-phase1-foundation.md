@@ -1777,14 +1777,19 @@ export function Spinner({ label = '불러오는 중' }: { label?: string }) {
 - [ ] **Step 2: 실패하는 테스트 — `src/features/auth/AuthProvider.test.tsx`**
 
 ```tsx
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import type { Session } from '@supabase/supabase-js'
 import { AuthProvider, useAuth } from './AuthProvider'
 
+type GetSession = () => Promise<{ data: { session: Session | null } }>
+type OnAuthStateChange = (
+  callback: (event: string, session: Session | null) => void,
+) => { data: { subscription: { unsubscribe: () => void } } }
+
 const { getSession, onAuthStateChange, unsubscribe } = vi.hoisted(() => ({
-  getSession: vi.fn(),
-  onAuthStateChange: vi.fn(),
-  unsubscribe: vi.fn(),
+  getSession: vi.fn<GetSession>(),
+  onAuthStateChange: vi.fn<OnAuthStateChange>(),
+  unsubscribe: vi.fn<() => void>(),
 }))
 
 vi.mock('../../lib/supabase', () => ({
@@ -1816,12 +1821,69 @@ describe('AuthProvider', () => {
     await waitFor(() => expect(screen.getByText('user:u1')).toBeInTheDocument())
   })
 
+  it('로그인 상태가 바뀌면 화면에 반영한다', async () => {
+    getSession.mockResolvedValue({ data: { session: null } })
+    render(<AuthProvider><Probe /></AuthProvider>)
+    await waitFor(() => expect(screen.getByText('no-session')).toBeInTheDocument())
+
+    const notify = onAuthStateChange.mock.calls[0][0]
+    act(() => notify('SIGNED_IN', { user: { id: 'u2' } } as Session))
+    expect(screen.getByText('user:u2')).toBeInTheDocument()
+
+    act(() => notify('SIGNED_OUT', null))
+    expect(screen.getByText('no-session')).toBeInTheDocument()
+  })
+
+  it('세션 확인이 실패해도 멈추지 않고 비로그인으로 넘긴다', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    getSession.mockRejectedValue(new Error('network down'))
+
+    render(<AuthProvider><Probe /></AuthProvider>)
+
+    // 로딩에 갇히면 사용자는 아무것도 할 수 없다. 시작 화면까지는 내려 줘야 한다.
+    await waitFor(() => expect(screen.getByText('no-session')).toBeInTheDocument())
+    expect(consoleError).toHaveBeenCalled()
+  })
+
+  it('구독이 먼저 알려 준 상태를 뒤늦은 세션 확인이 덮어쓰지 않는다', async () => {
+    let settle: (value: { data: { session: Session | null } }) => void = () => {}
+    getSession.mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve
+      }),
+    )
+
+    render(<AuthProvider><Probe /></AuthProvider>)
+    expect(screen.getByText('loading')).toBeInTheDocument()
+
+    // 다른 탭에서 로그아웃하면 구독이 먼저 알려 준다.
+    const notify = onAuthStateChange.mock.calls[0][0]
+    act(() => notify('SIGNED_OUT', null))
+    expect(screen.getByText('no-session')).toBeInTheDocument()
+
+    // 뒤늦게 도착한 옛 세션이 로그아웃을 되살리면 안 된다.
+    await act(async () => {
+      settle({ data: { session: { user: { id: 'u1' } } as Session } })
+    })
+    expect(screen.getByText('no-session')).toBeInTheDocument()
+  })
+
   it('언마운트 시 구독을 해제한다', async () => {
     getSession.mockResolvedValue({ data: { session: null } })
     const { unmount } = render(<AuthProvider><Probe /></AuthProvider>)
     await waitFor(() => expect(screen.getByText('no-session')).toBeInTheDocument())
     unmount()
     expect(unsubscribe).toHaveBeenCalled()
+  })
+
+  it('OAuth 콜백 파라미터(?code=)를 주소에서 지운다 (해시 유지)', async () => {
+    getSession.mockResolvedValue({ data: { session: null } })
+    window.history.replaceState(null, '', '/?code=abc&state=xyz#/')
+    render(<AuthProvider><Probe /></AuthProvider>)
+    await waitFor(() => expect(screen.getByText('no-session')).toBeInTheDocument())
+    expect(window.location.search).toBe('')
+    expect(window.location.hash).toBe('#/')
+    window.history.replaceState(null, '', '/')
   })
 })
 ```
@@ -1833,7 +1895,15 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { Gate, RequireSession } from './Gate'
 
-const { useAuth, usePerson } = vi.hoisted(() => ({ useAuth: vi.fn(), usePerson: vi.fn() }))
+// 훅을 통째로 가짜로 바꾸므로 실제 타입(Session, UseQueryResult) 전체를 만들 필요가 없다.
+// Gate 가 읽는 필드만 담은 느슨한 타입으로 둔다.
+type FakeAuth = { status: string; session?: { user: { id: string } } | null }
+type FakePerson = { status: string; data?: { id: string; name: string } | null }
+
+const { useAuth, usePerson } = vi.hoisted(() => ({
+  useAuth: vi.fn<() => FakeAuth>(),
+  usePerson: vi.fn<() => FakePerson>(),
+}))
 vi.mock('./AuthProvider', () => ({ useAuth }))
 vi.mock('./usePerson', () => ({ usePerson }))
 vi.mock('../../pages/StartPage', () => ({ StartPage: () => <p>start</p> }))
@@ -1879,11 +1949,27 @@ describe('Gate', () => {
     expect(screen.getByText('home')).toBeInTheDocument()
   })
 
+  it('사람 조회가 실패하면 안내 스피너', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'error', data: undefined })
+    renderAt('/')
+    expect(screen.getByRole('status')).toHaveTextContent('연결에 문제가 있어요')
+  })
+
   it('RequireSession: 세션이 없으면 /로 보낸다', () => {
     useAuth.mockReturnValue({ status: 'ready', session: null })
     usePerson.mockReturnValue({ status: 'pending', data: undefined })
     renderAt('/onboarding')
     expect(screen.getByText('start')).toBeInTheDocument()
+  })
+
+  it('RequireSession: 사람 조회가 실패하면 가입 화면을 열지 않는다', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'error', data: undefined })
+    renderAt('/onboarding')
+    // 이미 가입한 사람일 수도 있다. 조회가 실패한 채로 가입을 진행시키면 안 된다.
+    expect(screen.queryByText('onboarding')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('연결에 문제가 있어요')
   })
 
   it('RequireSession: 이미 가입했으면 /로 보낸다', () => {
@@ -1930,15 +2016,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true
-    supabase.auth.getSession().then(({ data }) => {
-      if (!active) return
-      setState({ status: 'ready', session: data.session })
-      stripOAuthParams()
-    })
+    // 구독이 먼저 알려 주면(다른 탭 로그아웃 등) 뒤늦게 끝난 getSession 의 옛 세션은 버린다.
+    let settledByListener = false
+
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!active || settledByListener) return
+        setState({ status: 'ready', session: data.session })
+        stripOAuthParams()
+      })
+      .catch((error: unknown) => {
+        // 세션을 못 읽어도 로딩에 갇히면 사용자가 아무것도 할 수 없다.
+        // 비로그인으로 보고 시작 화면까지는 내려 준다 (거기서 다시 로그인할 수 있다).
+        console.error('세션 확인 실패', error)
+        if (!active || settledByListener) return
+        setState({ status: 'ready', session: null })
+      })
+
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      settledByListener = true
       setState({ status: 'ready', session })
       stripOAuthParams()
     })
+
     return () => {
       active = false
       data.subscription.unsubscribe()
@@ -1948,6 +2049,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>
 }
 
+// Provider 와 그 훅을 한 파일에 두는 건 React 공식 권장 패턴이다.
+// 대신 이 파일을 고치면 HMR 이 전체 새로고침으로 떨어진다 (그 정도는 감수한다).
+// eslint-disable-next-line react/only-export-components
 export function useAuth(): AuthState {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth는 AuthProvider 안에서만 쓸 수 있습니다')
@@ -1972,10 +2076,11 @@ export function usePerson(userId: string | undefined) {
     queryKey: personQueryKey(userId),
     enabled: Boolean(userId),
     queryFn: async (): Promise<Person | null> => {
+      if (!userId) return null
       const { data, error } = await supabase
         .from('people')
         .select('*')
-        .eq('auth_user_id', userId!)
+        .eq('auth_user_id', userId)
         .is('deleted_at', null)
         .maybeSingle()
       if (error) throw error
@@ -1996,6 +2101,8 @@ import { StartPage } from '../../pages/StartPage'
 import { useAuth } from './AuthProvider'
 import { usePerson } from './usePerson'
 
+const CONNECTION_ERROR = '연결에 문제가 있어요. 새로고침해 주세요'
+
 /** `#/` : 비로그인 → 시작 화면, 로그인·미가입 → 가입, 가입 완료 → 홈 */
 export function Gate() {
   const auth = useAuth()
@@ -2005,7 +2112,7 @@ export function Gate() {
   if (auth.status === 'loading') return <Spinner />
   if (!auth.session) return <StartPage />
   if (person.status === 'pending') return <Spinner />
-  if (person.status === 'error') return <Spinner label="연결에 문제가 있어요. 새로고침해 주세요" />
+  if (person.status === 'error') return <Spinner label={CONNECTION_ERROR} />
   if (!person.data) return <Navigate to="/onboarding" replace />
   return <HomePage person={person.data} />
 }
@@ -2019,6 +2126,8 @@ export function RequireSession({ children }: { children: ReactNode }) {
   if (auth.status === 'loading') return <Spinner />
   if (!auth.session) return <Navigate to="/" replace />
   if (person.status === 'pending') return <Spinner />
+  // 이미 가입한 사람일 수도 있다. 조회가 실패한 채로 가입을 진행시키지 않는다.
+  if (person.status === 'error') return <Spinner label={CONNECTION_ERROR} />
   if (person.data) return <Navigate to="/" replace />
   return <>{children}</>
 }
@@ -2126,29 +2235,44 @@ import('./App')
 import { render, screen } from '@testing-library/react'
 import App from './App'
 
+// 호출 기록을 검증하지 않으므로 vi.fn 대신 평범한 스텁으로 둔다.
 vi.mock('./lib/supabase', () => ({
   supabase: {
     auth: {
-      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
-      onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
+      getSession: () => Promise.resolve({ data: { session: null } }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     },
   },
 }))
+
+// HashRouter 는 마운트 시점의 해시를 읽는다. 다음 테스트로 새지 않게 되돌린다.
+afterEach(() => {
+  window.location.hash = ''
+})
 
 describe('App', () => {
   it('비로그인 상태에서 시작 화면을 보여준다', async () => {
     render(<App />)
     expect(await screen.findByRole('heading', { name: '시작' })).toBeInTheDocument()
   })
+
+  // 개인정보 처리방침은 동의 화면과 카카오 심사에서 링크로 열리므로 로그인 없이 닿아야 한다.
+  it('로그인 전에도 개인정보 처리방침을 볼 수 있다', async () => {
+    window.location.hash = '#/privacy'
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: '개인정보 처리방침' })).toBeInTheDocument()
+  })
 })
 ```
+
+추가 테스트 파일(커버리지 80% 유지용): `src/components/ui.test.tsx`, `src/features/auth/usePerson.test.tsx`.
 
 - [ ] **Step 11: 통과 확인**
 
 ```bash
 npm test
 ```
-Expected: 모두 통과 (`20 passed`).
+Expected: 모두 통과 (49 passed).
 
 - [ ] **Step 12: 커밋**
 
