@@ -3344,50 +3344,103 @@ git commit -m "feat: 가입 화면 (이름·번호 검증, 개인정보 동의, 
 - Modify: `src/pages/PrivacyPage.tsx`
 - Test: `src/pages/PrivacyPage.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트 — `src/pages/PrivacyPage.test.tsx`**
+- [x] **Step 1: 실패하는 테스트 — `src/pages/PrivacyPage.test.tsx`**
 
 ```tsx
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
+import { church } from '../config/church'
+import { officerLine } from './officerLine'
 import { PrivacyPage } from './PrivacyPage'
+
+function renderPage() {
+  return render(<MemoryRouter><PrivacyPage /></MemoryRouter>)
+}
 
 describe('PrivacyPage', () => {
   it('교회명, 고지 4요소, 시행일, 돌아가기 링크를 보여준다', () => {
-    render(<MemoryRouter><PrivacyPage /></MemoryRouter>)
-    expect(screen.getByRole('heading', { name: '개인정보 처리방침' })).toBeInTheDocument()
-    expect(screen.getAllByText(/OO교회/).length).toBeGreaterThan(0)
+    renderPage()
+    expect(screen.getByRole('heading', { level: 1, name: '개인정보 처리방침' })).toBeInTheDocument()
+    expect(screen.getAllByText(new RegExp(church.name)).length).toBeGreaterThan(0)
     expect(screen.getByText(/이름, 휴대폰 번호/)).toBeInTheDocument()
     expect(screen.getByText(/식권 발급·사용 확인/)).toBeInTheDocument()
     expect(screen.getByText(/탈퇴 시까지/)).toBeInTheDocument()
     expect(screen.getByText(/동의하지 않으면/)).toBeInTheDocument()
-    expect(screen.getByText(/시행일: 2026-10-07/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '돌아가기' })).toHaveAttribute('href', '/')
+    expect(screen.getByText(`시행일: ${church.consentVersion}`)).toBeInTheDocument()
+    // 해시 라우팅·하위 경로 배포에 따라 href 접두사가 달라지므로 링크가 있는지만 본다.
+    expect(screen.getByRole('link', { name: '돌아가기' })).toBeInTheDocument()
+  })
+
+  it('정보주체의 권리 행사 방법을 안내한다', () => {
+    renderPage()
+    expect(screen.getByRole('heading', { name: '4. 정보주체의 권리와 행사 방법' })).toBeInTheDocument()
+    expect(screen.getByText(/열람·정정·삭제·처리정지/)).toBeInTheDocument()
+    expect(screen.getByText(/법정대리인은 자녀 몫을 대신 요청/)).toBeInTheDocument()
+  })
+
+  it('카카오에서 받는 항목과 선택 동의, 제3자 제공·보관 위치를 설명한다', () => {
+    renderPage()
+    expect(screen.getByText(/프로필 사진과 카카오계정 이메일은 선택 동의/)).toBeInTheDocument()
+    expect(screen.getByText(/제3자에게 제공하지 않습니다/)).toBeInTheDocument()
+    expect(screen.getByText(/국내\(서울\) 리전/)).toBeInTheDocument()
+  })
+
+  it('세션 토큰 저장과 안전조치를 설명한다', () => {
+    renderPage()
+    expect(screen.getByText(/브라우저 로컬 저장소에 세션 토큰/)).toBeInTheDocument()
+    expect(screen.getByText(/광고·분석 목적의 쿠키는 쓰지 않습니다/)).toBeInTheDocument()
+    expect(screen.getByText(/접근 권한 정책\(RLS\)/)).toBeInTheDocument()
+  })
+
+  it('개인정보 담당자를 보여준다', () => {
+    renderPage()
+    expect(screen.getByText(new RegExp(church.privacyOfficer.role))).toBeInTheDocument()
+  })
+})
+
+describe('officerLine', () => {
+  it.each([
+    {
+      label: '이름·연락처가 비어 있으면 역할만 보여준다',
+      officer: { role: '식당 담당 권사', name: '', phone: '' },
+      expected: '식당 담당 권사',
+    },
+    {
+      label: '이름만 있으면 역할 뒤에 이름을 붙인다',
+      officer: { role: '식당 담당 권사', name: '김영희', phone: '' },
+      expected: '식당 담당 권사 김영희',
+    },
+    {
+      label: '이름과 연락처가 있으면 가운뎃점으로 잇는다',
+      officer: { role: '식당 담당 권사', name: '김영희', phone: '010-1234-5678' },
+      expected: '식당 담당 권사 김영희 · 010-1234-5678',
+    },
+  ])('$label', ({ officer, expected }) => {
+    expect(officerLine(officer)).toBe(expected)
   })
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 ```bash
 npm test
 ```
 Expected: FAIL — 고지 문구 없음.
 
-- [ ] **Step 3: 구현 — `src/pages/PrivacyPage.tsx`**
+- [x] **Step 3: 구현 — `src/pages/PrivacyPage.tsx`**
 
 ```tsx
 import { Link } from 'react-router'
 import { church } from '../config/church'
+import { officerLine } from './officerLine'
 
 export function PrivacyPage() {
   const n = church.consentNotice
-  const officer = church.privacyOfficer
   return (
     <main className="mx-auto flex max-w-sm flex-col gap-5 p-6 text-sm leading-relaxed">
       <h1 className="text-2xl font-extrabold">개인정보 처리방침</h1>
-      <p>
-        {church.name}(이하 "교회")은 식권 서비스 운영을 위해 아래와 같이 개인정보를 처리합니다.
-      </p>
+      <p>{church.name}에서는 식권 서비스 운영을 위해 아래와 같이 개인정보를 처리합니다.</p>
 
       <section>
         <h2 className="mb-1 font-bold">1. 수집 항목</h2>
@@ -3402,22 +3455,22 @@ export function PrivacyPage() {
         <p>{n.retention}. 발급·사용 기록은 사람을 알아볼 수 없게 처리한 뒤 회계 통계 목적으로만 보관합니다.</p>
       </section>
       <section>
-        <h2 className="mb-1 font-bold">4. 동의 거부 권리</h2>
-        <p>동의를 거부할 수 있습니다. 다만 {n.refusal}.</p>
+        <h2 className="mb-1 font-bold">4. 정보주체의 권리와 행사 방법</h2>
+        <p>동의를 거부할 수 있습니다. 다만 {n.refusal}. 열람·정정·삭제·처리정지를 아래 담당자에게 요청할 수 있고, 법정대리인은 자녀 몫을 대신 요청할 수 있습니다.</p>
       </section>
       <section>
-        <h2 className="mb-1 font-bold">5. 처리 위탁</h2>
-        <p>데이터 저장과 로그인 처리를 위해 Supabase(데이터베이스·인증), 카카오(소셜 로그인)를 이용합니다. 카카오에서는 회원번호와 닉네임을 제공받으며, 프로필 사진과 카카오계정 이메일은 선택 동의 항목으로 거부할 수 있고 제공되더라도 로그인 계정 식별 외에 이용하지 않습니다.</p>
+        <h2 className="mb-1 font-bold">5. 제3자 제공과 처리 위탁</h2>
+        <p>개인정보를 제3자에게 제공하지 않습니다. 데이터 저장과 로그인 처리를 위해 Supabase(데이터베이스·인증), 카카오(소셜 로그인)를 이용합니다. 카카오에서는 회원번호와 닉네임을 제공받으며, 프로필 사진과 카카오계정 이메일은 선택 동의 항목으로 거부할 수 있고 제공되더라도 로그인 계정 식별 외에 이용하지 않습니다. 데이터는 Supabase 의 국내(서울) 리전에 보관합니다.</p>
       </section>
       <section>
         <h2 className="mb-1 font-bold">6. 개인정보 담당자</h2>
-        <p>
-          {officer.role}
-          {officer.name && ` ${officer.name}`}
-          {officer.phone && ` · ${officer.phone}`}
-        </p>
+        <p>{officerLine(church.privacyOfficer)}</p>
       </section>
-      <p className="text-xs text-gray-500">시행일: {church.consentVersion}</p>
+      <section>
+        <h2 className="mb-1 font-bold">7. 저장소·안전조치</h2>
+        <p>로그인 유지를 위해 브라우저 로컬 저장소에 세션 토큰을 저장하며, 로그아웃하면 지웁니다. 광고·분석 목적의 쿠키는 쓰지 않습니다. 데이터는 접근 권한 정책(RLS)으로 본인과 가족, 관리자만 볼 수 있게 보호하고, 탈퇴 시 이름·번호를 익명화합니다.</p>
+      </section>
+      <p className="text-xs text-gray-600">시행일: {church.consentVersion}</p>
 
       <Link to="/" className="mt-4 text-center text-blue-600 underline">돌아가기</Link>
     </main>
@@ -3425,14 +3478,16 @@ export function PrivacyPage() {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+담당자 한 줄 문구는 `src/pages/officerLine.ts`로 뺀다(페이지 파일에서 컴포넌트 외 export 를 하면 `react/only-export-components` 에 걸린다). 리뷰 반영: 정보주체 권리 행사 방법, 제3자 제공 없음, 서울 리전 보관, 저장소·안전조치 절 추가.
+
+- [x] **Step 4: 통과 확인**
 
 ```bash
 npm test
 ```
 Expected: 모두 통과.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add -A
@@ -3449,16 +3504,17 @@ git commit -m "feat: 개인정보 처리방침 페이지"
 - Modify: `src/pages/HomePage.tsx`
 - Test: `src/pages/HomePage.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트 — `src/pages/HomePage.test.tsx`**
+- [x] **Step 1: 실패하는 테스트 — `src/pages/HomePage.test.tsx`**
 
 ```tsx
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router'
 import type { Person } from '../features/auth/usePerson'
 import { HomePage } from './HomePage'
 
-const { signOut } = vi.hoisted(() => ({ signOut: vi.fn() }))
+const { signOut } = vi.hoisted(() => ({ signOut: vi.fn<() => Promise<void>>() }))
 vi.mock('../features/auth/signIn', () => ({ signOut }))
 
 const person = {
@@ -3470,11 +3526,13 @@ const person = {
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  client.setQueryData(['person', 'u1'], person)
+  const utils = render(
     <QueryClientProvider client={client}>
-      <HomePage person={person} />
+      <MemoryRouter><HomePage person={person} /></MemoryRouter>
     </QueryClientProvider>,
   )
+  return { ...utils, client }
 }
 
 describe('HomePage', () => {
@@ -3485,80 +3543,148 @@ describe('HomePage', () => {
     expect(screen.getByText('오늘은 식사가 없어요')).toBeInTheDocument()
   })
 
-  it('로그아웃 버튼이 signOut을 부른다', async () => {
-    signOut.mockResolvedValue(undefined)
+  it('처리방침 링크를 상시 보여준다', () => {
     renderPage()
+    expect(screen.getByRole('link', { name: '개인정보 처리방침' })).toBeInTheDocument()
+  })
+
+  it('로그아웃 버튼이 signOut을 부르고 쿼리 캐시를 비운다', async () => {
+    signOut.mockResolvedValue(undefined)
+    const { client } = renderPage()
     await userEvent.click(screen.getByRole('button', { name: '로그아웃' }))
     expect(signOut).toHaveBeenCalled()
+    await waitFor(() => expect(client.getQueryData(['person', 'u1'])).toBeUndefined())
+  })
+
+  it('로그아웃 중에는 버튼을 잠가 두 번 호출되지 않는다', async () => {
+    let settle: () => void = () => {}
+    signOut.mockReturnValue(
+      new Promise<void>((resolve) => {
+        settle = resolve
+      }),
+    )
+    renderPage()
+    const button = screen.getByRole('button', { name: '로그아웃' })
+
+    await userEvent.click(button)
+    expect(button).toBeDisabled()
+    // 공용 폰에서 한 번 더 누르는 일이 잦다. 두 번째 signOut 은 나가지 않아야 한다.
+    await userEvent.click(button)
+    expect(signOut).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      settle()
+    })
+  })
+
+  it('로그아웃이 실패하면 안내 문구를 보여준다', async () => {
+    signOut.mockRejectedValue(new Error('network'))
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: '로그아웃' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('잠시 후 다시 시도해 주세요.')
+  })
+
+  it('다시 시도해 성공하면 안내 문구를 지운다', async () => {
+    signOut.mockRejectedValueOnce(new Error('network')).mockResolvedValue(undefined)
+    renderPage()
+    const button = screen.getByRole('button', { name: '로그아웃' })
+
+    await userEvent.click(button)
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    // 실패 뒤에는 버튼이 다시 살아나야 사용자가 할 수 있는 일이 남는다.
+    expect(button).not.toBeDisabled()
+
+    await userEvent.click(button)
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
   })
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 ```bash
 npm test
 ```
 Expected: FAIL — 번호·카드·버튼 없음.
 
-- [ ] **Step 3: 구현 — `src/pages/HomePage.tsx`**
+- [x] **Step 3: 구현 — `src/pages/HomePage.tsx`**
 
 ```tsx
 import { useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { Link } from 'react-router'
 import type { Person } from '../features/auth/usePerson'
 import { signOut } from '../features/auth/signIn'
+import { toUserMessage } from '../lib/errors'
 import { maskPhone } from '../lib/phone'
 
 export function HomePage({ person }: { person: Person }) {
   const queryClient = useQueryClient()
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  // 로그아웃 뒤 캐시(['person', uid])가 gcTime 동안 남지 않도록 비운다 (공용 폰 대비).
   async function onSignOut() {
-    await signOut()
-    queryClient.clear()
+    setBusy(true)
+    setError(null)
+    try {
+      await signOut()
+      // 로그아웃 뒤 캐시(['person', uid])가 gcTime 동안 남지 않도록 비운다 (공용 폰 대비).
+      queryClient.clear()
+      // 성공하면 Gate 가 시작 화면으로 바꾼다. 그 사이 두 번째 로그아웃이 나가지 않게 잠근 채 둔다.
+    } catch (err) {
+      setError(toUserMessage(err))
+      setBusy(false)
+    }
   }
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col gap-4 p-4">
       <header className="flex items-baseline justify-between">
         <h1 className="text-lg font-extrabold">{person.name} 님</h1>
-        <span className="text-xs text-gray-500">{maskPhone(person.phone)}</span>
+        <span className="text-xs text-gray-600">{maskPhone(person.phone)}</span>
       </header>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-500">
+      <section className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-600">
         <div className="mb-2 text-3xl" aria-hidden>🍚</div>
         <p className="text-sm">오늘은 식사가 없어요</p>
       </section>
 
       <div className="flex-1" />
 
-      <button
-        type="button"
-        onClick={() => void onSignOut()}
-        className="self-center text-xs text-gray-400 underline"
-      >
-        로그아웃
-      </button>
+      <footer className="flex items-center justify-center gap-4">
+        <Link to="/privacy" className="px-3 py-2 text-xs text-gray-600 underline">개인정보 처리방침</Link>
+        <button
+          type="button"
+          onClick={() => void onSignOut()}
+          disabled={busy}
+          className="px-3 py-2 text-xs text-gray-600 underline"
+        >
+          로그아웃
+        </button>
+      </footer>
+
+      {/* 안내는 버튼 아래에 둔다. 위에 끼우면 다시 누르려는 손가락이 문구 위에 떨어진다. */}
+      {error && <p role="alert" className="text-center text-sm text-red-600">{error}</p>}
     </main>
   )
 }
 ```
 
-- [ ] **Step 4: 통과 확인 + 커버리지**
+- [x] **Step 4: 통과 확인 + 커버리지**
 
 ```bash
 npm run test:coverage
 ```
 Expected: 모두 통과, 커버리지 임계치(라인 80%) 충족. 미달이면 어떤 파일이 낮은지 출력을 보고 그 파일의 테스트를 보강한다.
 
-- [ ] **Step 5: 브라우저에서 전체 흐름 수동 확인**
+- [x] **Step 5: 브라우저에서 전체 흐름 수동 확인**
 
 ```bash
 npm run dev
 ```
 `http://localhost:5173` → 개발용 로그인(아무 이메일·비밀번호 6자 이상) → "처음 오셨네요" → 이름·번호·동의 → "김철수 님 / 오늘은 식사가 없어요" → 새로고침해도 홈 유지 → 로그아웃하면 시작 화면.
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add -A
