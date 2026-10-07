@@ -34,7 +34,7 @@
 | 서버 | 없음. 로직은 Postgres 함수(RPC), 권한은 RLS |
 | 시간대 | 모든 날짜 판정은 Asia/Seoul |
 
-Supabase Free의 알려진 제약과 대응: 7일 미사용 시 일시정지 → GitHub Actions 3일 간격 keep-alive. 자동 백업 없음 → 주 1회 pg_dump를 비공개 저장소에 보관.
+Supabase Free의 알려진 제약과 대응: 7일 미사용 시 일시정지 → GitHub Actions 2일 간격 keep-alive(스케줄 실행이 한 번 빠져도 7일 안쪽). 자동 백업 없음 → 주 1회 pg_dump를 비공개 저장소에 보관.
 
 ## 3. 사용자와 역할
 
@@ -106,7 +106,7 @@ Supabase Free의 알려진 제약과 대응: 7일 미사용 시 일시정지 →
    ▼                            ▼                               ▼
 GitHub Pages ──────────   카카오 → Supabase Auth ──────── Supabase Postgres
 (정적 파일, 공개 저장소)    (세션·JWT, 익명 로그인 포함)      (테이블 · RLS · 함수)
-   ▲ 배포                                                        ▲ keep-alive(3일) · 백업(주 1회)
+   ▲ 배포                                                        ▲ keep-alive(2일) · 백업(주 1회)
 GitHub Actions ─────────────────────────────────────────────────┘ → 비공개 백업 저장소
 ```
 
@@ -386,7 +386,7 @@ Supabase 설정: Kakao provider(REST API key, client secret), "Allow users witho
 | 워크플로 | 저장소 | 주기 | 내용 |
 |---|---|---|---|
 | deploy | 공개 | push to main | 테스트 → 빌드 → DB 마이그레이션 → Pages 배포 |
-| keep-alive | 공개 | 3일마다 | anon key로 `ping()` 호출 |
+| keep-alive | 공개 | 2일마다 | publishable key로 `ping()` 호출 (anon 에게 열린 유일한 RPC) |
 | backup | **비공개** | 주 1회 | `pg_dump` → 저장소에 커밋, 12주 보관 |
 
 비밀값(Supabase service role, DB 연결 문자열)은 각 저장소의 Actions Secrets에만 둔다.
