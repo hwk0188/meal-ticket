@@ -1,5 +1,5 @@
 begin;
-select plan(21);
+select plan(24);
 
 select has_table('public', 'families', 'families 테이블이 있다');
 select has_table('public', 'people', 'people 테이블이 있다');
@@ -23,6 +23,12 @@ select is(
 select is(public.normalize_phone('+82 10-9876-5432'), '01098765432', '+82 국제 표기는 010 으로 바꾼다');
 select is(public.normalize_phone('0082-010-9876-5432'), '01098765432', '0082 + 0 표기도 010 으로');
 select is(public.normalize_phone(''), null, '빈 문자열은 null');
+
+-- 이름 정규화: 비교 키는 공백을 지우고 NFC 로 맞춘다 (iOS 가 보내는 NFD 자모 분해 대응)
+select is(public.normalize_name(' 김 철수 '), '김철수', 'normalize_name 은 공백을 제거한다');
+select is(public.normalize_name(normalize('김철수', NFD)), '김철수', 'normalize_name 은 NFC 로 맞춘다');
+insert into public.people (name, phone) values (normalize('홍길동', NFD), '01077770001');
+select is((select name from public.people where phone = '01077770001'), '홍길동', '트리거가 이름을 NFC 로 저장한다');
 
 -- 잘못된 번호 거부 (check 위반 23514)
 select throws_ok(
@@ -57,12 +63,12 @@ select is((select relrowsecurity from pg_class where oid='public.families'::regc
 
 -- auto_expose_new_tables=true 는 새 함수에도 anon=X 를 자동으로 붙인다. grant 에서 anon 을 빼는 것만으론
 -- 지워지지 않으므로 revoke 가 필요하다. 1단계에는 anon RPC 가 하나도 없다.
+-- 함수 이름을 열거하지 않으므로, 함수가 새로 늘어나도 revoke 를 잊으면 여기서 잡힌다.
 select is(
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public'
-      and p.proname in ('current_person_id','current_family_id','is_admin','normalize_phone','people_before_write')
-      and has_function_privilege('anon', p.oid, 'EXECUTE')),
-  0::bigint, 'anon은 public 헬퍼 함수를 실행할 수 없다');
+  (select coalesce(array_agg(p.proname order by p.proname), '{}')
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'EXECUTE')),
+  '{}'::name[], 'public 스키마의 어떤 함수도 anon 에게 열려 있지 않다');
 
 -- 계정 연결된 어른은 동의 필수
 select tests.create_user('noconsent@test.local') as u \gset

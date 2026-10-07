@@ -21,11 +21,22 @@ as $$
   from (select nullif(regexp_replace(coalesce(p, ''), '\D', '', 'g'), '')) as t(d)
 $$;
 
+-- 휴대폰 형식 검사 (제약과 함수가 같은 규칙을 쓴다)
+create or replace function public.is_valid_mobile(p text)
+returns boolean language sql immutable
+as $$ select p ~ '^01[0-9]{8,9}$' $$;
+
+-- 이름 비교 키: 공백 제거 + NFC 정규화. iOS/macOS 는 한글을 NFD(자모 분해)로 보낼 수 있어
+-- NFC 로 저장된 선발급 행과 문자열 비교가 어긋난다. 비교 전용이며 표시용 이름은 그대로 둔다.
+create or replace function public.normalize_name(p text)
+returns text language sql immutable
+as $$ select nullif(normalize(regexp_replace(coalesce(p, ''), '\s', '', 'g'), NFC), '') $$;
+
 create table public.people (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id),
   name text not null check (char_length(name) between 1 and 20),
-  phone text check (phone ~ '^01[0-9]{8,9}$'),
+  phone text check (phone is null or public.is_valid_mobile(phone)),
   auth_user_id uuid unique references auth.users(id) on delete set null,
   role text not null default 'member' check (role in ('member', 'admin')),
   is_minor boolean not null default false,
@@ -70,6 +81,8 @@ begin
   if tg_op = 'INSERT' and new.family_id is null then
     insert into public.families default values returning id into new.family_id;
   end if;
+  -- 이름은 NFC 로 맞춰 저장한다 (비교는 public.normalize_name 이 공백까지 무시한다)
+  new.name := normalize(btrim(new.name), NFC);
   new.phone := public.normalize_phone(new.phone);
   if tg_op = 'UPDATE' then
     new.updated_at := now();
@@ -129,8 +142,10 @@ $$;
 revoke execute on function public.current_person_id(), public.current_family_id(), public.is_admin() from public, anon;
 grant execute on function public.current_person_id(), public.current_family_id(), public.is_admin() to authenticated, service_role;
 -- normalize_phone 과 트리거 함수는 PostgREST RPC 로 노출할 이유가 없다
-revoke execute on function public.normalize_phone(text), public.people_before_write() from public, anon, authenticated;
-grant execute on function public.normalize_phone(text) to authenticated, service_role;
+revoke execute on function public.normalize_phone(text), public.is_valid_mobile(text),
+  public.normalize_name(text), public.people_before_write() from public, anon, authenticated;
+grant execute on function public.normalize_phone(text), public.is_valid_mobile(text),
+  public.normalize_name(text) to authenticated, service_role;
 
 -- =========================================================
 -- 기본 차단: RLS 켜고 API 역할 권한 회수. 정책과 세부 권한은 다음 마이그레이션(RLS)에서 부여한다.

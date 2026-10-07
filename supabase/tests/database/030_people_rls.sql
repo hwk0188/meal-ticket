@@ -62,7 +62,8 @@ select is((select name from public.people where auth_user_id = (select auth.uid(
 select tests.clear_auth();
 select is(
   (select count(*) from public.families f
-    where not exists (select 1 from public.people p where p.family_id = f.id)),
+    where f.created_at = now()
+      and not exists (select 1 from public.people p where p.family_id = f.id)),
   0::bigint, '구성원 없는 가족 행이 남지 않는다 (거부된 insert 의 트리거 흔적 없음)');
 
 -- 관리자로서

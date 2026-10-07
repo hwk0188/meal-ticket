@@ -1,5 +1,5 @@
 begin;
-select plan(21);
+select plan(29);
 
 -- 권한 구조 고정: 새 함수에 anon 이 자동으로 붙지 않았는지 확인한다 (auto_expose_new_tables=true 대응)
 select is(has_function_privilege('anon', 'public.claim_person(text,text,text)', 'EXECUTE'), false, 'anon은 claim_person 을 실행할 수 없다');
@@ -8,6 +8,8 @@ select tests.create_user('new@test.local') as new_uid \gset
 select tests.create_user('pre@test.local') as pre_uid \gset
 select tests.create_user('dup@test.local') as dup_uid \gset
 select tests.create_user() as anon_uid \gset
+select tests.create_user('space@test.local') as space_uid \gset
+select tests.create_user('nfd@test.local') as nfd_uid \gset
 
 -- 선발급자(관리자가 미리 만든 사람)
 insert into public.people (name, phone) values ('이순자', '01022220001');
@@ -47,6 +49,8 @@ select is(
 );
 select is((select count(*) from public.people), :'people_before'::bigint, '선발급 연결은 사람 수를 늘리지 않는다');
 select is((select count(*) from public.families), :'families_before'::bigint, '선발급 연결은 가족 수를 늘리지 않는다');
+select isnt((select consented_at from public.people where phone = '01022220001'), null, '선발급 연결에도 동의 시각이 기록된다');
+select is((select consent_version from public.people where phone = '01022220001'), '2026-10-07', '선발급 연결에도 동의 버전이 기록된다');
 
 -- 같은 사용자가 순차로 다시 호출하면 잠금 전 검사가 먼저 걸린다.
 -- 멱등 분기(auth_user_id = v_uid → 그 행을 그대로 돌려준다)는 동시 요청에서만 닿으므로 pgTAP 로는 재현하지 않는다.
@@ -96,15 +100,53 @@ select throws_ok(
   $$ select public.claim_person('김철수', '01022220008', '') $$,
   'P0001', 'consent_required', '동의 버전이 없으면 거부한다'
 );
+select throws_ok(
+  $$ select public.claim_person('김철수', '01022220008', '   ') $$,
+  'P0001', 'consent_required', '공백뿐인 동의 버전도 거부한다'
+);
+select throws_ok(
+  $$ select public.claim_person('김철수', '01022220008', 'v1') $$,
+  'P0001', 'consent_required', '날짜(YYYY-MM-DD) 형식이 아닌 동의 버전은 거부한다'
+);
 select tests.clear_auth();
 
--- 5) 익명 계정 → anonymous_cannot_claim
+-- 5) 이름 비교는 공백과 유니코드 합성 방식을 무시한다 (표시용 이름은 선발급 행 그대로 둔다)
+insert into public.people (name, phone) values ('김 철수', '01022220011');
+insert into public.people (name, phone) values ('박순희', '01022220012');
+select tests.authenticate_as(:'space_uid');
+select is(
+  (select (public.claim_person('김철수', '01022220011', '2026-10-07')).name), '김 철수',
+  '공백만 다른 이름으로 연결되고, 선발급 행의 표시용 이름은 그대로 남는다'
+);
+select tests.clear_auth();
+-- iOS/macOS 가 보내는 NFD(자모 분해) 입력이 NFC 로 저장된 선발급 행과 맞아야 한다
+select tests.authenticate_as(:'nfd_uid');
+select lives_ok(
+  $$ select public.claim_person(normalize('박순희', NFD), '01022220012', '2026-10-07') $$,
+  'NFD 로 분해된 이름도 NFC 선발급 행에 연결된다'
+);
+select throws_ok(
+  $$ select public.claim_person('김철수', '01022220013', '   ') $$,
+  'P0001', 'already_registered', '가입을 마친 계정은 형식 검사보다 already_registered 가 먼저 나온다'
+);
+select tests.clear_auth();
+
+-- 6) 익명 계정 → anonymous_cannot_claim
 select tests.authenticate_as(:'anon_uid');
 select throws_ok(
   $$ select public.claim_person('아이', '01022220009', '2026-10-07') $$,
   'P0001', 'anonymous_cannot_claim', '익명 계정은 어른 가입을 할 수 없다'
 );
 select tests.clear_auth();
+
+-- 7) JWT 없이 authenticated 역할로 직접 호출. PostgREST 로는 42501 에서 먼저 막히지만 함수 가드도 고정한다.
+select tests.clear_auth();
+set local role authenticated;
+select throws_ok(
+  $$ select public.claim_person('김철수', '01022220010', '2026-10-07') $$,
+  'P0001', 'not_authenticated', 'JWT 가 없으면 not_authenticated'
+);
+reset role;
 
 select * from finish();
 rollback;

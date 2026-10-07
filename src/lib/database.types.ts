@@ -101,6 +101,12 @@ isOneToOne: false
 "is_admin":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
+"is_valid_mobile":
+{ Args: { "p": string }; Returns: boolean
+                           },
+"normalize_name":
+{ Args: { "p": string }; Returns: string
+                           },
 "normalize_phone":
 { Args: { "p": string }; Returns: string
                            }
