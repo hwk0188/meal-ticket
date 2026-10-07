@@ -109,6 +109,9 @@ isOneToOne: false
                            },
 "normalize_phone":
 { Args: { "p": string }; Returns: string
+                           },
+"ping":
+{ Args: Record<PropertyKey, never>; Returns: number
                            }
           }
           Enums: {

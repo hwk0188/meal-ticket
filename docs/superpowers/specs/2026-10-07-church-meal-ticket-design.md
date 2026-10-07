@@ -227,7 +227,7 @@ GitHub Actions ─────────────────────�
 | `create_next_sunday_lunch()` | 관리자 | 가장 늦은 '주일 점심' 이후의 첫 일요일(없으면 오늘 이후 첫 일요일)에 생성. 이미 있으면 그대로 반환 |
 | `ping()` | anon | keep-alive용. `select 1` |
 
-모든 함수는 실패 시 `raise exception using errcode, message, hint`로 코드화된 오류를 내고, 프론트는 코드를 사용자 문구로 바꾼다.
+모든 함수는 실패 시 `raise exception '<snake_case 코드>'`(메시지에 코드 문자열만, 값 보간 없음)로 오류를 내고, PostgREST가 `{"code":"P0001","message":"<코드>"}`로 내보내면 프론트가 사용자 문구로 바꾼다. DB 원시 오류(23503·23505 등)가 그대로 새어 나가면 규약 위반이다.
 
 ### 7.4 RLS
 
@@ -352,7 +352,7 @@ CSV 열: 종류(발급/취소/사용/무효), 일시, 식사일, 식사명, 이�
 
 | 영역 | 선택 |
 |---|---|
-| 프론트 | React 18, Vite, TypeScript(strict) |
+| 프론트 | React 19, Vite, TypeScript(strict) |
 | 스타일 | Tailwind CSS |
 | 라우팅 | React Router (HashRouter) |
 | 데이터 | `@supabase/supabase-js` v2, TanStack Query |

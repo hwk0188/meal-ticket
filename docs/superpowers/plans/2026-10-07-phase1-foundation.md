@@ -6,7 +6,7 @@
 
 **Architecture:** 정적 SPA(GitHub Pages) + Supabase(Postgres/Auth). 로직은 Postgres 함수(`claim_person`)와 RLS에 두고, 프론트는 supabase-js로 호출만 한다. 로컬 개발은 Docker 기반 Supabase CLI를 쓰고, DB 테스트는 pgTAP, 프론트 테스트는 Vitest + Testing Library, 종단 테스트는 Playwright로 한다.
 
-**Tech Stack:** React 18 · Vite · TypeScript(strict) · Tailwind CSS v4 · react-router v7(HashRouter) · @supabase/supabase-js v2 · @tanstack/react-query v5 · zod · Supabase CLI(npm) · pgTAP · Vitest · Playwright · GitHub Actions
+**Tech Stack:** React 19 · Vite · TypeScript(strict) · Tailwind CSS v4 · react-router v7(HashRouter) · @supabase/supabase-js v2 · @tanstack/react-query v5 · zod · Supabase CLI(npm) · pgTAP · Vitest · Playwright · GitHub Actions
 
 **Spec:** `docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md` (2, 3, 6, 7.1~7.4의 people/families 부분, 8.2의 시작·가입 화면, 10, 11, 12, 13)
 
@@ -26,10 +26,10 @@
 ├── .github/workflows/
 │   ├── ci.yml                     # PR·workflow_call: DB 테스트 + 프론트 테스트 + E2E
 │   ├── deploy.yml                 # main push: 테스트(ci.yml 호출) → DB 마이그레이션 → Pages 배포
-│   └── keep-alive.yml             # 3일마다 ping (무료 플랜 일시정지 예방)
+│   └── keep-alive.yml             # 2일마다 ping (무료 플랜 일시정지 예방)
 ├── supabase/
 │   ├── config.toml                # 로컬 Supabase 설정 (익명 로그인 ON, 이메일 확인 OFF)
-│   ├── seeds/test_helpers.sql     # 테스트용 사용자 생성·인증 헬퍼 (로컬 전용)
+│   ├── seeds/000_test_helpers.sql # 테스트용 사용자 생성·인증 헬퍼 (로컬 전용)
 │   ├── migrations/
 │   │   ├── 20261007000001_people_and_families.sql   # families, people, 트리거, 사용자 헬퍼 함수
 │   │   ├── 20261007000002_people_rls.sql            # 권한 회수·부여, RLS 정책
@@ -64,12 +64,16 @@
 │   ├── pages/
 │   │   ├── StartPage.tsx
 │   │   ├── HomePage.tsx
-│   │   └── PrivacyPage.tsx
+│   │   ├── PrivacyPage.tsx
+│   │   └── officerLine.ts          # 처리방침 담당자 한 줄 (컴포넌트 파일에서 분리)
 │   ├── components/ui.tsx          # Button, TextField, Checkbox
 │   └── test/setup.ts              # Testing Library 설정
 ├── playwright.config.ts
 ├── vite.config.ts                 # vite + vitest 설정
+├── .oxlintrc.json                 # oxlint (react·vitest 플러그인)
+├── .nvmrc                         # 20.19
 ├── .env.example
+├── .env.production                # 운영 빌드 고정값 (VITE_ENABLE_DEV_LOGIN=false)
 └── README.md                      # 운영 설정 안내
 ```
 
@@ -4262,7 +4266,16 @@ git commit -m "docs: 로컬 개발·운영 설정 README"
 
 ## 완료 기준
 
-- `npm run db:test`, `npm run test:coverage`(80% 이상), `npm run build`, `npm run e2e`가 모두 통과한다.
+- `npm run db:test`, `npm run test:coverage`(80% 이상), `npm run lint`, `npm run build`, `npm run e2e`가 모두 통과한다.
 - 브라우저에서 개발 로그인 → 가입(동의) → 홈 → 새로고침 유지 → 로그아웃이 된다.
 - GitHub에 push하면 CI가 초록불이고, Pages 주소에서 카카오 로그인 → 가입 → 홈이 된다(운영 설정 완료 후).
 - 다음 계획(2단계 · 식권 핵심)은 meals/issuances/usages 스키마와 `use_ticket`, 관리자 식사·발급, 교인 홈 식권 목록을 다룬다.
+
+## 1단계에서 의도적으로 미룬 것 (설계 §8.2 중)
+
+- 시작 화면의 "아이 계정으로 시작하기(카카오 없이 · 보호자 연결 필요)" 버튼과 가입 화면의 "어른이에요 / 만 14세 미만이에요" 토글, `#/pair` 코드 화면 → **3단계(가족·아이)**.
+- `#/history`, `#/family`, `#/admin/*` 라우트 → 2·3·4단계. 현재는 알 수 없는 경로를 `/`로 보낸다.
+- 홈의 식권 목록·꾹 누르기 → 2단계. 홈은 "오늘은 식사가 없어요" 카드만 있다.
+- pg_cron 정리 작업 3건(연결 코드·익명 계정·빈 가족) → 3단계(연결 코드가 생길 때).
+- `src/lib/phone.ts`의 `formatPhone`은 아직 호출처가 없다(2단계 관리자 화면의 번호 표시용으로 남겨 둠).
+- DB 헬퍼 `is_valid_mobile`/`normalize_phone`/`normalize_name`에 `set search_path = ''` 고정은 2단계 첫 마이그레이션에서 함께 처리(invoker 권한이라 보안 영향은 없음).
