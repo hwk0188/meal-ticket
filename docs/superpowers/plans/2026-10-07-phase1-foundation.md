@@ -1057,11 +1057,14 @@ git commit -m "feat(db): people·families RLS 정책 및 열 단위 권한"
 - Create: `supabase/migrations/20261007000003_claim_person.sql`
 - Test: `supabase/tests/database/040_claim_person.sql`
 
-- [ ] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/040_claim_person.sql`**
+- [x] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/040_claim_person.sql`**
 
 ```sql
 begin;
-select plan(12);
+select plan(21);
+
+-- 권한 구조 고정: 새 함수에 anon 이 자동으로 붙지 않았는지 확인한다 (auto_expose_new_tables=true 대응)
+select is(has_function_privilege('anon', 'public.claim_person(text,text,text)', 'EXECUTE'), false, 'anon은 claim_person 을 실행할 수 없다');
 
 select tests.create_user('new@test.local') as new_uid \gset
 select tests.create_user('pre@test.local') as pre_uid \gset
@@ -1091,20 +1094,36 @@ select throws_ok(
 );
 select tests.clear_auth();
 
--- 3) 선발급자가 같은 번호로 가입 → 기존 사람에 연결
+-- 3) 선발급자가 같은 번호·같은 이름으로 가입 → 기존 사람에 연결 (새 사람·새 가족이 생기지 않아야 한다)
+select count(*) as people_before from public.people \gset
+select count(*) as families_before from public.families \gset
 select tests.authenticate_as(:'pre_uid');
 select lives_ok(
   $$ select public.claim_person('이순자', '01022220001', '2026-10-07') $$,
-  '선발급된 번호로 가입하면 성공한다'
+  '선발급된 번호·이름으로 가입하면 성공한다'
 );
 select tests.clear_auth();
 select is(
   (select auth_user_id from public.people where phone = '01022220001'), :'pre_uid'::uuid,
   '기존 사람 행에 계정이 연결된다 (새 사람이 생기지 않음)'
 );
+select is((select count(*) from public.people), :'people_before'::bigint, '선발급 연결은 사람 수를 늘리지 않는다');
+select is((select count(*) from public.families), :'families_before'::bigint, '선발급 연결은 가족 수를 늘리지 않는다');
+
+-- 같은 사용자가 순차로 다시 호출하면 잠금 전 검사가 먼저 걸린다.
+-- 멱등 분기(auth_user_id = v_uid → 그 행을 그대로 돌려준다)는 동시 요청에서만 닿으므로 pgTAP 로는 재현하지 않는다.
+select tests.authenticate_as(:'pre_uid');
+select throws_ok(
+  $$ select public.claim_person('이순자', '01022220001', '2026-10-07') $$,
+  'P0001', 'already_registered', '연결을 마친 계정의 순차 재시도는 already_registered (멱등 분기는 동시 요청 전용)'
+);
+select tests.clear_auth();
 
 -- 4) 이미 연결된 번호로 다른 계정이 가입 → phone_taken. 이름이 다른 선발급 번호도 phone_taken (가로채기 방지)
 insert into public.people (name, phone) values ('박영수', '01022220005');
+-- 미성년자 행은 이름까지 맞아도 연결 대상이 아니다 (보호자·관리자가 관리한다)
+insert into public.people (name, phone, is_minor, guardian_id, guardian_consented_at)
+values ('아이', '01022220007', true, (select id from public.people where phone = '01022220001'), now());
 select tests.authenticate_as(:'dup_uid');
 select throws_ok(
   $$ select public.claim_person('가짜이름', '01022220005', '2026-10-07') $$,
@@ -1114,9 +1133,30 @@ select throws_ok(
   $$ select public.claim_person('가짜', '01022220001', '2026-10-07') $$,
   'P0001', 'phone_taken', '남이 쓰는 번호로는 가입할 수 없다'
 );
+-- 멱등 분기가 auth_user_id 로만 열리는지 고정한다: 이름까지 정확해도 남의 계정 행은 못 가져간다
+select throws_ok(
+  $$ select public.claim_person('이순자', '01022220001', '2026-10-07') $$,
+  'P0001', 'phone_taken', '이름을 정확히 맞혀도 이미 연결된 남의 행은 가져갈 수 없다'
+);
+select throws_ok(
+  $$ select public.claim_person('아이', '01022220007', '2026-10-07') $$,
+  'P0001', 'phone_taken', '미성년자 행은 이름이 맞아도 연결하지 않는다'
+);
 select throws_ok(
   $$ select public.claim_person('가짜', '02-123-4567', '2026-10-07') $$,
   'P0001', 'invalid_phone', '휴대폰 형식이 아니면 거부한다'
+);
+select throws_ok(
+  $$ select public.claim_person('', '01022220008', '2026-10-07') $$,
+  'P0001', 'invalid_name', '이름이 비어 있으면 거부한다'
+);
+select throws_ok(
+  $$ select public.claim_person(repeat('가', 21), '01022220008', '2026-10-07') $$,
+  'P0001', 'invalid_name', '이름이 20자를 넘으면 거부한다'
+);
+select throws_ok(
+  $$ select public.claim_person('김철수', '01022220008', '') $$,
+  'P0001', 'consent_required', '동의 버전이 없으면 거부한다'
 );
 select tests.clear_auth();
 
@@ -1132,18 +1172,19 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 ```bash
 npm run db:test
 ```
 Expected: `040_claim_person.sql` FAIL — `function public.claim_person(...) does not exist`.
 
-- [ ] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261007000003_claim_person.sql`**
+- [x] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261007000003_claim_person.sql`**
 
 ```sql
 -- 어른 가입: 카카오(또는 이메일) 로그인 직후 이름·번호·동의를 받아 사람 행을 만들거나 선발급 행에 연결한다.
 -- 오류는 message에 코드 문자열을 담는다. 프론트가 사용자 문구로 바꾼다.
+-- 무차별 대입 완화(실패 횟수 제한)는 후속 단계 과제. 1단계는 이름+번호 일치로만 방어한다.
 create or replace function public.claim_person(
   p_name text,
   p_phone text,
@@ -1176,6 +1217,7 @@ begin
     raise exception 'consent_required';
   end if;
 
+  -- 이 검사는 행 잠금 전에 돌기 때문에 순차 재시도만 잡는다. 동시 요청은 아래 두 곳에서 걸러진다.
   if exists (select 1 from public.people where auth_user_id = v_uid and deleted_at is null) then
     raise exception 'already_registered';
   end if;
@@ -1188,9 +1230,15 @@ begin
    for update;
 
   if found then
+    -- 같은 사용자의 중복 요청(더블 탭·재시도)은 성공으로 본다. 동시 요청에서 뒤늦게 잠금을 얻은
+    -- 쪽이 여기 닿는다 (위의 already_registered 검사는 상대가 커밋하기 전에 지나갔다).
+    if v_person.auth_user_id = v_uid then
+      return v_person;
+    end if;
     if v_person.auth_user_id is not null or v_person.is_minor or btrim(v_person.name) <> v_name then
       raise exception 'phone_taken';
     end if;
+    -- auth_user_id 와 consented_at 은 같은 문장에서 넣어야 people_adult_requires_consent 를 통과한다
     update public.people
        set auth_user_id = v_uid,
            consented_at = now(),
@@ -1198,28 +1246,44 @@ begin
      where id = v_person.id
      returning * into v_person;
   else
-    insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
-    values (v_name, v_phone, v_uid, now(), p_consent_version)
-    returning * into v_person;
+    -- 번호가 아직 없을 때는 잠글 행이 없어서 동시 insert 를 막을 수 없다. 부분 유일 인덱스가
+    -- 중재하므로, 그 충돌을 원시 23505 대신 약속된 코드 문자열로 바꿔 준다.
+    begin
+      insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
+      values (v_name, v_phone, v_uid, now(), p_consent_version)
+      returning * into v_person;
+    exception when unique_violation then
+      -- people_auth_user_id_key 충돌: 같은 사용자가 동시에 두 번 보냈다 → 먼저 만들어진 자기 행을 돌려준다.
+      select * into v_person
+        from public.people
+       where auth_user_id = v_uid and deleted_at is null;
+      if found then
+        return v_person;
+      end if;
+      -- people_phone_unique 충돌: 같은 번호로 가입한 다른 사용자가 먼저 들어갔다.
+      raise exception 'phone_taken';
+    end;
   end if;
 
   return v_person;
 end
 $$;
 
+-- auto_expose_new_tables=true 는 ALTER DEFAULT PRIVILEGES 로 새 함수에 anon=X 를 자동으로 붙인다.
+-- 그래서 grant 목록에서 anon 을 빼는 것만으로는 부족하고, anon 에서 명시적으로 revoke 해야 한다.
 revoke execute on function public.claim_person(text, text, text) from public, anon;
 grant execute on function public.claim_person(text, text, text) to authenticated;
 ```
 
-- [ ] **Step 4: 적용하고 통과 확인**
+- [x] **Step 4: 적용하고 통과 확인**
 
 ```bash
 npm run db:reset
 npm run db:test
 ```
-Expected: 4개 파일 모두 `ok`, `All tests successful.` (5 + 21 + 19 + 12 = 57 단언)
+Expected: 4개 파일 모두 `ok`, `All tests successful.` (5 + 21 + 19 + 21 = 66 단언)
 
-- [ ] **Step 5: DB 타입 생성**
+- [x] **Step 5: DB 타입 생성**
 
 ```bash
 mkdir -p src/lib
@@ -1228,7 +1292,7 @@ head -5 src/lib/database.types.ts
 ```
 Expected: `export type Json = ...`로 시작하는 파일. `people`, `families` 테이블과 `claim_person` 함수 타입이 포함된다.
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add supabase src/lib/database.types.ts package.json
@@ -1337,6 +1401,10 @@ describe('toUserMessage', () => {
   it('네트워크 오류는 통신 문구', () => {
     expect(toUserMessage(new TypeError('Failed to fetch'))).toBe('통신이 불안정해요. 잠시 후 다시 시도해 주세요.')
   })
+
+  it('권한 거부(세션 만료·비로그인)는 로그인 안내', () => {
+    expect(toUserMessage({ code: '42501', message: 'permission denied for function claim_person' })).toBe('로그인이 필요해요.')
+  })
 })
 ```
 
@@ -1444,10 +1512,14 @@ const MESSAGES: Record<string, string> = {
   not_authenticated: '로그인이 필요해요.',
 }
 
+// PostgREST 권한 오류(세션 만료·비로그인). code 가 42501 로 오고 message 는 영문 권한 문구다.
+const PERMISSION_DENIED = /permission denied/i
+
 const FALLBACK = '잠시 후 다시 시도해 주세요.'
 const NETWORK = '통신이 불안정해요. 잠시 후 다시 시도해 주세요.'
 
-function messageOf(err: unknown): string | undefined {
+/** 오류 객체에서 message 문자열을 꺼낸다. Supabase RPC 는 message 에 코드 문자열(phone_taken 등)을 담는다. */
+export function messageOf(err: unknown): string | undefined {
   if (!err || typeof err !== 'object') return undefined
   const m = (err as { message?: unknown }).message
   return typeof m === 'string' ? m : undefined
@@ -1457,6 +1529,7 @@ export function toUserMessage(err: unknown): string {
   const message = messageOf(err)
   if (!message) return FALLBACK
   if (message in MESSAGES) return MESSAGES[message]
+  if (PERMISSION_DENIED.test(message)) return MESSAGES.not_authenticated
   if (/failed to fetch|networkerror|load failed/i.test(message)) return NETWORK
   return FALLBACK
 }
@@ -1467,7 +1540,7 @@ export function toUserMessage(err: unknown): string {
 ```bash
 npm test
 ```
-Expected: env 3 · phone 5 · errors 3 · App 1 → `12 passed`.
+Expected: env 3 · phone 5 · errors 4 · App 1 → `13 passed`.
 
 - [ ] **Step 11: 커밋**
 
@@ -2287,6 +2360,14 @@ describe('OnboardingPage', () => {
     await userEvent.click(screen.getByRole('button', { name: '동의하고 시작하기' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('이미 등록된 번호예요. 권사님께 문의해 주세요.')
   })
+
+  it('already_registered 는 실패가 아니라 이미 성공한 것이므로 홈으로 간다', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'already_registered' } })
+    renderPage()
+    await fillValid()
+    await userEvent.click(screen.getByRole('button', { name: '동의하고 시작하기' }))
+    expect(await screen.findByText('home')).toBeInTheDocument()
+  })
 })
 ```
 
@@ -2337,7 +2418,7 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Button, Checkbox, TextField } from '../../components/ui'
 import { church } from '../../config/church'
-import { toUserMessage } from '../../lib/errors'
+import { messageOf, toUserMessage } from '../../lib/errors'
 import { supabase } from '../../lib/supabase'
 import { validateOnboarding, type OnboardingErrors, type OnboardingValues } from './onboardingSchema'
 
@@ -2364,6 +2445,14 @@ export function OnboardingPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['person'] })
       navigate('/', { replace: true })
+    },
+    // 더블 탭 등으로 먼저 간 요청이 이미 가입을 끝냈으면 서버는 already_registered 를 돌려준다.
+    // 이것은 실패가 아니라 "이미 성공" 이므로 홈으로 보낸다 (Gate 가 사람 행을 다시 읽는다).
+    onError: async (err) => {
+      if (messageOf(err) === 'already_registered') {
+        await queryClient.invalidateQueries({ queryKey: ['person'] })
+        navigate('/', { replace: true })
+      }
     },
   })
 
