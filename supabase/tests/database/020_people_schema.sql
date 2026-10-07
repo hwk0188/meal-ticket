@@ -1,5 +1,5 @@
 begin;
-select plan(19);
+select plan(20);
 
 select has_table('public', 'families', 'families 테이블이 있다');
 select has_table('public', 'people', 'people 테이블이 있다');
@@ -51,6 +51,7 @@ select throws_ok(
 select table_privs_are('public','people','anon', '{}'::text[], 'anon은 people에 아무 권한이 없다');
 select table_privs_are('public','people','authenticated','{SELECT}'::text[], 'authenticated는 people을 읽기만 할 수 있다 (열 단위 insert/update 는 table_privs_are 에 안 보임)');
 select table_privs_are('public','families','anon','{}'::text[], 'anon은 families에 아무 권한이 없다');
+select table_privs_are('public','families','authenticated','{SELECT}'::text[], 'authenticated는 families를 읽기만 할 수 있다');
 select is((select relrowsecurity from pg_class where oid='public.people'::regclass), true, 'people에 RLS가 켜져 있다');
 select is((select relrowsecurity from pg_class where oid='public.families'::regclass), true, 'families에 RLS가 켜져 있다');
 
