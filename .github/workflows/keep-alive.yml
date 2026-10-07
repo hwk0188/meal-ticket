@@ -2,12 +2,17 @@ name: Keep alive
 
 on:
   schedule:
-    - cron: '17 3 */3 * *'   # 3일마다 03:17 UTC
+    # 2일마다 03:17 UTC. */3 은 매월 1일에 간격이 초기화되어 29→1 일처럼 최대 4일이 벌어지고,
+    # 거기서 실행 한 번이 밀리면 무료 플랜의 7일 미사용 일시정지 선에 닿는다. */2 는 최대 간격이 2일이다.
+    - cron: '17 3 */2 * *'
   workflow_dispatch:
+
+permissions: {}
 
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       # ping() 은 상수 1 만 돌려주는 anon 전용 함수다 (20261007000004_ping.sql).
       # 두 실패 모두 단계를 빨갛게 만든다 (조용히 건너뛰지 않는다).

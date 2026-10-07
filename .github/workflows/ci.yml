@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+# PR 에 연달아 push 하면 앞선 실행을 취소한다. main push(deploy.yml 호출)는 취소하지 않는다.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     name: DB · 단위 · E2E 테스트
@@ -28,10 +33,14 @@ jobs:
 
       - name: 로컬 환경변수 작성
         run: |
-          eval "$(npx supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)=')"
+          set -euo pipefail
+          status="$(npx supabase status -o env)"
+          api_url="$(printf '%s\n' "$status" | sed -n 's/^API_URL="\(.*\)"$/\1/p')"
+          key="$(printf '%s\n' "$status" | sed -n 's/^PUBLISHABLE_KEY="\(.*\)"$/\1/p')"
+          [ -n "$api_url" ] && [ -n "$key" ] || { echo "supabase status 에서 API_URL/PUBLISHABLE_KEY 를 읽지 못했습니다"; exit 1; }
           {
-            echo "VITE_SUPABASE_URL=$API_URL"
-            echo "VITE_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
+            echo "VITE_SUPABASE_URL=$api_url"
+            echo "VITE_SUPABASE_PUBLISHABLE_KEY=$key"
             echo "VITE_ENABLE_DEV_LOGIN=true"
             echo "VITE_BASE_PATH=/"
           } > .env.local
@@ -48,11 +57,16 @@ jobs:
       - name: 빌드 (타입 검사 포함)
         run: npm run build
 
+      # 운영은 /<repo>/ 하위에 배포된다. 기본 '/' 빌드만 검사하면 하위 경로에서 자산 404 가 나는 회귀를 놓친다.
+      # dist 를 덮어쓰지만 E2E 는 개발 서버로 돌기 때문에 영향이 없다.
+      - name: 하위 경로 빌드 확인 (GitHub Pages 프로젝트 사이트)
+        run: VITE_BASE_PATH=/meal-ticket/ npm run build && grep -q '/meal-ticket/assets/' dist/index.html
+
       - name: Playwright 브라우저 설치
         run: npx playwright install chromium --with-deps
 
       # E2E 는 반드시 개발 서버(npm run dev, playwright webServer)로 돈다. 개발 로그인 폼은 import.meta.env.DEV 뒤에 있어
-      # vite preview / 운영 번들에는 없다. 운영 산출물은 바로 위의 npm run build 가 검사한다.
+      # vite preview / 운영 번들에는 없다. 운영 산출물은 위의 두 빌드 단계가 검사한다.
       - name: E2E
         run: npm run e2e
 

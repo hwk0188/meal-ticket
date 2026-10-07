@@ -1,9 +1,11 @@
--- keep-alive 용. 무료 플랜의 7일 미사용 일시정지를 막기 위해 GitHub Actions가 3일마다 호출한다.
+-- keep-alive 용. 무료 플랜의 7일 미사용 일시정지를 막기 위해 GitHub Actions가 2일마다 호출한다 (.github/workflows/keep-alive.yml).
 -- 데이터에 접근하지 않는 상수 함수라 anon 노출이 안전하다 (public 함수 중 유일한 anon 예외).
+-- 참조하는 객체가 없으므로 search_path 는 빈 값으로 못박는다 (search_path 가변 경고도 함께 사라진다).
 create or replace function public.ping()
 returns integer
 language sql
 stable
+set search_path = ''
 as $$ select 1 $$;
 
 comment on function public.ping() is 'keep-alive 핑. 상수 1 만 돌려주며 데이터에 접근하지 않는다.';
