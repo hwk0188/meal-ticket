@@ -310,6 +310,7 @@ export default defineConfig(({ mode }) => {
           'src/test/**',
           'src/main.tsx',
           'src/lib/database.types.ts',
+          'src/lib/supabase.ts',
         ],
         thresholds: { lines: 80, functions: 80, branches: 70, statements: 80 },
       },
@@ -1435,8 +1436,14 @@ describe('parseEnv', () => {
     expect(parseEnv({ VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY }).enableDevLogin).toBe(false)
   })
 
-  it('필수 값이 빠지면 어떤 키인지 알려주며 실패한다', () => {
+  it('개발 로그인 플래그가 이상한 값이면 false (fail closed)', () => {
+    expect(parseEnv({ ...valid, VITE_ENABLE_DEV_LOGIN: '' }).enableDevLogin).toBe(false)
+    expect(parseEnv({ ...valid, VITE_ENABLE_DEV_LOGIN: 'TRUE' }).enableDevLogin).toBe(false)
+  })
+
+  it('필수 값이 빠지면 어떤 키인지·왜 틀렸는지 알려주며 실패한다', () => {
     expect(() => parseEnv({ VITE_SUPABASE_URL: 'http://x' })).toThrow(/VITE_SUPABASE_PUBLISHABLE_KEY/)
+    expect(() => parseEnv({ VITE_SUPABASE_URL: 'http://x' })).toThrow(/VITE_SUPABASE_PUBLISHABLE_KEY: .+/)
   })
 })
 ```
@@ -1476,13 +1483,18 @@ describe('phone', () => {
     expect(maskPhone('0101234567')).toBe('010-***-4567')
     expect(maskPhone(null)).toBe('')
   })
+
+  it('입력 중(형식 미완성)인 번호는 그대로 두고, 마스킹은 형식을 드러내지 않는다', () => {
+    expect(formatPhone('010')).toBe('010')
+    expect(maskPhone('010')).toBe('***')
+  })
 })
 ```
 
 - [x] **Step 4: 실패하는 테스트 — `src/lib/errors.test.ts`**
 
 ```ts
-import { toUserMessage } from './errors'
+import { messageOf, toUserMessage } from './errors'
 
 describe('toUserMessage', () => {
   it('DB 오류 코드를 사용자 문구로 바꾼다', () => {
@@ -1501,6 +1513,22 @@ describe('toUserMessage', () => {
 
   it('권한 거부(세션 만료·비로그인)는 로그인 안내', () => {
     expect(toUserMessage({ code: '42501', message: 'permission denied for function claim_person' })).toBe('로그인이 필요해요.')
+    // 코드가 없어도 영문 문구로 알아본다 (코드 매핑의 예비 수단).
+    expect(toUserMessage({ message: 'permission denied for table people' })).toBe('로그인이 필요해요.')
+  })
+
+  it('인증 오류는 영문 문구가 달라도 코드로 알아본다', () => {
+    expect(toUserMessage({ code: 'PGRST301', message: 'JWT expired' })).toBe('로그인이 필요해요.')
+    expect(
+      toUserMessage({ code: '42501', message: 'new row violates row-level security policy for table "people"' }),
+    ).toBe('로그인이 필요해요.')
+  })
+})
+
+describe('messageOf', () => {
+  it('객체의 message 문자열만 꺼낸다', () => {
+    expect(messageOf({ message: 'already_registered' })).toBe('already_registered')
+    expect(messageOf('str')).toBeUndefined()
   })
 })
 ```
@@ -1518,10 +1546,12 @@ Expected: 세 파일 모두 FAIL — `Failed to resolve import "./env"` 등.
 import { z } from 'zod'
 
 // zod v4 기준. z.string().url() 은 v4 에서 deprecated 라 z.url() 을 쓴다.
+// 개발 로그인 플래그는 catch 로 fail-closed: 비어 있거나 모르는 값('TRUE' 등)이면 꺼진 것으로 본다.
+// (.env.example 은 운영에서 이 값을 비워 두라고 안내한다 — 그때 앱이 죽으면 안 된다.)
 const schema = z.object({
   VITE_SUPABASE_URL: z.url(),
   VITE_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
-  VITE_ENABLE_DEV_LOGIN: z.enum(['true', 'false']).default('false'),
+  VITE_ENABLE_DEV_LOGIN: z.enum(['true', 'false']).catch('false'),
 })
 
 export type Env = {
@@ -1530,12 +1560,12 @@ export type Env = {
   enableDevLogin: boolean
 }
 
-/** 환경변수를 검증해 앱에서 쓰기 좋은 모양으로 바꾼다. 빠진 키는 메시지에 그대로 적어 준다. */
+/** 환경변수를 검증해 앱에서 쓰기 좋은 모양으로 바꾼다. 실패하면 어떤 키가 왜 틀렸는지 적어 준다. */
 export function parseEnv(raw: Record<string, unknown>): Env {
   const result = schema.safeParse(raw)
   if (!result.success) {
-    const keys = result.error.issues.map((i) => i.path.join('.')).join(', ')
-    throw new Error(`환경변수가 올바르지 않습니다: ${keys}`)
+    const reasons = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(', ')
+    throw new Error(`환경변수가 올바르지 않습니다: ${reasons}`)
   }
   return {
     supabaseUrl: result.data.VITE_SUPABASE_URL,
@@ -1545,7 +1575,7 @@ export function parseEnv(raw: Record<string, unknown>): Env {
 }
 
 // 모듈을 처음 읽을 때 검증한다 (빠른 실패). 테스트에서는 vite.config.ts 의 test.env 가 값을 준다.
-export const env: Env = parseEnv(import.meta.env as Record<string, unknown>)
+export const env: Env = parseEnv(import.meta.env)
 ```
 
 - [x] **Step 7: 구현 — `src/lib/supabase.ts`**
@@ -1557,6 +1587,9 @@ import { env } from './env'
 
 export const supabase = createClient<Database>(env.supabaseUrl, env.supabasePublishableKey, {
   auth: {
+    // GitHub Pages 는 <user>.github.io 한 오리진을 프로젝트들이 함께 쓴다.
+    // 기본 키는 URL 에서 만들어지므로 프로젝트별로 고정 키를 준다.
+    storageKey: 'meal-ticket-auth',
     flowType: 'pkce',
     detectSessionInUrl: true,
     persistSession: true,
@@ -1582,28 +1615,26 @@ export function isValidMobile(digits: string): boolean {
   return MOBILE.test(digits)
 }
 
-/** 01012345678 → 010-1234-5678, 0101234567 → 010-123-4567 */
+/** 완성된 휴대폰 번호만 하이픈을 넣는다. 입력 중(형식 미완성)이면 그대로 돌려준다. */
 export function formatPhone(digits: string): string {
-  if (!digits) return ''
-  const head = digits.slice(0, 3)
-  const tail = digits.slice(-4)
-  const mid = digits.slice(3, -4)
-  return [head, mid, tail].filter(Boolean).join('-')
+  if (!isValidMobile(digits)) return digits
+  return `${digits.slice(0, 3)}-${digits.slice(3, -4)}-${digits.slice(-4)}`
 }
 
-/** 010-****-5678 */
+/** 010-****-5678. 모르는 형식은 드러내지 않는다. */
 export function maskPhone(digits: string | null | undefined): string {
   if (!digits) return ''
-  const formatted = formatPhone(digits)
-  const [head, mid, tail] = formatted.split('-')
-  return [head, '*'.repeat(mid.length), tail].join('-')
+  if (!isValidMobile(digits)) return '***'
+  const mid = digits.slice(3, -4)
+  return `${digits.slice(0, 3)}-${'*'.repeat(mid.length)}-${digits.slice(-4)}`
 }
 ```
 
 - [x] **Step 9: 구현 — `src/lib/errors.ts`**
 
 ```ts
-const MESSAGES: Record<string, string> = {
+// DB(claim_person 등)는 오류 코드를 message 에 문자열로 담아 보낸다 ({code:'P0001', message:'phone_taken'}).
+const MESSAGES = {
   phone_taken: '이미 등록된 번호예요. 권사님께 문의해 주세요.',
   invalid_phone: '휴대폰 번호를 확인해 주세요.',
   invalid_name: '이름을 확인해 주세요.',
@@ -1611,28 +1642,49 @@ const MESSAGES: Record<string, string> = {
   already_registered: '이미 가입된 계정이에요.',
   anonymous_cannot_claim: '아이 계정은 보호자 연결로 시작해 주세요.',
   not_authenticated: '로그인이 필요해요.',
-}
+} as const satisfies Record<string, string>
 
-// PostgREST 권한 오류(세션 만료·비로그인). code 가 42501 로 오고 message 는 영문 권한 문구다.
+/** MESSAGES 에 문구가 있는 오류 코드. 호출하는 쪽에서 오타를 막는 데 쓴다. */
+export type RpcErrorCode = keyof typeof MESSAGES
+
+// 세션 만료·비로그인. 42501 은 Postgres 권한/RLS, PGRST301·302 는 PostgREST 의 JWT 오류다.
+// 영문 문구는 상황마다 다르므로(permission denied…, JWT expired, new row violates RLS…) 코드로 먼저 본다.
+const AUTH_CODES = new Set(['42501', 'PGRST301', 'PGRST302'])
 const PERMISSION_DENIED = /permission denied/i
 const NETWORK_FAILURE = /failed to fetch|networkerror|load failed/i
 
 const FALLBACK = '잠시 후 다시 시도해 주세요.'
 const NETWORK = '통신이 불안정해요. 잠시 후 다시 시도해 주세요.'
 
+function fieldOf(err: unknown, key: 'message' | 'code'): string | undefined {
+  if (!err || typeof err !== 'object') return undefined
+  const value = (err as Record<string, unknown>)[key]
+  return typeof value === 'string' ? value : undefined
+}
+
 /** 오류 객체에서 message 문자열을 꺼낸다. Supabase RPC 는 message 에 코드 문자열(phone_taken 등)을 담는다. */
 export function messageOf(err: unknown): string | undefined {
-  if (!err || typeof err !== 'object') return undefined
-  const m = (err as { message?: unknown }).message
-  return typeof m === 'string' ? m : undefined
+  return fieldOf(err, 'message')
+}
+
+/** 오류 객체에서 code 를 꺼낸다. 빈 문자열은 없는 것으로 본다. */
+function codeOf(err: unknown): string | undefined {
+  const code = fieldOf(err, 'code')
+  return code === '' ? undefined : code
+}
+
+// 평범한 객체의 프로토타입 키(toString 등)에 걸리지 않도록 hasOwn 으로 본다.
+function isRpcErrorCode(value: string): value is RpcErrorCode {
+  return Object.hasOwn(MESSAGES, value)
 }
 
 /** 어떤 오류든 사용자에게 보여 줄 한국어 문구로 바꾼다. 모르는 오류는 일반 문구. */
 export function toUserMessage(err: unknown): string {
   const message = messageOf(err)
+  const code = codeOf(err)
+  if (message && isRpcErrorCode(message)) return MESSAGES[message]
+  if (code && AUTH_CODES.has(code)) return MESSAGES.not_authenticated
   if (!message) return FALLBACK
-  // 평범한 객체의 프로토타입 키(toString 등)에 걸리지 않도록 hasOwn 으로 본다.
-  if (Object.hasOwn(MESSAGES, message)) return MESSAGES[message]
   if (PERMISSION_DENIED.test(message)) return MESSAGES.not_authenticated
   if (NETWORK_FAILURE.test(message)) return NETWORK
   return FALLBACK
@@ -1644,7 +1696,7 @@ export function toUserMessage(err: unknown): string {
 ```bash
 npm test
 ```
-Expected: env 3 · phone 5 · errors 4 · App 1 → `13 passed`.
+Expected: env 4 · phone 6 · errors 6 · App 1 → `17 passed`.
 
 - [x] **Step 11: 커밋**
 
