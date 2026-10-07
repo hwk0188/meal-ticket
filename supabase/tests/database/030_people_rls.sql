@@ -69,8 +69,9 @@ select is(
 
 -- 관리자로서
 select tests.authenticate_as(:'admin_uid');
+-- now() 는 트랜잭션 시각이라, 이 테스트 트랜잭션에서 만든 사람 행만 고른다 (E2E 가 남긴 행과 섞이지 않게).
 select set_eq(
-  $$ select name from public.people $$,
+  $$ select name from public.people where created_at = now() $$,
   $$ values ('김철수A'::text),('이영희'),('권사'),('이순자'),('탈퇴가족원'),('가족형제'),('서연') $$,
   '관리자는 모든 사람을 본다 (탈퇴자·타가족·자녀 포함)');
 select lives_ok(

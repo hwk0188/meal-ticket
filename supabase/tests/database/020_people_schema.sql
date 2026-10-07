@@ -5,19 +5,20 @@ select has_table('public', 'families', 'families 테이블이 있다');
 select has_table('public', 'people', 'people 테이블이 있다');
 
 -- 1인 가족 자동 생성
-insert into public.people (name, phone) values ('김철수', '010-1234-5678');
+-- 이름으로 찾으면 E2E 가 남겨 둔 '김철수' 행과 섞인다. 픽스처 id 를 받아 두고 그것으로만 찾는다.
+insert into public.people (name, phone) values ('김철수', '010-1234-5678') returning id as p1 \gset
 select isnt(
-  (select family_id from public.people where name = '김철수'), null,
+  (select family_id from public.people where id = :'p1'), null,
   '사람을 만들면 family_id가 자동으로 채워진다'
 );
 select is(
-  (select count(*) from public.families where id = (select family_id from public.people where name = '김철수')),
+  (select count(*) from public.families where id = (select family_id from public.people where id = :'p1')),
   1::bigint, '그 가족 행이 실제로 존재한다'
 );
 
 -- 전화번호 정규화
 select is(
-  (select phone from public.people where name = '김철수'), '01012345678',
+  (select phone from public.people where id = :'p1'), '01012345678',
   '전화번호는 숫자만 남겨 저장한다'
 );
 select is(public.normalize_phone('+82 10-9876-5432'), '01098765432', '+82 국제 표기는 010 으로 바꾼다');
@@ -28,8 +29,8 @@ select is(public.is_valid_mobile(null), false, 'is_valid_mobile(null) 은 false'
 -- 이름 정규화: 비교 키는 공백을 지우고 NFC 로 맞춘다 (iOS 가 보내는 NFD 자모 분해 대응)
 select is(public.normalize_name(' 김 철수 '), '김철수', 'normalize_name 은 공백을 제거한다');
 select is(public.normalize_name(normalize('김철수', NFD)), '김철수', 'normalize_name 은 NFC 로 맞춘다');
-insert into public.people (name, phone) values (normalize('홍길동', NFD), '01077770001');
-select is((select name from public.people where phone = '01077770001'), '홍길동', '트리거가 이름을 NFC 로 저장한다');
+insert into public.people (name, phone) values (normalize('홍길동', NFD), '01077770001') returning id as p2 \gset
+select is((select name from public.people where id = :'p2'), '홍길동', '트리거가 이름을 NFC 로 저장한다');
 
 -- 잘못된 번호 거부 (check 위반 23514)
 select throws_ok(
@@ -42,7 +43,7 @@ select throws_ok(
   $$ insert into public.people (name, phone) values ('김철수2', '01012345678') $$,
   '23505', null, '같은 번호를 두 번 등록할 수 없다'
 );
-update public.people set deleted_at = now() where name = '김철수';
+update public.people set deleted_at = now() where id = :'p1';
 select lives_ok(
   $$ insert into public.people (name, phone) values ('김철수3', '01012345678') $$,
   '탈퇴한 사람의 번호는 다시 쓸 수 있다'
@@ -78,10 +79,10 @@ select throws_ok(
   '23514', null, '계정이 연결된 어른은 동의 없이 만들 수 없다');
 
 -- 트리거 UPDATE 경로: 번호 재정규화(+82 010 형태 포함), updated_at 은 트리거가 덮어쓴다
-insert into public.people (name, phone) values ('수정대상','010-1111-2222');
-update public.people set phone = '+82 010-3333-4444', updated_at = '2000-01-01' where name='수정대상';
+insert into public.people (name, phone) values ('수정대상','010-1111-2222') returning id as p3 \gset
+update public.people set phone = '+82 010-3333-4444', updated_at = '2000-01-01' where id = :'p3';
 select results_eq(
-  $$ select phone, updated_at > '2020-01-01'::timestamptz from public.people where name='수정대상' $$,
+  format($$ select phone, updated_at > '2020-01-01'::timestamptz from public.people where id = %L $$, :'p3'),
   $$ values ('01033334444'::text, true) $$,
   'update 시 번호를 다시 정규화하고 updated_at 을 트리거가 덮어쓴다');
 
