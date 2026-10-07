@@ -1,0 +1,88 @@
+import { render, screen } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router'
+import { Gate, RequireSession } from './Gate'
+
+// 훅을 통째로 가짜로 바꾸므로 실제 타입(Session, UseQueryResult) 전체를 만들 필요가 없다.
+// Gate 가 읽는 필드만 담은 느슨한 타입으로 둔다.
+type FakeAuth = { status: string; session?: { user: { id: string } } | null }
+type FakePerson = { status: string; data?: { id: string; name: string } | null }
+
+const { useAuth, usePerson } = vi.hoisted(() => ({
+  useAuth: vi.fn<() => FakeAuth>(),
+  usePerson: vi.fn<() => FakePerson>(),
+}))
+vi.mock('./AuthProvider', () => ({ useAuth }))
+vi.mock('./usePerson', () => ({ usePerson }))
+vi.mock('../../pages/StartPage', () => ({ StartPage: () => <p>start</p> }))
+vi.mock('../../pages/HomePage', () => ({ HomePage: () => <p>home</p> }))
+
+function renderAt(path: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/" element={<Gate />} />
+        <Route path="/onboarding" element={<RequireSession><p>onboarding</p></RequireSession>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+describe('Gate', () => {
+  it('세션 확인 중이면 스피너', () => {
+    useAuth.mockReturnValue({ status: 'loading' })
+    usePerson.mockReturnValue({ status: 'pending', data: undefined })
+    renderAt('/')
+    expect(screen.getByRole('status')).toBeInTheDocument()
+  })
+
+  it('세션이 없으면 시작 화면', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: null })
+    usePerson.mockReturnValue({ status: 'pending', data: undefined })
+    renderAt('/')
+    expect(screen.getByText('start')).toBeInTheDocument()
+  })
+
+  it('세션은 있고 사람이 없으면 가입 화면으로 보낸다', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'success', data: null })
+    renderAt('/')
+    expect(screen.getByText('onboarding')).toBeInTheDocument()
+  })
+
+  it('사람이 있으면 홈', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'success', data: { id: 'p1', name: '김철수' } })
+    renderAt('/')
+    expect(screen.getByText('home')).toBeInTheDocument()
+  })
+
+  it('사람 조회가 실패하면 안내 스피너', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'error', data: undefined })
+    renderAt('/')
+    expect(screen.getByRole('status')).toHaveTextContent('연결에 문제가 있어요')
+  })
+
+  it('RequireSession: 세션이 없으면 /로 보낸다', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: null })
+    usePerson.mockReturnValue({ status: 'pending', data: undefined })
+    renderAt('/onboarding')
+    expect(screen.getByText('start')).toBeInTheDocument()
+  })
+
+  it('RequireSession: 사람 조회가 실패하면 가입 화면을 열지 않는다', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'error', data: undefined })
+    renderAt('/onboarding')
+    // 이미 가입한 사람일 수도 있다. 조회가 실패한 채로 가입을 진행시키면 안 된다.
+    expect(screen.queryByText('onboarding')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('연결에 문제가 있어요')
+  })
+
+  it('RequireSession: 이미 가입했으면 /로 보낸다', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'success', data: { id: 'p1', name: '김철수' } })
+    renderAt('/onboarding')
+    expect(screen.getByText('home')).toBeInTheDocument()
+  })
+})
