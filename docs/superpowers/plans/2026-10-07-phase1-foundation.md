@@ -603,7 +603,7 @@ git commit -m "test: pgTAP 테스트 헬퍼(사용자 생성·인증) 추가"
 
 ```sql
 begin;
-select plan(9);
+select plan(11);
 
 select has_table('public', 'families', 'families 테이블이 있다');
 select has_table('public', 'people', 'people 테이블이 있다');
@@ -624,6 +624,8 @@ select is(
   (select phone from public.people where name = '김철수'), '01012345678',
   '전화번호는 숫자만 남겨 저장한다'
 );
+select is(public.normalize_phone('+82 10-9876-5432'), '01098765432', '+82 국제 표기는 010 으로 바꾼다');
+select is(public.normalize_phone(''), null, '빈 문자열은 null');
 
 -- 잘못된 번호 거부 (check 위반 23514)
 select throws_ok(
@@ -670,13 +672,18 @@ create table public.families (
   created_at timestamptz not null default now()
 );
 
--- 전화번호: 숫자만 남긴다. 빈 문자열은 null.
+-- 전화번호: 숫자만 남긴다. 빈 문자열은 null. 국제 표기(+82 10…)는 국내 표기(010…)로 바꾼다.
 create or replace function public.normalize_phone(p text)
 returns text
 language sql
 immutable
 as $$
-  select nullif(regexp_replace(coalesce(p, ''), '\D', '', 'g'), '')
+  select case
+    when d is null then null
+    when d ~ '^82(1[0-9]{8,9})$' then '0' || substring(d from 3)
+    else d
+  end
+  from (select nullif(regexp_replace(coalesce(p, ''), '\D', '', 'g'), '')) as t(d)
 $$;
 
 create table public.people (
@@ -706,7 +713,8 @@ create unique index people_phone_unique
   on public.people (phone)
   where phone is not null and deleted_at is null;
 create index people_family_idx on public.people (family_id);
-create index people_auth_user_idx on public.people (auth_user_id);
+create index people_guardian_idx on public.people (guardian_id);
+-- auth_user_id 는 unique 제약이 이미 인덱스를 만든다.
 
 -- insert: 가족이 없으면 1인 가족 생성 / insert·update: 번호 정규화, updated_at 갱신
 -- security definer: 관리자가 authenticated 역할로 사람을 insert할 때도 families에 쓸 수 있어야 한다
@@ -774,6 +782,15 @@ $$;
 
 revoke execute on function public.current_person_id(), public.current_family_id(), public.is_admin() from public;
 grant execute on function public.current_person_id(), public.current_family_id(), public.is_admin() to authenticated, anon;
+
+-- =========================================================
+-- 기본 차단: RLS 켜고 API 역할 권한 회수. 정책과 세부 권한은 다음 마이그레이션(RLS)에서 부여한다.
+-- 테이블 생성과 같은 마이그레이션에 두어, 두 마이그레이션 사이에 열린 창이 생기지 않게 한다.
+-- =========================================================
+alter table public.families enable row level security;
+alter table public.people enable row level security;
+revoke all on public.families from anon, authenticated;
+revoke all on public.people from anon, authenticated;
 ```
 
 - [ ] **Step 4: 적용하고 통과 확인**
@@ -782,7 +799,7 @@ grant execute on function public.current_person_id(), public.current_family_id()
 npm run db:reset
 npm run db:test
 ```
-Expected: `020_people_schema.sql .. ok`, 전체 `All tests successful.`
+Expected: `020_people_schema.sql .. ok`, 전체 `All tests successful.` (5 + 11 단언)
 
 - [ ] **Step 5: 커밋**
 
@@ -864,23 +881,17 @@ rollback;
 ```bash
 npm run db:test
 ```
-Expected: `030_people_rls.sql` FAIL — A가 4명을 보거나(RLS 없음) 권한 오류가 발생하지 않음.
+Expected: `030_people_rls.sql` FAIL — 앞 마이그레이션이 기본 차단 상태라 A의 첫 조회부터 `42501 permission denied`로 중단된다(정책·권한이 아직 없음).
 
 - [ ] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261007000002_people_rls.sql`**
 
 ```sql
--- 기본 권한 회수 후 필요한 것만 부여
-revoke all on public.families from anon, authenticated;
-revoke all on public.people from anon, authenticated;
-
+-- RLS 활성화와 권한 회수는 앞 마이그레이션(테이블 생성)에서 이미 했다. 여기서는 필요한 권한과 정책만 부여한다.
 grant select on public.families to authenticated;
 grant select on public.people to authenticated;
 -- 본인 수정은 이름·전화만, 관리자 선발급 입력도 이름·전화만 (나머지는 함수로)
 grant update (name, phone) on public.people to authenticated;
 grant insert (name, phone) on public.people to authenticated;
-
-alter table public.families enable row level security;
-alter table public.people enable row level security;
 
 -- families
 create policy families_select_own_or_admin on public.families
@@ -1164,6 +1175,11 @@ describe('phone', () => {
     expect(normalizePhone(' 010 1234 5678 ')).toBe('01012345678')
   })
 
+  it('+82 국제 표기는 010 으로 바꾼다 (DB normalize_phone 과 동일 규칙)', () => {
+    expect(normalizePhone('+82 10-9876-5432')).toBe('01098765432')
+    expect(normalizePhone('+82-10-123-4567')).toBe('0101234567')
+  })
+
   it('휴대폰 번호 형식을 검사한다', () => {
     expect(isValidMobile('01012345678')).toBe(true)
     expect(isValidMobile('0101234567')).toBe(true)
@@ -1269,8 +1285,11 @@ export const supabase = createClient<Database>(env.supabaseUrl, env.supabasePubl
 ```ts
 const MOBILE = /^01[0-9]{8,9}$/
 
+/** 숫자만 남기고, +82 국제 표기는 010 으로 바꾼다. DB 의 normalize_phone() 과 같은 규칙. */
 export function normalizePhone(input: string): string {
-  return input.replace(/\D/g, '')
+  const digits = input.replace(/\D/g, '')
+  const intl = /^82(1[0-9]{8,9})$/.exec(digits)
+  return intl ? `0${intl[1]}` : digits
 }
 
 export function isValidMobile(digits: string): boolean {
@@ -1331,7 +1350,7 @@ export function toUserMessage(err: unknown): string {
 ```bash
 npm test
 ```
-Expected: env 3 · phone 4 · errors 3 · App 1 → `11 passed`.
+Expected: env 3 · phone 5 · errors 3 · App 1 → `12 passed`.
 
 - [ ] **Step 11: 커밋**
 
