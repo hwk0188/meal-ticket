@@ -3955,7 +3955,7 @@ npm run dev                # http://localhost:5173
 
 ### 1. Supabase 프로젝트 (Free)
 
-1. https://supabase.com 에서 프로젝트 생성 (리전: Northeast Asia (Seoul)). DB 비밀번호를 안전한 곳에 보관.
+1. https://supabase.com 에서 프로젝트 생성 (리전: **Northeast Asia (Seoul)** — 처리방침이 "국내(서울) 리전 보관"을 명시하므로 다른 리전을 고르면 안 된다). DB 비밀번호를 안전한 곳에 보관.
 2. **Authentication › URL Configuration**
    - Site URL: `https://<github-user>.github.io/<repo>/`
    - Redirect URLs: 같은 주소 추가.
