@@ -7,7 +7,7 @@ export function PrivacyPage() {
   return (
     <main className="mx-auto flex max-w-sm flex-col gap-5 p-6 text-sm leading-relaxed">
       <h1 className="text-2xl font-extrabold">개인정보 처리방침</h1>
-      <p>{church.name}는 식권 서비스 운영을 위해 아래와 같이 개인정보를 처리합니다.</p>
+      <p>{church.name}에서는 식권 서비스 운영을 위해 아래와 같이 개인정보를 처리합니다.</p>
 
       <section>
         <h2 className="mb-1 font-bold">1. 수집 항목</h2>
