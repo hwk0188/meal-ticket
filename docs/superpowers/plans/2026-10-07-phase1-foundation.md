@@ -14,7 +14,8 @@
 
 ## 사전 조건
 
-- macOS, Node 22 이상, Docker Desktop 실행 중 (로컬 Supabase용).
+- macOS, Node 20.19 이상(Vite 8 최소 요건. CI는 Node 22를 쓴다), Docker Desktop 실행 중 (로컬 Supabase용).
+- 실제 스캐폴딩 결과(Task 1 수행 시점): create-vite 9.2 → React 19 · Vite 8 · TypeScript 6 · **oxlint**(ESLint 아님). 이후 Task의 `npm run lint`는 oxlint를 가리킨다.
 - 저장소 루트 `/Users/hong-wongi/Dev/sample/meal-ticket` 에 `docs/`와 `.gitignore`만 있는 상태(main 브랜치, 커밋 2개).
 - 모든 명령은 저장소 루트에서 실행한다.
 
@@ -82,7 +83,7 @@
 - Create: `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`, `src/main.tsx`, `src/App.tsx`, `src/index.css`
 - Modify: `.gitignore`
 
-- [ ] **Step 1: Vite 템플릿을 임시 폴더에 생성해 루트로 옮긴다**
+- [x] **Step 1: Vite 템플릿을 임시 폴더에 생성해 루트로 옮긴다**
 
 루트에 `docs/`가 있어 `create-vite`가 대화형 확인을 요구하므로 임시 폴더를 쓴다.
 
@@ -94,7 +95,7 @@ npm install
 
 Expected: `package.json`, `vite.config.ts`, `src/App.tsx` 등이 루트에 생기고 `npm install`이 오류 없이 끝난다. 기존 `.gitignore`는 템플릿 것으로 덮였을 수 있으니 다음 단계에서 다시 쓴다.
 
-- [ ] **Step 2: `.gitignore`를 다시 작성한다**
+- [x] **Step 2: `.gitignore`를 다시 작성한다**
 
 ```gitignore
 node_modules/
@@ -112,7 +113,7 @@ supabase/.branches/
 *.local
 ```
 
-- [ ] **Step 3: Tailwind v4와 Vite 플러그인, Node 타입을 설치한다**
+- [x] **Step 3: Tailwind v4와 Vite 플러그인, Node 타입을 설치한다**
 
 ```bash
 npm install -D tailwindcss @tailwindcss/vite @types/node
@@ -120,7 +121,7 @@ npm install -D tailwindcss @tailwindcss/vite @types/node
 
 `@types/node`는 `vite.config.ts`에서 `process.env`를 읽기 위해 필요하다. `tsconfig.node.json`의 `compilerOptions.types`에 `"node"`가 없으면 추가한다.
 
-- [ ] **Step 4: `src/index.css`를 Tailwind만 남기고 교체한다**
+- [x] **Step 4: `src/index.css`를 Tailwind만 남기고 교체한다**
 
 ```css
 @import "tailwindcss";
@@ -148,7 +149,7 @@ body {
 rm -f src/App.css src/assets/react.svg public/vite.svg
 ```
 
-- [ ] **Step 5: `vite.config.ts`를 교체한다 (base 경로를 환경변수로)**
+- [x] **Step 5: `vite.config.ts`를 교체한다 (base 경로를 환경변수로)**
 
 ```ts
 /// <reference types="vitest/config" />
@@ -179,7 +180,7 @@ export default defineConfig({
 
 `vitest`는 Task 2에서 설치하므로 지금은 타입 오류가 나도 된다.
 
-- [ ] **Step 6: `src/main.tsx`와 `src/App.tsx`를 최소 형태로 교체한다**
+- [x] **Step 6: `src/main.tsx`와 `src/App.tsx`를 최소 형태로 교체한다**
 
 `src/main.tsx`:
 ```tsx
@@ -208,7 +209,7 @@ export default function App() {
 
 `index.html`의 `<title>`을 `교회 식권`으로, `<html lang="en">`을 `<html lang="ko">`로 바꾸고, `<meta name="viewport" content="width=device-width, initial-scale=1.0">`가 있는지 확인한다.
 
-- [ ] **Step 7: 빌드와 개발 서버가 뜨는지 확인한다**
+- [x] **Step 7: 빌드와 개발 서버가 뜨는지 확인한다**
 
 ```bash
 npm run build
@@ -220,7 +221,7 @@ npm run dev -- --open
 ```
 Expected: 브라우저에 "교회 식권" 제목이 굵게 가운데 표시(Tailwind 적용 확인). Ctrl+C로 종료.
 
-- [ ] **Step 8: 커밋**
+- [x] **Step 8: 커밋**
 
 ```bash
 git add -A
@@ -253,19 +254,54 @@ afterEach(() => {
 })
 ```
 
-- [ ] **Step 3: `package.json`의 scripts를 다음으로 교체**
+- [ ] **Step 3: `package.json`의 scripts를 다음으로 교체** (lint는 템플릿의 oxlint를 유지)
 
 ```json
 "scripts": {
   "dev": "vite",
   "build": "tsc -b && vite build",
   "preview": "vite preview",
-  "lint": "eslint .",
+  "lint": "oxlint --deny-warnings",
   "test": "vitest run",
   "test:watch": "vitest",
   "test:coverage": "vitest run --coverage"
 }
 ```
+
+- [ ] **Step 3-1: `vite.config.ts`에 Vitest 설정을 넣는다** (Task 1에서는 vitest가 없어 `test` 블록을 뺐다)
+
+```ts
+/// <reference types="vitest/config" />
+import { defineConfig, loadEnv } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+
+// GitHub Pages 프로젝트 사이트는 /<repo>/ 아래에 배포되므로 CI에서 VITE_BASE_PATH=/<repo>/ 를 넣는다.
+// loadEnv 로 .env.local 과 셸 환경변수 둘 다 읽는다. 빈 값은 '/' 로 본다.
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_')
+  return {
+    base: env.VITE_BASE_PATH || '/',
+    plugins: [react(), tailwindcss()],
+    server: { port: 5173, strictPort: true },
+    test: {
+      environment: 'jsdom',
+      globals: true,
+      setupFiles: ['./src/test/setup.ts'],
+      include: ['src/**/*.test.{ts,tsx}'],
+      coverage: {
+        provider: 'v8',
+        reporter: ['text', 'lcov'],
+        include: ['src/**/*.{ts,tsx}'],
+        exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/main.tsx', 'src/lib/database.types.ts'],
+        thresholds: { lines: 80, functions: 80, branches: 70, statements: 80 },
+      },
+    },
+  }
+})
+```
+
+`vitest/config`는 `vite`의 `loadEnv`를 다시 내보낸다. 내보내지 않는 버전이면 `import { loadEnv } from 'vite'`를 따로 쓴다.
 
 - [ ] **Step 4: 실패하는 테스트 작성 — `src/App.test.tsx`**
 
@@ -299,7 +335,7 @@ Expected: `1 passed`.
 
 - [ ] **Step 7: `tsconfig.app.json`에 vitest 전역 타입 추가**
 
-`compilerOptions`에 `"types": ["vitest/globals"]`를 넣는다. jest-dom 매처 타입은 `src/test/setup.ts`의 `@testing-library/jest-dom/vitest` import가 확장한다. `npm run build`가 통과하는지 확인한다.
+`compilerOptions`의 `types`를 `["vite/client", "vitest/globals"]`로 바꾼다. **`vite/client`를 빼면 `import.meta.env`와 CSS side-effect import가 타입 오류가 나므로 반드시 둘 다 둔다.** jest-dom 매처 타입은 `src/test/setup.ts`의 `@testing-library/jest-dom/vitest` import가 확장한다. `npm run build`가 통과하는지 확인한다.
 
 - [ ] **Step 8: 커밋**
 
@@ -2520,9 +2556,9 @@ npm run e2e
 ```
 Expected: `1 passed`. 실패하면 `npx playwright show-report`로 스크린샷을 본다.
 
-- [ ] **Step 5: `tsc -b`가 e2e를 컴파일하지 않는지 확인**
+- [ ] **Step 5: e2e 파일도 타입 검사에 포함시킨다**
 
-`tsconfig.app.json`의 `include`가 `["src"]`인지 확인한다. `npm run build`가 통과해야 한다.
+`tsconfig.app.json`의 `include`는 `["src"]` 그대로 둔다(앱 번들에 e2e가 섞이면 안 된다). 대신 `tsconfig.node.json`의 `include`를 `["vite.config.ts", "playwright.config.ts", "e2e/**/*.ts"]`로 바꿔 `tsc -b`가 Playwright 설정과 테스트도 검사하게 한다. `npm run build`가 통과해야 한다.
 
 - [ ] **Step 6: 커밋**
 
