@@ -2971,6 +2971,7 @@ git commit -m "feat: 개인정보 처리방침 페이지"
 - [ ] **Step 1: 실패하는 테스트 — `src/pages/HomePage.test.tsx`**
 
 ```tsx
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Person } from '../features/auth/usePerson'
@@ -2986,9 +2987,18 @@ const person = {
   created_at: '2026-10-07T00:00:00Z', updated_at: '2026-10-07T00:00:00Z',
 } satisfies Person
 
+function renderPage() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <HomePage person={person} />
+    </QueryClientProvider>,
+  )
+}
+
 describe('HomePage', () => {
   it('이름과 가려진 번호, 식사 없음 카드를 보여준다', () => {
-    render(<HomePage person={person} />)
+    renderPage()
     expect(screen.getByRole('heading', { name: '김철수 님' })).toBeInTheDocument()
     expect(screen.getByText('010-****-5678')).toBeInTheDocument()
     expect(screen.getByText('오늘은 식사가 없어요')).toBeInTheDocument()
@@ -2996,7 +3006,7 @@ describe('HomePage', () => {
 
   it('로그아웃 버튼이 signOut을 부른다', async () => {
     signOut.mockResolvedValue(undefined)
-    render(<HomePage person={person} />)
+    renderPage()
     await userEvent.click(screen.getByRole('button', { name: '로그아웃' }))
     expect(signOut).toHaveBeenCalled()
   })
@@ -3013,11 +3023,20 @@ Expected: FAIL — 번호·카드·버튼 없음.
 - [ ] **Step 3: 구현 — `src/pages/HomePage.tsx`**
 
 ```tsx
+import { useQueryClient } from '@tanstack/react-query'
 import type { Person } from '../features/auth/usePerson'
 import { signOut } from '../features/auth/signIn'
 import { maskPhone } from '../lib/phone'
 
 export function HomePage({ person }: { person: Person }) {
+  const queryClient = useQueryClient()
+
+  // 로그아웃 뒤 캐시(['person', uid])가 gcTime 동안 남지 않도록 비운다 (공용 폰 대비).
+  async function onSignOut() {
+    await signOut()
+    queryClient.clear()
+  }
+
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col gap-4 p-4">
       <header className="flex items-baseline justify-between">
@@ -3034,7 +3053,7 @@ export function HomePage({ person }: { person: Person }) {
 
       <button
         type="button"
-        onClick={() => void signOut()}
+        onClick={() => void onSignOut()}
         className="self-center text-xs text-gray-400 underline"
       >
         로그아웃
