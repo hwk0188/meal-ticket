@@ -4157,7 +4157,7 @@ git commit -m "ci: 테스트·배포·keep-alive 워크플로와 ping 함수"
 **Files:**
 - Create: `README.md`
 
-- [ ] **Step 1: `README.md` 작성**
+- [x] **Step 1: `README.md` 작성**
 
 ````markdown
 # 교회 식권
@@ -4251,7 +4251,7 @@ update public.people set role = 'admin' where phone = '01012345678' and deleted_
 - `supabase config push` — 로컬 `config.toml`(localhost 주소, 카카오 없음)로 운영 Auth 설정을 덮어쓴다.
 ````
 
-- [ ] **Step 2: 커밋**
+- [x] **Step 2: 커밋**
 
 ```bash
 git add README.md
