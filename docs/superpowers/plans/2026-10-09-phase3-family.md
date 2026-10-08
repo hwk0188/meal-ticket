@@ -87,7 +87,8 @@
 | `features/pairing/useCountdown.ts` | 만료까지 남은 초(1초 간격) + `formatRemaining` |
 | `features/pairing/PairingCodeCard.tsx` | 8자리 큰 글씨·남은 시간·새 코드 받기 (아이 화면과 가족 탭 "내 코드" 가 공유) |
 | `pages/PairPage.tsx` | `#/pair`: 코드 카드 + 안내 + 3초 폴링 + 처음으로(로그아웃) |
-| `features/family/familySchema.ts` | zod: 자녀 추가·재연결·가족 연결·내 정보 (`nameSchema` `codeSchema` 공유) |
+| `lib/fieldSchemas.ts` (신규, Task 10 리뷰) | 가입 화면·가족 화면이 함께 쓰는 `nameSchema`(NFC 정규화·20자) `phoneSchema` |
+| `features/family/familySchema.ts` | zod: 자녀 추가·재연결·가족 연결·내 정보 (`codeSchema` 8자리; 이름·번호는 `lib/fieldSchemas` 에서) |
 | `features/family/useFamilyMembers.ts` | 가족 구성원 조회 (`family-members` 키) |
 | `features/family/useFamilyActions.ts` | 뮤테이션 7개 + 무효화 묶음 (`invalidateFamily`) |
 | `features/family/MemberList.tsx` | 구성원 행(태그·번호·동의 날짜) + 행 버튼(가족 나가기·자녀 삭제, 두 단계 확인) |
@@ -4469,5 +4470,4 @@ PR 은 사용자가 merge 한다. merge 전에 사용자에게 **Supabase 콘솔
 - 같은 가족에서 두 어른이 각자 다른 가족으로 합류하면, 나중에 커밋된 쪽이 옛 가족의 장부 풀을 통째로 가져간다(순서 의존 — 손상은 없고 설계상 그렇다). 설계 §15 에 한 줄로 적는다(Task 14).
 - 연결 코드 무차별 대입 완화: 코드는 이미 8자리다(2단계 리뷰 반영). 더 필요해지면 `add_family_member` 가 실패를 예외 대신 "실패 행 반환" 으로 바꿔 실패 횟수를 기록한다.
 - 탈퇴한 카카오 계정의 `auth.users` 정리(사람 행이 없는 비익명 계정 N일 뒤 삭제) — 5단계 운영 문서에서 결정. `cleanup_orphan_anonymous_users` 를 넓히면 된다.
-- `onboardingSchema` 와 `familySchema.nameSchema` 가 같은 규칙을 두 번 적는다. 4단계에서 사람 입력 규칙을 `lib/personSchema.ts` 로 모을지 검토(2곳이라 아직 두었다).
 - PWA(5단계) 때 `#/pair` 와 시작 화면에 `pt-[env(safe-area-inset-top)]`.
