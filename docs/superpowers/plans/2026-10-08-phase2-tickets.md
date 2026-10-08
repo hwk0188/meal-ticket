@@ -880,7 +880,7 @@ grant execute on function public.use_ticket(uuid, uuid) to authenticated;
 - [x] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
-Expected: 010~090 전부 통과 (1단계 80 + 이번 79 = 159 assertions).
+Expected: 010~090 전부 통과 (최종 189 assertions — 리뷰 보강 후 수치).
 
 - [x] **Step 5: 타입 재생성 + 확인**
 
@@ -4934,7 +4934,7 @@ update public.issuances set cancelled_at = now(), cancelled_by = (select id from
 - [x] **Step 3: 전체 검증** (2026-10-08: pgTAP 189 · lint · 커버리지 96.8/90.4/96.0/98.7 · build · 하위 경로 build · E2E 3 통과)
 
 ```bash
-npm run db:reset && npm run db:test      # pgTAP 159 assertions
+npm run db:reset && npm run db:test      # pgTAP 189 assertions
 npm run lint
 npm run test:coverage                      # 80% 이상 (lines/functions/statements), branches 70%
 npm run build
@@ -4944,7 +4944,7 @@ npm run e2e
 
 Expected: 전부 통과. 커버리지가 모자라면 수치가 낮은 파일을 `--coverage` 출력에서 찾아 테스트를 더한다(보통 `IssuePage.tsx`, `HomePage.tsx` 의 분기).
 
-- [ ] **Step 4: 계획 체크박스 동기화 후 커밋**
+- [x] **Step 4: 계획 체크박스 동기화 후 커밋**
 
 이 파일의 `- [ ]` 를 `- [x]` 로 바꾸고, 구현 중 코드가 계획과 달라진 곳(테스트 기대값, 함수 시그니처)은 계획을 실제 코드에 맞춘다.
 
@@ -4982,4 +4982,5 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - **잔량을 바꾸는 4단계 함수(`cancel_issuance` · `void_usage` · `use_ticket_as_admin`)는 `use_ticket` 과 같은 잠금 키 `pg_advisory_xact_lock(hashtext(family_id::text), hashtext(meal_id::text))` 을 잡아야 한다** (Task 4 리뷰 권고 — 동시 취소+사용이 잔량을 음수로 만들 수 있다). 키가 어긋나지 않게 `public.lock_family_meal(uuid, uuid)` 헬퍼를 4단계 첫 마이그레이션에서 만들고 `use_ticket` 도 그 헬퍼를 쓰도록 바꾼다.
 - `groupTickets` 는 `remaining` 이 음수가 될 수 있다고 가정하지 않는다. 4단계 `cancel_issuance` 는 설계대로 `would_go_negative` 로 거부해야 하며(아니면 홈에 "−1장 남음" 이 뜬다), 홈의 지난 식권·잔량 뷰 조회는 가족 이력 전체를 매 폴링마다 읽으므로(1년 ≈ 52행, URL 한계 ≈ 210개 id) 이력이 쌓이면 `meals` 조회에 `served_on` 기간 창(예: 90일)을 두는 것을 4단계에서 검토한다 (Task 7 리뷰 메모).
 - **취소된 발급과 식사 삭제의 긴장 (Task 11 리뷰 메모).** `ticket_balances` 는 취소된 발급을 빼고 세지만 `issuances.meal_id` FK 는 어떤 행이든 있으면 식사 삭제를 막는다. 4단계에서 `cancel_issuance` 가 생기면 "발급 0장" 인데 삭제가 23503 으로 실패하는 식사가 생긴다. 4단계에서 식사 soft-delete(`deleted_at`) 또는 "발급 이력이 하나라도 있으면 삭제 버튼 숨김" 중 하나로 정한다. 그때까지 삭제 실패 문구는 일반 23503 문구를 쓴다.
+- **최종 통합 리뷰 후속(2단계 끝):** 관리자 식사 화면의 잔량 조회(`useAdminBalances`)에는 폴링이 없다(포커스 복귀 때만 갱신) — 4단계 식사 상세 현황판에 5초 폴링을 붙일 때 함께 결정. `issue_tickets` 는 지난 식사에도 발급을 허용한다(UI 만 숨김; 늦은 입력 허용으로 두되 4단계에서 한 줄 결정). 내역의 '담당자 처리'(사용) 와 '관리자'(발급자 숨김) 두 표현은 4단계 사람·통계 화면 때 통일.
 - 2단계 pgTAP 실제 개수: 060=23, 070=31, 080=33, 090=22 (계획 본문의 16/20/22/21 은 리뷰 보강 전 수치). 전체 189.

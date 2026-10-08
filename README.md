@@ -81,7 +81,6 @@ update public.people set role = 'admin' where phone = '01012345678' and deleted_
 - `Keep alive` 워크플로가 2일마다 돌아 무료 플랜의 7일 일시정지를 막는다(스케줄 실행이 한 번 빠져도 여유가 있다). 저장소에 60일간 커밋이 없으면 GitHub가 스케줄을 끄므로 Actions 탭에서 다시 켠다.
 - 일시정지되면 Supabase 대시보드에서 "Restore"를 누른다(1~2분).
 - 백업(주 1회 pg_dump → 비공개 저장소)은 5단계 계획에서 추가한다.
-- 마이그레이션을 추가하면 `npm run db:types` 로 타입을 다시 생성해 커밋한다(생성 결과가 커밋본과 같아야 한다).
 - `src/config/church.ts`의 교회명·담당자 연락처(`privacyOfficer.name`, `phone` — 지금은 빈 문자열)를 실제 값으로 바꾼 뒤 배포한다. 처리방침의 담당자 연락처는 법적 필수 항목이다.
 - `index.html`의 `<title>`도 같은 앱 이름으로 맞춘다 (TS 설정을 읽지 못하므로 수동 편집).
 - 운영 Supabase 의 **Email provider 는 반드시 끈다**. 개발용 로그인 코드는 운영 번들에서 제거되지만 서버 쪽 차단이 진짜 경계다.
@@ -97,7 +96,7 @@ select i.id, p.name, m.served_on, m.title, i.quantity, i.unit_price, i.issued_at
   from public.issuances i join public.people p on p.id = i.person_id join public.meals m on m.id = i.meal_id
  where i.cancelled_at is null order by i.issued_at desc limit 20;
 -- 2) 취소 표시 (이미 사용된 장수보다 적게 남지 않는지 ticket_balances 로 먼저 확인)
-update public.issuances set cancelled_at = now(), cancelled_by = (select id from public.people where role = 'admin' limit 1), cancel_reason = '관리자 요청'
+update public.issuances set cancelled_at = now(), cancelled_by = (select id from public.people where auth_user_id = '<정정하는 관리자의 auth 사용자 id>'), cancel_reason = '관리자 요청'
  where id = '<발급 id>';
 ```
 
