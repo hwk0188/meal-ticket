@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { ConfirmButton } from './ConfirmButton'
 
-/** onConfirm 이 (뮤테이션처럼) 같은 처리 중에 트리거를 비활성화하는 호출하는 쪽을 흉내 낸다. */
+/** onConfirm 이 (뮤테이션처럼) 같은 처리 중에 트리거를 비활성화하는 호출자를 흉내 낸다. */
 function DisablingDuringConfirm() {
   const [disabled, setDisabled] = useState(false)
   return (

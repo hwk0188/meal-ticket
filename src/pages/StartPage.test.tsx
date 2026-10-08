@@ -5,12 +5,13 @@ import { StartPage } from './StartPage'
 import { church } from '../config/church'
 
 // env 는 가짜 객체를 그대로 공유해 테스트마다 플래그만 바꾼다 (모듈을 다시 읽지 않아도 된다).
-const { signInWithKakao, devSignIn, env } = vi.hoisted(() => ({
+const { signInWithKakao, devSignIn, signInAsChild, env } = vi.hoisted(() => ({
   signInWithKakao: vi.fn<() => Promise<void>>(),
   devSignIn: vi.fn<(email: string, password: string) => Promise<void>>(),
+  signInAsChild: vi.fn<() => Promise<void>>(),
   env: { enableDevLogin: false },
 }))
-vi.mock('../features/auth/signIn', () => ({ signInWithKakao, devSignIn }))
+vi.mock('../features/auth/signIn', () => ({ signInWithKakao, devSignIn, signInAsChild }))
 vi.mock('../lib/env', () => ({ env }))
 
 function renderPage() {
@@ -127,5 +128,27 @@ describe('StartPage', () => {
     await userEvent.type(screen.getByLabelText('비밀번호'), 'password123')
     await userEvent.click(screen.getByRole('button', { name: '개발용 로그인' }))
     expect(devSignIn).toHaveBeenCalledWith('dev@test.local', 'password123')
+  })
+
+  it('아이 계정 버튼은 익명 로그인을 시작하고, 성공해도 잠근 채 둔다 (누를 때마다 새 계정이 생긴다)', async () => {
+    signInAsChild.mockResolvedValue(undefined)
+    renderPage()
+    const button = screen.getByRole('button', { name: /아이 계정으로 시작하기/ })
+    expect(button).toHaveTextContent('카카오 없이 · 보호자 연결 필요')
+    await userEvent.click(button)
+    expect(signInAsChild).toHaveBeenCalledOnce()
+    await waitFor(() => expect(button).toBeDisabled())
+    // 카카오 이동 안내는 뜨지 않는다
+    expect(screen.queryByText(/카카오 로그인 화면으로 이동/)).not.toBeInTheDocument()
+  })
+
+  it('아이 계정 시작이 실패하면(익명 로그인이 꺼져 있음) 그 이유를 안내하고 버튼을 다시 연다', async () => {
+    // supabase-js 는 AuthApiError 로 code 를 준다 — message 가 아니라 code 를 보고 문구를 고른다 (Task 5 리뷰)
+    signInAsChild.mockRejectedValue(Object.assign(new Error('Anonymous sign-ins are disabled'), { code: 'anonymous_provider_disabled' }))
+    renderPage()
+    const button = screen.getByRole('button', { name: /아이 계정으로 시작하기/ })
+    await userEvent.click(button)
+    expect(await screen.findByRole('alert')).toHaveTextContent('아이 계정 시작이 꺼져 있어요. 권사님께 문의해 주세요.')
+    expect(button).not.toBeDisabled()
   })
 })

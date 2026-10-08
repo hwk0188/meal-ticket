@@ -2,12 +2,12 @@ import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { Button, TextField } from '../components/ui'
 import { church } from '../config/church'
-import { devSignIn, signInWithKakao } from '../features/auth/signIn'
+import { devSignIn, signInAsChild, signInWithKakao } from '../features/auth/signIn'
 import { env } from '../lib/env'
 import { toUserMessage } from '../lib/errors'
 
-/** 어느 버튼이 일하는 중인지. 카카오만 이동 안내를 띄우고, 성공해도 잠긴 채 둔다. */
-type Pending = 'kakao' | 'dev'
+/** 어느 버튼이 일하는 중인지. 카카오만 이동 안내를 띄운다. 카카오·아이 계정은 성공해도 잠긴 채 둔다. */
+type Pending = 'kakao' | 'child' | 'dev'
 
 export function StartPage() {
   const [error, setError] = useState<string | null>(null)
@@ -57,6 +57,12 @@ export function StartPage() {
           카카오 로그인 화면으로 이동하고 있어요…
         </p>
       )}
+
+      {/* 익명 로그인은 누를 때마다 새 계정을 만든다. 성공하면 Gate 가 /pair 로 옮기므로 그때까지 잠근 채 둔다. */}
+      <Button variant="ghost" disabled={busy} onClick={() => void run('child', signInAsChild, { unlockOnSuccess: false })}>
+        아이 계정으로 시작하기
+        <span className="mt-0.5 block text-xs font-normal text-gray-500">카카오 없이 · 보호자 연결 필요</span>
+      </Button>
 
       {error && (
         <p role="alert" className="text-center text-sm text-red-600">

@@ -89,7 +89,7 @@ describe('Gate', () => {
     expect(screen.getByRole('status')).toHaveTextContent('연결에 문제가 있어요')
   })
 
-  it('한 번도 성공한 적 없이 실패하면(data undefined) 안내 스피너지만, 성공한 적 있는 data(없음)로 폴링만 실패하면 가입 화면을 그대로 유지한다', () => {
+  it('성공한 적 있는 data(없음)로 폴링만 실패하면 가입 화면을 그대로 유지한다', () => {
     useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
     usePerson.mockReturnValue({ status: 'error', data: null })
     renderAt('/')
@@ -220,6 +220,13 @@ describe('RequirePerson', () => {
     usePerson.mockReturnValue({ status: 'success', data: null })
     renderAt('/history')
     expect(screen.getByText('pair')).toBeInTheDocument()
+  })
+
+  it('사람 조회가 실패하면 안내 스피너', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'error', data: undefined })
+    renderAt('/history')
+    expect(screen.getByRole('status')).toHaveTextContent('연결에 문제가 있어요')
   })
 
   it('가입한 사람은 통과하고 하단 탭이 붙는다', () => {

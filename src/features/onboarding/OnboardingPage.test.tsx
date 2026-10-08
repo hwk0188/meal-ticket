@@ -158,4 +158,22 @@ describe('OnboardingPage', () => {
     settle({ data: { id: 'p1' }, error: null })
     expect(await screen.findByText('home')).toBeInTheDocument()
   })
+
+  it('"만 14세 미만이에요" 를 고르면 입력 폼 대신 연결 코드 안내와 링크가 보인다', async () => {
+    renderPage()
+    expect(screen.getByRole('radio', { name: '어른이에요' })).toBeChecked()
+    await userEvent.click(screen.getByRole('radio', { name: '만 14세 미만이에요' }))
+    expect(screen.queryByLabelText('이름')).not.toBeInTheDocument()
+    expect(screen.getByText(/가족 › 자녀 추가/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '연결 코드 받기' })).toHaveAttribute('href', expect.stringContaining('pair'))
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('다시 "어른이에요" 로 돌아오면 적던 내용이 남아 있다', async () => {
+    renderPage()
+    await userEvent.type(screen.getByLabelText('이름'), '김철수')
+    await userEvent.click(screen.getByRole('radio', { name: '만 14세 미만이에요' }))
+    await userEvent.click(screen.getByRole('radio', { name: '어른이에요' }))
+    expect(screen.getByLabelText('이름')).toHaveValue('김철수')
+  })
 })

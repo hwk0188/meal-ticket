@@ -62,6 +62,8 @@ describe('App', () => {
     getSession.mockResolvedValue({ data: { session: { user: { id: 'k1', is_anonymous: true } } } })
     render(<App />)
     await waitFor(() => expect(window.location.hash).toBe('#/pair'))
-    expect(screen.getByRole('status')).toBeInTheDocument()
+    // 해시만 보면 리다이렉트 루프 안에서도 순간적으로 '#/pair' 를 지나칠 수 있다. 플레이스홀더
+    // 문구까지 확인해야 루프 없이 그 화면에 실제로 멈춰 있다는 것을 증명한다.
+    expect(screen.getByRole('status')).toHaveTextContent('연결 코드 화면을 준비하고 있어요')
   })
 })

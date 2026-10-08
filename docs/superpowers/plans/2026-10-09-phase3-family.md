@@ -2120,7 +2120,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `src/pages/StartPage.tsx`, `src/pages/StartPage.test.tsx`
 - Modify: `src/features/onboarding/OnboardingPage.tsx`, `src/features/onboarding/OnboardingPage.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/pages/StartPage.test.tsx` — 목에 `signInAsChild` 추가 후:
 
@@ -2174,12 +2174,12 @@ vi.mock('../features/auth/signIn', () => ({ signInWithKakao, devSignIn, signInAs
   })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/pages/StartPage src/features/onboarding`
 Expected: 버튼·토글이 없어 실패.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/pages/StartPage.tsx` — `Pending` 에 `'child'` 를 더하고 카카오 버튼 아래에 버튼 추가:
 
@@ -2237,12 +2237,12 @@ type Pending = 'kakao' | 'child' | 'dev'
   )
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과. 기존 가입 테스트(폼은 기본 '어른이에요' 상태에서 그대로 보인다)도 통과.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/pages/StartPage.tsx src/pages/StartPage.test.tsx src/features/onboarding/OnboardingPage.tsx src/features/onboarding/OnboardingPage.test.tsx
