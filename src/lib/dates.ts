@@ -71,3 +71,9 @@ export function nextSundayAfter(base: string): string {
   const target = new Date(Date.UTC(y, m - 1, d + ((6 - dow) % 7) + 1))
   return target.toISOString().slice(0, 10)
 }
+
+/** 'YYYY-MM-DD' 에 날수를 더한다 (UTC 산술이라 시간대·서머타임 영향 없음) */
+export function addDays(ymdText: string, days: number): string {
+  const [y, m, d] = parts(ymdText)
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
+}

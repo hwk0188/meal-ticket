@@ -1,4 +1,4 @@
-import { formatClock, formatDateTime, formatMealDate, formatShortDate, formatTime, nextSundayAfter, todaySeoul } from './dates'
+import { addDays, formatClock, formatDateTime, formatMealDate, formatShortDate, formatTime, nextSundayAfter, todaySeoul } from './dates'
 
 describe('todaySeoul', () => {
   it('서울 기준 날짜를 YYYY-MM-DD 로 준다 (UTC 자정 전후가 갈린다)', () => {
@@ -43,5 +43,13 @@ describe('nextSundayAfter', () => {
     expect(nextSundayAfter('2026-10-07')).toBe('2026-10-11') // 수요일
     expect(nextSundayAfter('2026-10-10')).toBe('2026-10-11') // 토요일
     expect(nextSundayAfter('2026-10-05')).toBe('2026-10-11') // 월요일
+  })
+})
+
+describe('addDays', () => {
+  it('날짜 문자열에 날수를 더한다 (월·연 넘김 포함)', () => {
+    expect(addDays('2026-10-12', -1)).toBe('2026-10-11')
+    expect(addDays('2026-10-31', 1)).toBe('2026-11-01')
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01')
   })
 })
