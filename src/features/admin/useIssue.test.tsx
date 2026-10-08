@@ -18,15 +18,25 @@ function makeWrapper() {
 }
 
 describe('useLatestUnitPrice', () => {
-  it('누구에게든 가장 최근 발급의 단가. 발급이 없으면 null', async () => {
+  it('누구에게든 가장 최근 발급의 단가(유료·미취소만). 발급이 없으면 null', async () => {
     const q = ok({ unit_price: 5000 })
     from.mockReturnValue(q)
     const { wrapper } = makeWrapper()
     const { result } = renderHook(() => useLatestUnitPrice(), { wrapper })
     await waitFor(() => expect(result.current.data).toBe(5000))
+    expect(q.has('gt', 'unit_price', 0)).toBe(true)
+    expect(q.has('is', 'cancelled_at', null)).toBe(true)
     expect(q.has('order', 'issued_at', { ascending: false })).toBe(true)
     expect(q.has('limit', 1)).toBe(true)
     expect(q.has('maybeSingle')).toBe(true)
+  })
+
+  it('유료·미취소 발급이 없으면 null', async () => {
+    from.mockReturnValue(ok(null))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useLatestUnitPrice(), { wrapper })
+    await waitFor(() => expect(result.current.status).toBe('success'))
+    expect(result.current.data).toBeNull()
   })
 })
 
@@ -65,5 +75,13 @@ describe('useIssueTickets', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['latest-unit-price'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tickets'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['ledger'] })
+  })
+
+  it('메모가 있으면 그대로 전달한다', async () => {
+    rpc.mockReturnValue(ok({ id: 'i1' }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useIssueTickets(), { wrapper })
+    await act(() => result.current.mutateAsync({ personId: 'p1', mealId: 'm1', quantity: 1, unitPrice: 5000, memo: '입금 확인' }))
+    expect(rpc).toHaveBeenCalledWith('issue_tickets', { p_person_id: 'p1', p_meal_id: 'm1', p_quantity: 1, p_unit_price: 5000, p_memo: '입금 확인' })
   })
 })

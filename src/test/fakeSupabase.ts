@@ -25,6 +25,7 @@ export class FakeQuery<T> {
   is = this.chain('is')
   'in' = this.chain('in')
   or = this.chain('or')
+  gt = this.chain('gt')
   gte = this.chain('gte')
   order = this.chain('order')
   limit = this.chain('limit')

@@ -17,7 +17,8 @@ export function IssuePage() {
   const meals = useMeals()
   const upcoming = (meals.data ?? []).filter((m) => m.served_on >= today).toSorted((a, b) => a.served_on.localeCompare(b.served_on) || a.title.localeCompare(b.title, 'ko'))
   const [mealId, setMealId] = useState<string | null>(null)
-  const meal = (mealId ? meals.data?.find((m) => m.id === mealId) : upcoming[0]) ?? null
+  // 고른 식사가 다른 곳에서 지워졌으면(식사 탭) 다음 식사로 되돌아간다 — 빈 "변경" 없는 막다른 화면 대신.
+  const meal = (mealId ? meals.data?.find((m) => m.id === mealId) : undefined) ?? upcoming[0] ?? null
   const [person, setPerson] = useState<PersonHit | null>(null)
   const [done, setDone] = useState<string | null>(null)
 
@@ -85,7 +86,7 @@ function PickStep({ meal, meals, onMeal, onPerson }: { meal: Meal | null; meals:
       <section className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4">
         <TextField label="이름 또는 번호 뒷자리" name="query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="2글자부터 찾아요" autoComplete="off" />
         {/* 검색도 data 로 분기: 재조회 실패에 결과가 사라지지 않게 */}
-        {ready && !search.data && search.isFetching && <p className="text-xs text-gray-500">찾는 중…</p>}
+        {ready && !search.data && search.isFetching && <p role="status" className="text-xs text-gray-500">찾는 중…</p>}
         {ready && !search.data && search.status === 'error' && <p role="alert" className="text-xs text-red-600">{toUserMessage(search.error)}</p>}
         {ready && search.data && (
           search.data.length === 0 ? <p className="text-sm text-gray-500">찾는 사람이 없어요</p> : (
@@ -142,7 +143,8 @@ function NewPersonForm({ onCancel, onRegistered }: { onCancel: () => void; onReg
       <TextField label="휴대폰 번호" name="phone" type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="010-0000-0000" error={errors.phone} />
       {register.isError && <p role="alert" className="text-xs text-red-600">{registerErrorMessage(register.error)}</p>}
       <div className="flex gap-2">
-        <Button variant="ghost" onClick={onCancel}>취소</Button>
+        {/* 등록이 진행 중일 때 취소를 누르면 폼은 닫히지만 요청은 그대로 끝나 onPerson 이 뒤늦게 불린다 — 잠가 막는다 */}
+        <Button variant="ghost" onClick={onCancel} disabled={register.isPending}>취소</Button>
         <Button type="submit" disabled={register.isPending}>{register.isPending ? '등록 중…' : '등록하고 선택'}</Button>
       </div>
     </form>
@@ -213,7 +215,15 @@ function AmountStep({ person, meal, onBack, onDone }: { person: PersonHit; meal:
         {errors.quantity && <p role="alert" className="mt-1 text-xs text-red-600">{errors.quantity}</p>}
       </div>
 
-      <TextField label="단가 (원)" name="unitPrice" inputMode="numeric" value={priceText} onChange={(e) => setUnitPrice(e.target.value)} placeholder="첫 발급이에요. 단가를 적어 주세요" error={errors.unitPrice} />
+      <TextField
+        label="단가 (원)"
+        name="unitPrice"
+        inputMode="numeric"
+        value={priceText}
+        onChange={(e) => setUnitPrice(e.target.value)}
+        placeholder={latest.status === 'error' ? '최근 단가를 못 불러왔어요. 단가를 적어 주세요' : '첫 발급이에요. 단가를 적어 주세요'}
+        error={errors.unitPrice}
+      />
       <TextField label="메모 (선택)" name="memo" value={memo} onChange={(e) => setMemo(e.target.value)} maxLength={100} placeholder="예: 10/5 이월" error={errors.memo} />
 
       {/* getByText 는 엘리먼트의 "직속" 텍스트 노드만 본다 — 합계와 금액을 한 텍스트로 묶는다 */}

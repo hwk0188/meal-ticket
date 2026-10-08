@@ -11,7 +11,7 @@ export const latestUnitPriceQueryKey = ['latest-unit-price'] as const
 /** 같은 사람·식사·장수 발급이 이 시간 안에 있으면 확인 창을 띄운다 (설계 §8.3 중복 방어) */
 export const DUPLICATE_WINDOW_MS = 60_000
 
-/** 누구에게든 가장 최근에 발급한 단가. 첫 발급이면 null (칸을 비워 둔다). */
+/** 누구에게든 가장 최근에 발급한 (유료·취소되지 않은) 단가. 이월(0원)·취소된 발급은 기본값 후보에서 뺀다 — 첫 발급이면 null (칸을 비워 둔다). */
 export function useLatestUnitPrice() {
   return useQuery({
     queryKey: latestUnitPriceQueryKey,
@@ -19,7 +19,14 @@ export function useLatestUnitPrice() {
       // useQuery 의 queryFn 문맥 타입(QueryFunction<TData>)이 안쪽 unwrap(await …) 의 제네릭 추론과
       // 부딪혀 T 가 never 로 무너진다 — unwrap 에 타입 인자를 직접 줘서 추론을 건너뛴다.
       const row = unwrap<{ unit_price: number } | null>(
-        await supabase.from('issuances').select('unit_price').order('issued_at', { ascending: false }).limit(1).maybeSingle(),
+        await supabase
+          .from('issuances')
+          .select('unit_price')
+          .gt('unit_price', 0)
+          .is('cancelled_at', null)
+          .order('issued_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       )
       return row?.unit_price ?? null
     },

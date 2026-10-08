@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { codeOf, toUserMessage } from '../../lib/errors'
 import type { Database } from '../../lib/database.types'
 import { unwrap } from '../../lib/postgrest'
@@ -27,6 +27,8 @@ export function usePeopleSearch(raw: string) {
     queryKey: [...peopleSearchQueryKey, q],
     enabled: q.length >= SEARCH_MIN,
     staleTime: 10_000,
+    // 한 글자씩 칠 때마다 이전 결과를 들고 있는다 — 안 그러면 쿼리 키가 바뀔 때마다 "찾는 중…" 으로 깜빡인다.
+    placeholderData: keepPreviousData,
     queryFn: async (): Promise<PersonHit[]> => {
       // 자녀는 발급 대상이 아니다 (DB 도 person_is_minor 로 거부). 검색 결과에서 아예 뺀다.
       const base = supabase.from('people').select(COLUMNS).is('deleted_at', null).eq('is_minor', false).order('name').limit(SEARCH_LIMIT)

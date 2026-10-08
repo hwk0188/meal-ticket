@@ -57,6 +57,26 @@ describe('IssuePage · 1단계 (식사·사람)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('식사를 불러오지 못했어요')
   })
 
+  it('다시 시도를 누르면 식사를 다시 불러온다', async () => {
+    const refetch = vi.fn<() => void>()
+    useMeals.mockReturnValue(q({ status: 'error', refetch }))
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    expect(refetch).toHaveBeenCalled()
+  })
+
+  it('고른 식사가 목록에서 사라지면 다음 식사로 되돌아간다', async () => {
+    const { rerender } = render(<MemoryRouter><IssuePage /></MemoryRouter>)
+    // m-next 를 고른 뒤, 그 식사가 목록에서 사라진 상태로 다시 렌더한다 (식사 탭에서 삭제된 경우)
+    await userEvent.click(screen.getByRole('button', { name: '변경' }))
+    await userEvent.click(screen.getByRole('button', { name: '10월 18일 (주일) · 주일 점심' }))
+    expect(screen.getByText('10월 18일 (주일) · 주일 점심')).toBeInTheDocument()
+
+    useMeals.mockReturnValue(q({ data: [meal('m1', '2026-10-11')] }))
+    rerender(<MemoryRouter><IssuePage /></MemoryRouter>)
+    expect(screen.getByText('10월 11일 (주일) · 주일 점심')).toBeInTheDocument()
+  })
+
   it('검색어를 훅에 넘기고 결과에 가입/미가입 태그와 번호를 보여 준다', async () => {
     usePeopleSearch.mockReturnValue(q({ data: [hit, visitor] }))
     renderPage()
@@ -79,6 +99,13 @@ describe('IssuePage · 1단계 (식사·사람)', () => {
     await userEvent.click(screen.getByRole('button', { name: '등록하고 선택' }))
     expect(register.mutateAsync).toHaveBeenCalledWith({ name: '이순자', phone: '01022220001' })
     expect(await screen.findByRole('heading', { name: '이순자 님께 발급' })).toBeInTheDocument()
+  })
+
+  it('번호가 이미 있으면(23505) 검색해서 고르라는 문구를 보여 준다', async () => {
+    useRegisterPerson.mockReturnValue({ ...idle(), isError: true, error: { code: '23505', message: 'duplicate key' } })
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: '+ 새로 등록' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('이미 등록된 번호예요. 검색해서 선택해 주세요.')
   })
 })
 
@@ -122,6 +149,27 @@ describe('IssuePage · 2단계 (장수·단가)', () => {
     await userEvent.click(screen.getByRole('button', { name: '1장 발급하기' }))
     await waitFor(() => expect(confirm).toHaveBeenCalled())
     expect(issue.mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('중복 확인이 실패하면 문구를 보여 주고 발급하지 않는다', async () => {
+    findRecentDuplicate.mockRejectedValue(new Error('boom'))
+    const issue = idle()
+    useIssueTickets.mockReturnValue(issue)
+    await goToAmount()
+    await userEvent.click(screen.getByRole('button', { name: '1장 발급하기' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('잠시 후 다시 시도해 주세요.')
+    expect(issue.mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('60초 안에 같은 발급이 있어도 확인하면 발급한다', async () => {
+    findRecentDuplicate.mockResolvedValue(true)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const issue = idle<{ personId: string }>()
+    issue.mutateAsync = vi.fn<() => Promise<unknown>>(async () => ({ id: 'i1' }))
+    useIssueTickets.mockReturnValue(issue)
+    await goToAmount()
+    await userEvent.click(screen.getByRole('button', { name: '1장 발급하기' }))
+    await waitFor(() => expect(issue.mutateAsync).toHaveBeenCalledWith({ personId: 'p1', mealId: 'm1', quantity: 1, unitPrice: 5000, memo: null }))
   })
 
   it('단가가 비면 오류를 보여 주고 보내지 않는다', async () => {
