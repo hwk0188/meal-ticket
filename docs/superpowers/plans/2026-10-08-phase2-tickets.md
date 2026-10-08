@@ -4149,6 +4149,7 @@ describe('useIssueTickets', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['admin-balances'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['latest-unit-price'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tickets'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['ledger'] })
   })
 })
 ```
@@ -4397,6 +4398,7 @@ export function useRegisterPerson() {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
+import { ledgerQueryKey } from '../history/useFamilyLedger'
 import { ticketsQueryKey } from '../tickets/useFamilyTickets'
 import type { IssueValues } from './issueSchema'
 import { adminBalancesQueryKey } from './useMeals'
@@ -4444,8 +4446,9 @@ export function useIssueTickets() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: adminBalancesQueryKey })
       await queryClient.invalidateQueries({ queryKey: latestUnitPriceQueryKey })
-      // 관리자 본인 가족에게 발급했을 수도 있다
+      // 관리자 본인 가족에게 발급했을 수도 있다 (식권·내역 모두)
       await queryClient.invalidateQueries({ queryKey: ticketsQueryKey })
+      await queryClient.invalidateQueries({ queryKey: ledgerQueryKey })
     },
   })
 }
