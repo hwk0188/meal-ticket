@@ -47,7 +47,7 @@
 - **Task 3** (계획 단계에서 미리 반영): 위 잠금 규칙에 맞춰 `leave_family` 는 내 행 → 옮길 자녀 행(id 순) → `lock_family`, `remove_child` 는 (잠금 없이 자녀를 읽어) 자녀 계정의 코드 행 삭제 → 자녀 행 `for update` → `lock_family`, `delete_my_account` 는 내 코드 행 삭제 → 내 행 → `lock_family` 순으로 잠근다(코드 행이 ① 클래스라 사람 행보다 먼저). 나가기는 내 가족 범위의 자녀만 옮긴다(다른 가족에 사는 자녀 테스트 추가). `120` 은 리뷰 반영 뒤 46건. 아래 Task 3 스니펫은 반영된 버전이며 2026-10-09 에 다시 롤백 검증했다. **품질 리뷰 뒤**: `delete_my_account` 에 마지막 관리자 보호(`last_admin` — 관리자 지정이 SQL 로만 가능해 마지막 관리자가 탈퇴하면 운영이 멈춘다) 추가, 헤더에 "어른 행을 자녀 행보다 먼저 잠근다" 불변식과 식사 잠금 생략 이유 주석, 테스트 보강(`not_registered`·본인 코드 삭제·`pg_locks`·익명 구성원 no-op·마지막 관리자). 가족 나가기 확인 문구는 발급·사용 내역도 남는다는 말을 넣었다(Task 11).
 - **Task 5** (프론트 공통): 품질 리뷰로 `toUserMessage` 가 `code` 필드의 값도 MESSAGES 에서 찾도록 바꿨다 — supabase-js 인증 오류(`AuthApiError.code = 'anonymous_provider_disabled'`, 익명 로그인이 꺼져 있을 때)는 코드가 `message` 가 아니라 `code` 에 온다. 문구 `anonymous_provider_disabled` 추가(총 8개). `usePerson` 의 "옵션 없음" 테스트와 `validateWith` 의 "한 필드 여러 오류" 분기 테스트를 실제로 검증하도록 보강, `formatDateTime` 이 `formatDate` 를 재사용, `UsePersonOptions` 타입 export, `mealSchema` 도 `validateWith` 로 통일(경로 없는 오류가 `"undefined"` 키로 가던 버그 수정). TanStack 은 관찰자마다 타이머를 따로 가지며 가드는 공유 Query 의 갱신만 받는다(계획의 "가장 짧은 주기" 설명은 틀렸고 결론만 맞다).
 - **Task 7** (가드·가족 탭): 품질 리뷰로 세 가드를 **data 기준**으로 바꿨다(위 공통 규약) — 백그라운드 재조회가 실패해도 `data` 가 있으면 화면을 유지한다. `/pair` 라우트를 Task 7 에서 Spinner 자리표시자로 미리 두었다(가드가 보내는 경로에 라우트가 없으면 무한 리다이렉트; `App.test.tsx` 에 익명 세션 → `#/pair` 테스트). `ConfirmButton` 의 포커스 복귀는 ref 를 effect 안에서만 만지고 `disabled` 를 의존성에 넣어, 처리 중 비활성이었다가 다시 활성화될 때 원래 버튼으로 돌아간다(Task 11·12 의 자녀 삭제·가족 나가기·탈퇴가 이 모양이다).
-- **Task 8** (시작·가입 화면): 아이 계정 시작 실패 테스트는 supabase-js 의 `AuthApiError` 모양(`code: 'anonymous_provider_disabled'`)으로 바꿔 전용 문구('아이 계정 시작이 꺼져 있어요…')를 단언한다(Task 5 리뷰 반영의 결과).
+- **Task 8** (시작·가입 화면): 품질 리뷰로 가입 유형 토글을 **공용 `SegmentedControl`**(`src/components/SegmentedControl.tsx`, 숨긴 네이티브 라디오 + peer 스타일)로 바꿨다 — 손으로 만든 `role="radio"` 버튼은 방향키·단일 탭 정지가 없고 선택 안 된 라벨(`text-gray-500` on `bg-gray-100`, 14px bold)이 4.39:1 로 AA 미달이었다. 네이티브 라디오라 `getByRole('radio', { name })`·`toBeChecked()` 테스트가 그대로 산다. Task 12 의 `JoinFamilyPanel` 도 같은 컴포넌트를 쓴다(스니펫 반영). 아이 계정 버튼에 진행 안내(role=status) 추가, iPhone Safari bfcache 복원(`pageshow` persisted)으로 `pending` 이 되살아나 두 버튼이 영구 잠기던 2단계 버그 수정, `/pair` 링크에 `active:` 피드백. 아이 계정 시작 실패 테스트는 supabase-js 의 `AuthApiError` 모양(`code: 'anonymous_provider_disabled'`)으로 바꿔 전용 문구('아이 계정 시작이 꺼져 있어요…')를 단언한다(Task 5 리뷰 반영의 결과).
 - **Task 6** (로그아웃 경로 통합): 품질 리뷰로 `ConfirmButton` 의 접근성을 다듬었다 — 열리면 취소 버튼에 포커스, 취소하면 원래 버튼으로 포커스 복귀, 취소를 먼저(파괴적 버튼은 뒤) 배치, 버튼 `py-3`, `aria-describedby` 로 확인 버튼에 문구 연결, 정렬 `align` prop(기본 `end`, SignOutButton 은 `center`), 열린 채 `disabled` 가 되면 닫힘. 홈 바닥글은 세로 배치로 되돌려 문구·오류가 전체 폭을 쓴다. `signOut` 은 `scope: 'local'`(이 폰만 — 공용 폰에서 로그아웃해도 본인 폰은 유지). `AuthProvider` 는 SIGNED_OUT 타이머를 정리하고, 캐시 비움이 꼭 필요한 이유(`['pairing-code', kind]` 키가 사용자 범위가 아니라 새 익명 계정이 이전 계정의 코드를 캐시에서 읽을 수 있다)를 주석에 적었다. 리스트 행의 ConfirmButton 은 처리 중일 때 `label` 을 '처리 중…' 으로 바꾼다(Task 11·12). `useDeleteAccount` 는 onSuccess/onSettled 무효화를 두지 않는다(그 콜백이 clear 보다 먼저 돌아 폐기된 토큰으로 401 재조회를 쏜다).
 - **Task 4** (정리 작업, 계획 단계에서 미리 반영): Task 1 리뷰 권고에 따라 `cleanup_orphan_anonymous_users` 가 **살아 있는 연결 코드를 가진 익명 계정은 지우지 않도록** 조건을 더했다(하루 전에 로그인해 둔 아이 폰이 지금 코드를 보여 주는 중일 수 있다 — 지우면 cascade 로 코드가 사라지고 그 폰이 로그아웃된다). `130` 은 18건. 아래 Task 4 스니펫은 반영된 버전(코드 리터럴도 8자리)이며 2026-10-09 에 다시 롤백 검증했다 — 구현 중 코드 리터럴이 6자리로 남아 있던 것을 8자리로 고쳤다. **품질 리뷰 뒤**: Supabase 공식 문서의 `grant … on schema cron to postgres` 두 줄을 **제거**했다(supautils 가 이미 권한을 주고, 그 grant 가 남으면 Supabase 의 pg_cron after-create 스크립트의 CASCADE 없는 revoke 가 2BP01 로 실패해 `db push` 가 깨진다) — 대신 그런 grant 가 있으면 먼저 거두는 prelude 를 둔다. 정리 함수는 SECURITY INVOKER(cron 이 postgres 로 실행; DEFINER 는 service_role 에 auth.users 삭제 권한을 넘겨 준다), 세 건수 단언은 다른 세션이 남긴 행에 깨지지 않게 `>=` 로, `cron.job` 의 command·active 를 고정하는 테스트 2건 추가(`130` 은 20건). 아래 Task 4 스니펫은 반영된 최종 버전이다.
 
@@ -3937,6 +3937,7 @@ Expected: `JoinFamilyPanel`·`ProfileSection` 없음, FamilyPage 가족 연결 �
 
 ```tsx
 import { useState, type FormEvent } from 'react'
+import { SegmentedControl } from '../../components/SegmentedControl'
 import { Button, TextField } from '../../components/ui'
 import { toUserMessage } from '../../lib/errors'
 import { PairingCodeCard } from '../pairing/PairingCodeCard'
@@ -3964,25 +3965,18 @@ export function JoinFamilyPanel({ onDone, onCancel }: Props) {
     join.mutate(result.values, { onSuccess: (row) => onDone(`${row.name} 님이 우리 가족이 되었어요`) })
   }
 
-  const radio = (value: Mode, label: string) => (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={mode === value}
-      onClick={() => setMode(value)}
-      className={`rounded-lg py-2 ${mode === value ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}
-    >
-      {label}
-    </button>
-  )
-
   return (
     <section className="flex flex-col gap-3 rounded-2xl border border-blue-600 bg-white p-4">
       <h2 className="font-bold">가족 연결</h2>
-      <div role="radiogroup" aria-label="연결 방법" className="grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1 text-xs font-bold">
-        {radio('enter', '상대 코드 입력')}
-        {radio('show', '내 코드 보여 주기')}
-      </div>
+      <SegmentedControl
+        label="연결 방법"
+        value={mode}
+        onChange={setMode}
+        options={[
+          { value: 'enter', label: '상대 코드 입력' },
+          { value: 'show', label: '내 코드 보여 주기' },
+        ]}
+      />
       {mode === 'enter' ? (
         <form onSubmit={onSubmit} noValidate className="flex flex-col gap-3">
           <p className="text-xs leading-relaxed text-gray-600">{ENTER_HINT}</p>
