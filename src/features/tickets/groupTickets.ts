@@ -9,8 +9,9 @@ export type TicketGroup = { meal: Meal; issued: number; used: number; remaining:
 export type TicketGroups = { today: TicketGroup[]; upcoming: TicketGroup[]; past: TicketGroup[] }
 
 const byTitle = (a: Meal, b: Meal) => a.title.localeCompare(b.title, 'ko')
-const byDateAsc = (a: Meal, b: Meal) => a.served_on.localeCompare(b.served_on)
-const byDateDesc = (a: Meal, b: Meal) => b.served_on.localeCompare(a.served_on)
+// 날짜가 같으면(하루 두 끼) 제목으로 묶어 순서가 흔들리지 않게 한다.
+const byDateAsc = (a: Meal, b: Meal) => a.served_on.localeCompare(b.served_on) || byTitle(a, b)
+const byDateDesc = (a: Meal, b: Meal) => b.served_on.localeCompare(a.served_on) || byTitle(a, b)
 
 /**
  * 뷰 행(가족·식사별 잔량)과 식사 목록을 홈 화면 구역으로 나눈다.

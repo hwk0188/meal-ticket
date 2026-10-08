@@ -50,4 +50,10 @@ describe('groupTickets', () => {
     expect(upcoming).toEqual([])
     expect(past).toEqual([])
   })
+
+  it('같은 날짜의 다가오는 식권은 제목순으로 정렬한다', () => {
+    const sameDay = [...meals, meal('m-next2', '2026-10-19', '어린이')]
+    const { upcoming } = groupTickets(sameDay, [balance('m-next', 4, 0), balance('m-next2', 2, 0)], today)
+    expect(upcoming.map((g) => g.meal.id)).toEqual(['m-next2', 'm-next'])
+  })
 })

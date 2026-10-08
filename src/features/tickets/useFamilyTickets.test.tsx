@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import type { Person } from '../auth/usePerson'
-import { FakeQuery, ok } from '../../test/fakeSupabase'
+import { FakeQuery, fail, ok } from '../../test/fakeSupabase'
 import { TICKETS_POLL_MS, useFamilyTickets } from './useFamilyTickets'
 
 const { from } = vi.hoisted(() => ({ from: vi.fn<(table: string) => unknown>() }))
@@ -32,9 +32,11 @@ const person = {
 const todayMeal = { id: 'm1', title: '주일 점심', served_on: '2026-10-12', note: null, created_by: 'a', created_at: '2026-10-01T00:00:00Z' }
 const nextMeal = { ...todayMeal, id: 'm2', served_on: '2026-10-19' }
 
-function wrapper({ children }: { children: ReactNode }) {
+function makeWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  }
 }
 
 describe('useFamilyTickets', () => {
@@ -48,7 +50,7 @@ describe('useFamilyTickets', () => {
               { family_id: 'f1', meal_id: 'm2', issued: 1, used: 0, remaining: 1, amount: 5000 },
             ])
           : table === 'meals'
-            ? ok((queries.meals?.length ?? 0) === 0 ? [todayMeal] : [todayMeal, nextMeal]) // 1st: eq served_on → 오늘만, 2nd: in id → 전부
+            ? ok((queries.meals?.length ?? 0) === 0 ? [todayMeal] : [nextMeal]) // 1st: eq served_on → 오늘만, 2nd: in id → 오늘 제외한 나머지
             : table === 'people'
               ? ok([{ id: 'p1', name: '김철수' }])
               : ok([{ id: 'u1', meal_id: 'm1', used_at: '2026-10-12T03:31:00Z', person_id: 'p1', used_via: 'self' }])
@@ -56,7 +58,7 @@ describe('useFamilyTickets', () => {
       return q
     })
 
-    const { result } = renderHook(() => useFamilyTickets(person), { wrapper })
+    const { result } = renderHook(() => useFamilyTickets(person), { wrapper: makeWrapper() })
     await waitFor(() => expect(result.current.status).toBe('success'))
 
     const data = result.current.data!
@@ -66,22 +68,30 @@ describe('useFamilyTickets', () => {
     expect(data.members).toEqual([{ id: 'p1', name: '김철수' }])
     expect(data.usages).toHaveLength(1)
 
-    // 관리자도 이 훅을 쓰므로(관리자는 뷰에서 모든 가족을 본다) 자기 가족으로 좁혀야 한다
+    // 관리자도 이 훅을 쓰므로(관리자는 뷰·people·usages 에서 모든 가족을 본다) 자기 가족으로 좁혀야 한다
     expect(queries.ticket_balances?.[0]?.has('eq', 'family_id', 'f1')).toBe(true)
     expect(queries.people?.[0]?.has('eq', 'family_id', 'f1')).toBe(true)
+    expect(queries.usages?.[0]?.has('eq', 'family_id', 'f1')).toBe(true)
     expect(queries.usages?.[0]?.has('in', 'meal_id', ['m1'])).toBe(true)
     expect(queries.usages?.[0]?.has('is', 'voided_at', null)).toBe(true)
     expect(queries.meals?.[0]?.has('eq', 'served_on', '2026-10-12')).toBe(true)
-    expect(queries.meals?.[1]?.has('in', 'id', ['m1', 'm2'])).toBe(true)
+    expect(queries.meals?.[1]?.has('in', 'id', ['m2'])).toBe(true)
   })
 
   it('잔량도 오늘 식사도 없으면 빈 결과 (추가 조회 없음)', async () => {
     from.mockImplementation((table: string) => (table === 'ticket_balances' || table === 'meals' || table === 'people' || table === 'usages' ? ok([]) : ok(null)))
-    const { result } = renderHook(() => useFamilyTickets(person), { wrapper })
+    const { result } = renderHook(() => useFamilyTickets(person), { wrapper: makeWrapper() })
     await waitFor(() => expect(result.current.status).toBe('success'))
     expect(result.current.data).toEqual({ today: [], upcoming: [], past: [], usages: [], members: [] })
     // balances, today meals, people 세 번만 (ids 가 비어 meals/usages 재조회가 없다)
     expect(from).toHaveBeenCalledTimes(3)
+  })
+
+  it('잔량 조회가 실패하면 오류로 드러난다', async () => {
+    from.mockImplementation((table: string) => (table === 'ticket_balances' ? fail('boom', '42501') : ok([])))
+    const { result } = renderHook(() => useFamilyTickets(person), { wrapper: makeWrapper() })
+    await waitFor(() => expect(result.current.status).toBe('error'))
+    expect((result.current.error as { code?: string } | null)?.code).toBe('42501')
   })
 
   it('5초 폴링 상수 (useQuery 의 refetchInterval 에 그대로 쓴다)', () => {
