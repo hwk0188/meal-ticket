@@ -46,6 +46,7 @@
 - **Task 2** (`add_family_member` · `relink_child`): 품질 리뷰(두 세션 재현)로 크게 보강했다. ① **연결 코드를 8자리로**(`^[0-9]{8}$`, `gen_random_bytes(8)`): 어른 코드를 맞히면 상대 가족·장부·전체 번호까지 넘어오는데 속도 제한이 없어 공간을 100배 키웠다 — 프런트(Task 9~13)의 6자리 가정도 모두 8자리로 바꿨다. ② **잠금 순서 규칙**(가족 함수 공통, 공통 규약에 명문화): "① `pairing_codes` 행 → ② 쓸 사람 행을 id 순으로 `for update` → ③ `lock_family(uuid)`(새 단일 키 헬퍼) 를 가족 id 순으로 → ④ `lock_family_meal`". `relink_child` 는 처음 코드 행을 사람 행 뒤에 잠갔다가(교착 가능) 코드 행을 먼저 잠그도록 고쳤다. 호출자 행을 잠그지 않아 합류 도중 호출자가 다른 가족으로 옮겨지면 엉뚱한 가족에 붙거나 FK 23503 이 나던 것, 자녀 삭제·나가기와 "빈 가족" 판정이 어긋나던 것을 막는다. ③ `issue_tickets` 가 사람 행을 `for update` 로 읽도록 재정의(합류 중 발급이 옛 가족에 떨어지는 경합). ④ 빈 가족 삭제는 `cleanup_empty_families` 와 같은 조건(사람·장부 모두 없음)에서만. ⑤ 사용된 코드로 재시도하면 이미 연결된 그 사람 행을 돌려준다(RPC 멱등 규약). ⑥ 자녀 추가에 `p_consent_version`(YYYY-MM-DD, `consent_required`) 를 받아 자녀 행 `consent_version` 에 남긴다(§10 증빙) — 프런트 `useAddChild` 가 `church.consentVersion` 을 보낸다. ⑦ 이름 유효성은 `normalize_name`, 코드 입력은 공백·개행 제거, `relink_child` 의 `unique_violation` → `already_registered`, 자녀 이동은 옛 가족 범위로만, 잠그는 식사는 오늘 이후만. `110` 은 62건(식사 잠금 범위를 `pg_locks` 로 고정하는 2건 포함). "코드 계정의 auth.users 행이 없는" 분기는 FK cascade 때문에 닿을 수 없어 테스트하지 않는다(방어 코드는 둔다). 아래 Task 1·2 스니펫은 리뷰 전 버전이다.
 - **Task 3** (계획 단계에서 미리 반영): 위 잠금 규칙에 맞춰 `leave_family` 는 내 행 → 옮길 자녀 행(id 순) → `lock_family`, `remove_child` 는 (잠금 없이 자녀를 읽어) 자녀 계정의 코드 행 삭제 → 자녀 행 `for update` → `lock_family`, `delete_my_account` 는 내 코드 행 삭제 → 내 행 → `lock_family` 순으로 잠근다(코드 행이 ① 클래스라 사람 행보다 먼저). 나가기는 내 가족 범위의 자녀만 옮긴다(다른 가족에 사는 자녀 테스트 추가). `120` 은 리뷰 반영 뒤 46건. 아래 Task 3 스니펫은 반영된 버전이며 2026-10-09 에 다시 롤백 검증했다. **품질 리뷰 뒤**: `delete_my_account` 에 마지막 관리자 보호(`last_admin` — 관리자 지정이 SQL 로만 가능해 마지막 관리자가 탈퇴하면 운영이 멈춘다) 추가, 헤더에 "어른 행을 자녀 행보다 먼저 잠근다" 불변식과 식사 잠금 생략 이유 주석, 테스트 보강(`not_registered`·본인 코드 삭제·`pg_locks`·익명 구성원 no-op·마지막 관리자). 가족 나가기 확인 문구는 발급·사용 내역도 남는다는 말을 넣었다(Task 11).
 - **Task 5** (프론트 공통): 품질 리뷰로 `toUserMessage` 가 `code` 필드의 값도 MESSAGES 에서 찾도록 바꿨다 — supabase-js 인증 오류(`AuthApiError.code = 'anonymous_provider_disabled'`, 익명 로그인이 꺼져 있을 때)는 코드가 `message` 가 아니라 `code` 에 온다. 문구 `anonymous_provider_disabled` 추가(총 8개). `usePerson` 의 "옵션 없음" 테스트와 `validateWith` 의 "한 필드 여러 오류" 분기 테스트를 실제로 검증하도록 보강, `formatDateTime` 이 `formatDate` 를 재사용, `UsePersonOptions` 타입 export, `mealSchema` 도 `validateWith` 로 통일(경로 없는 오류가 `"undefined"` 키로 가던 버그 수정). TanStack 은 관찰자마다 타이머를 따로 가지며 가드는 공유 Query 의 갱신만 받는다(계획의 "가장 짧은 주기" 설명은 틀렸고 결론만 맞다).
+- **Task 7** (가드·가족 탭): 품질 리뷰로 세 가드를 **data 기준**으로 바꿨다(위 공통 규약) — 백그라운드 재조회가 실패해도 `data` 가 있으면 화면을 유지한다. `/pair` 라우트를 Task 7 에서 Spinner 자리표시자로 미리 두었다(가드가 보내는 경로에 라우트가 없으면 무한 리다이렉트; `App.test.tsx` 에 익명 세션 → `#/pair` 테스트). `ConfirmButton` 의 포커스 복귀는 ref 를 effect 안에서만 만지고 `disabled` 를 의존성에 넣어, 처리 중 비활성이었다가 다시 활성화될 때 원래 버튼으로 돌아간다(Task 11·12 의 자녀 삭제·가족 나가기·탈퇴가 이 모양이다).
 - **Task 6** (로그아웃 경로 통합): 품질 리뷰로 `ConfirmButton` 의 접근성을 다듬었다 — 열리면 취소 버튼에 포커스, 취소하면 원래 버튼으로 포커스 복귀, 취소를 먼저(파괴적 버튼은 뒤) 배치, 버튼 `py-3`, `aria-describedby` 로 확인 버튼에 문구 연결, 정렬 `align` prop(기본 `end`, SignOutButton 은 `center`), 열린 채 `disabled` 가 되면 닫힘. 홈 바닥글은 세로 배치로 되돌려 문구·오류가 전체 폭을 쓴다. `signOut` 은 `scope: 'local'`(이 폰만 — 공용 폰에서 로그아웃해도 본인 폰은 유지). `AuthProvider` 는 SIGNED_OUT 타이머를 정리하고, 캐시 비움이 꼭 필요한 이유(`['pairing-code', kind]` 키가 사용자 범위가 아니라 새 익명 계정이 이전 계정의 코드를 캐시에서 읽을 수 있다)를 주석에 적었다. 리스트 행의 ConfirmButton 은 처리 중일 때 `label` 을 '처리 중…' 으로 바꾼다(Task 11·12). `useDeleteAccount` 는 onSuccess/onSettled 무효화를 두지 않는다(그 콜백이 clear 보다 먼저 돌아 폐기된 토큰으로 401 재조회를 쏜다).
 - **Task 4** (정리 작업, 계획 단계에서 미리 반영): Task 1 리뷰 권고에 따라 `cleanup_orphan_anonymous_users` 가 **살아 있는 연결 코드를 가진 익명 계정은 지우지 않도록** 조건을 더했다(하루 전에 로그인해 둔 아이 폰이 지금 코드를 보여 주는 중일 수 있다 — 지우면 cascade 로 코드가 사라지고 그 폰이 로그아웃된다). `130` 은 18건. 아래 Task 4 스니펫은 반영된 버전(코드 리터럴도 8자리)이며 2026-10-09 에 다시 롤백 검증했다 — 구현 중 코드 리터럴이 6자리로 남아 있던 것을 8자리로 고쳤다. **품질 리뷰 뒤**: Supabase 공식 문서의 `grant … on schema cron to postgres` 두 줄을 **제거**했다(supautils 가 이미 권한을 주고, 그 grant 가 남으면 Supabase 의 pg_cron after-create 스크립트의 CASCADE 없는 revoke 가 2BP01 로 실패해 `db push` 가 깨진다) — 대신 그런 grant 가 있으면 먼저 거두는 prelude 를 둔다. 정리 함수는 SECURITY INVOKER(cron 이 postgres 로 실행; DEFINER 는 service_role 에 auth.users 삭제 권한을 넘겨 준다), 세 건수 단언은 다른 세션이 남긴 행에 깨지지 않게 `>=` 로, `cron.job` 의 command·active 를 고정하는 테스트 2건 추가(`130` 은 20건). 아래 Task 4 스니펫은 반영된 최종 버전이다.
 
@@ -108,6 +109,8 @@
 - plpgsql 함수가 `returns table (code text, …)` 처럼 테이블 열과 같은 이름의 반환 열을 가지면 본문의 `on conflict (code)` 가 "ambiguous" 로 깨진다. 그 열을 변수로 쓰지 않을 때는 `#variable_conflict use_column` 을 선언부 위에 둔다(`create_pairing_code` 참고).
 - 프론트: `verbatimModuleSyntax` 라 타입은 `import type`. `vi.fn<() => T>()` 처럼 타입 인자를 적는다(`vitest/require-mock-type-parameters`). 컴포넌트 파일에서 컴포넌트가 아닌 것을 export 하지 않는다(`react/only-export-components`) — 상수·훅은 `.ts` 파일로. effect 안에서 `setState` 를 바로 부르지 않는다(`react/set-state-in-effect`) — 인터벌·구독 콜백 안에서만.
 - **조회 화면은 `status` 가 아니라 `data` 로 분기한다.** 패턴: `data ? <본문 + (error 면 작은 안내)> : status === 'error' ? <alert + 다시 시도> : <Spinner inline />`.
+- **가드(`Gate`·`RequireSession`·`RequirePerson`)도 `data` 로 먼저 분기한다** — `data !== undefined`(성공한 `null` 포함)이면 그대로 가고, `status === 'error'` 는 한 번도 성공한 적이 없을 때만 본다. 폴링 한 번 실패로 연결 코드 화면이 내려가면 코드가 재발급돼 보호자가 적던 코드가 죽는다 (Task 7 리뷰).
+- **가드가 보내는 경로는 같은 커밋 안에 라우트가 있어야 한다.** 라우트 없는 경로로 보내면 `*` → `/` → 가드 → … 무한 리다이렉트가 된다. `/pair` 는 Task 7 에서 자리만 잡고 Task 9 가 화면을 넣는다 (Task 7 리뷰).
 - **뮤테이션의 `onSuccess`/`onSettled` 는 무효화 promise 를 반드시 return** 한다(끝나기 전에 버튼이 열리면 묵은 데이터로 또 누른다).
 - `PersonShell` 아래 화면은 `<main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4 p-4">`. `PersonShell` 밖(시작·가입·`/pair`)은 `min-h-dvh` 를 스스로 갖는다.
 - 커밋 메시지는 `<type>: <설명>` 형식, 끝에 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
@@ -2630,13 +2633,14 @@ export function PairPage() {
 }
 ```
 
-`src/App.tsx` — 가입 라우트 아래에:
+`src/App.tsx` — Task 7 가 자리만 잡아 둔 `/pair` 라우트(Spinner 자리표시자)의 element 를 실제 화면으로 바꾼다:
 
 ```tsx
 import { PairPage } from './pages/PairPage'
 // …
             <Route path="/pair" element={<RequireSession allowAnonymous><PairPage /></RequireSession>} />
 ```
+(`Spinner` import 가 더 이상 쓰이지 않으면 지운다. `App.test.tsx` 의 익명 세션 테스트는 `#/pair` 로 가는 것과 제목 '보호자에게 이 코드를 보여 주세요' 가 보이는 것으로 바꾼다.)
 
 - [ ] **Step 4: 통과 확인**
 
