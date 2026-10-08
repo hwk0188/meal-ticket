@@ -13,10 +13,14 @@ describe('SignOutButton', () => {
     await userEvent.click(button)
     expect(signOut).toHaveBeenCalledOnce()
     await waitFor(() => expect(button).toBeDisabled())
+
+    // 잠긴 버튼을 또 눌러도(더블 탭 등) 두 번째 로그아웃은 나가지 않는다.
+    await userEvent.click(button)
+    expect(signOut).toHaveBeenCalledOnce()
   })
 
   it('실패하면 안내 문구를 띄우고 버튼을 다시 연다', async () => {
-    signOut.mockRejectedValue(new Error('network'))
+    signOut.mockRejectedValue(new Error('boom'))
     render(<SignOutButton />)
     const button = screen.getByRole('button', { name: '로그아웃' })
     await userEvent.click(button)

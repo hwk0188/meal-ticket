@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
@@ -32,14 +31,7 @@ const group = (id: string, served_on: string, issued: number, used: number) => (
 const empty: FamilyTickets = { today: [], upcoming: [], past: [], usages: [], members: [{ id: 'p1', name: '김철수' }] }
 
 function renderPage() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  client.setQueryData(['person', 'u1'], person)
-  const utils = render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter><HomePage person={person} /></MemoryRouter>
-    </QueryClientProvider>,
-  )
-  return { ...utils, client }
+  return render(<MemoryRouter><HomePage person={person} /></MemoryRouter>)
 }
 
 beforeEach(() => {

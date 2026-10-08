@@ -46,6 +46,8 @@ export async function signInAsChild(): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
-  const { error } = await supabase.auth.signOut()
+  // scope: 'local' 은 이 폰의 세션만 지운다. 기본값인 'global' 은 그 사용자의 모든 기기에서 refresh token 을
+  // 무효화하므로, 교회 공용 폰에서 로그아웃한 어른이 자신의 폰에서도 로그아웃되는 사고가 난다.
+  const { error } = await supabase.auth.signOut({ scope: 'local' })
   if (error) throw error
 }

@@ -5,13 +5,14 @@ import { devSignIn, redirectUrl, signInAsChild, signInWithKakao, signOut } from 
 type AuthResult = { error: (Error & { code?: string }) | null }
 type OAuthArgs = { provider: string; options: { redirectTo: string } }
 type Credentials = { email: string; password: string }
+type SignOutArgs = { scope: 'local' | 'global' | 'others' }
 
 // env 는 가짜 객체를 그대로 공유해 테스트마다 플래그만 바꾼다 (모듈을 다시 읽지 않아도 된다).
 const { signInWithOAuth, signInWithPassword, signUp, authSignOut, signInAnonymously, env } = vi.hoisted(() => ({
   signInWithOAuth: vi.fn<(args: OAuthArgs) => Promise<AuthResult>>(),
   signInWithPassword: vi.fn<(args: Credentials) => Promise<AuthResult>>(),
   signUp: vi.fn<(args: Credentials) => Promise<AuthResult>>(),
-  authSignOut: vi.fn<() => Promise<AuthResult>>(),
+  authSignOut: vi.fn<(args: SignOutArgs) => Promise<AuthResult>>(),
   signInAnonymously: vi.fn<() => Promise<AuthResult>>(),
   env: { enableDevLogin: true },
 }))
@@ -102,10 +103,10 @@ describe('signIn', () => {
     expect(signUp).toHaveBeenCalledWith({ email: 'new@test.local', password: 'password123' })
   })
 
-  it('로그아웃을 호출한다', async () => {
+  it('로그아웃은 이 기기의 세션만 지운다 (공용 폰에서 다른 기기까지 로그아웃시키지 않는다)', async () => {
     authSignOut.mockResolvedValue({ error: null })
     await signOut()
-    expect(authSignOut).toHaveBeenCalled()
+    expect(authSignOut).toHaveBeenCalledWith({ scope: 'local' })
   })
 
   it('로그아웃 오류는 그대로 던진다', async () => {

@@ -113,9 +113,11 @@ function Footer() {
   // 익명(아이) 계정은 로그아웃하면 그 계정을 되찾을 수 없다 (비밀번호도 카카오도 없다). 한 번 더 묻는다.
   const anonymous = auth.status === 'ready' && auth.session?.user.is_anonymous === true
   return (
-    <footer className="flex items-center justify-center gap-4">
-      <Link to="/privacy" className="px-3 py-2 text-xs text-gray-600 underline">개인정보 처리방침</Link>
-      <SignOutButton message={anonymous ? CHILD_SIGN_OUT_NOTICE : undefined} />
+    <footer className="flex flex-col items-center gap-2">
+      <div className="flex items-center justify-center gap-4">
+        <Link to="/privacy" className="px-3 py-2 text-xs text-gray-600 underline">개인정보 처리방침</Link>
+        <SignOutButton message={anonymous ? CHILD_SIGN_OUT_NOTICE : undefined} />
+      </div>
     </footer>
   )
 }

@@ -40,4 +40,24 @@ describe('ConfirmButton', () => {
     await userEvent.click(button)
     expect(onConfirm).not.toHaveBeenCalled()
   })
+
+  it('프롬프트가 열리면 취소로 포커스를 옮기고, 취소하면 트리거로 되돌린다', async () => {
+    const onConfirm = vi.fn<() => void>()
+    render(<ConfirmButton label="탈퇴" message="정말요?" onConfirm={onConfirm} />)
+    await userEvent.click(screen.getByRole('button', { name: '탈퇴' }))
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '취소' }))
+    await userEvent.click(screen.getByRole('button', { name: '취소' }))
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '탈퇴' }))
+  })
+
+  it('열린 채로 disabled 가 되면 닫힌다', async () => {
+    const onConfirm = vi.fn<() => void>()
+    const { rerender } = render(<ConfirmButton label="탈퇴" message="정말요?" onConfirm={onConfirm} />)
+    await userEvent.click(screen.getByRole('button', { name: '탈퇴' }))
+    expect(screen.getByRole('status')).toBeInTheDocument()
+
+    rerender(<ConfirmButton label="탈퇴" message="정말요?" onConfirm={onConfirm} disabled />)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '탈퇴' })).toBeDisabled()
+  })
 })

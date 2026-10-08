@@ -26,7 +26,7 @@ export function SignOutButton({ label = '로그아웃', message }: Props) {
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <ConfirmButton label={label} message={message} confirmLabel="네, 로그아웃" onConfirm={() => void run()} disabled={busy} />
+      <ConfirmButton label={label} message={message} confirmLabel="네, 로그아웃" onConfirm={() => void run()} disabled={busy} align="center" />
       {error && <p role="alert" className="text-center text-sm text-red-600">{error}</p>}
     </div>
   )
