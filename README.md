@@ -25,6 +25,10 @@ npm run dev                # http://localhost:5173
 | `npm run db:types` | DB 타입 재생성 (`src/lib/database.types.ts`) |
 | `npx supabase migration new <이름>` | 새 마이그레이션 파일 |
 
+- 로컬 관리자 계정: `e2e-admin@test.local / password123` (`supabase/seeds/010_e2e_admin.sql`, 운영에는 없음 — `db push` 는 마이그레이션만 올린다). 개발 로그인 폼에 넣으면 하단 "관리" 탭이 보인다.
+- 마이그레이션을 추가하면 `npm run db:reset && npm run db:types` 로 타입을 다시 만들어 커밋한다. 새 함수는 반드시 `revoke execute … from public, anon` (auto_expose_new_tables 때문; pgTAP 020 이 잡는다).
+- E2E 는 로컬 Supabase 한 DB 를 공유하므로 단일 워커로 직렬 실행한다 (`playwright.config.ts` `workers: 1`).
+
 ## 운영 설정 (최초 1회)
 
 ### 1. Supabase 프로젝트 (Free)
@@ -82,6 +86,20 @@ update public.people set role = 'admin' where phone = '01012345678' and deleted_
 - `index.html`의 `<title>`도 같은 앱 이름으로 맞춘다 (TS 설정을 읽지 못하므로 수동 편집).
 - 운영 Supabase 의 **Email provider 는 반드시 끈다**. 개발용 로그인 코드는 운영 번들에서 제거되지만 서버 쪽 차단이 진짜 경계다.
 - Supabase **Redirect URLs** 에 GitHub Pages 주소(`https://<github-user>.github.io/<repo>/`)가 등록되어 있는지 확인한다.
+
+#### 발급 실수 정정 (4단계 전 임시 절차)
+
+화면에 취소 기능이 들어오기 전까지는 개발자가 Supabase SQL 편집기에서 처리한다. 장부는 지우지 않고 취소 표시만 한다.
+
+```sql
+-- 1) 잘못된 발급 찾기
+select i.id, p.name, m.served_on, m.title, i.quantity, i.unit_price, i.issued_at
+  from public.issuances i join public.people p on p.id = i.person_id join public.meals m on m.id = i.meal_id
+ where i.cancelled_at is null order by i.issued_at desc limit 20;
+-- 2) 취소 표시 (이미 사용된 장수보다 적게 남지 않는지 ticket_balances 로 먼저 확인)
+update public.issuances set cancelled_at = now(), cancelled_by = (select id from public.people where role = 'admin' limit 1), cancel_reason = '관리자 요청'
+ where id = '<발급 id>';
+```
 
 ### 6. 절대 운영에 실행하면 안 되는 명령
 

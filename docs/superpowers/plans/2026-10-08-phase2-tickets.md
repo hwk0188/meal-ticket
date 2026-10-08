@@ -33,6 +33,26 @@
 
 ---
 
+## 구현 결과와 계획의 차이 (실행 중 리뷰로 바뀐 것)
+
+아래 스니펫은 각 Task 를 시작할 때의 설계다. 실행 중 코드 리뷰를 거치며 다음과 같이 바뀌었다(커밋 메시지·3·4단계 인계 항목 기준). 긴 코드 스니펫 자체는 고치지 않았으니, 실제 동작은 각 Task 의 커밋과 `src`/`supabase` 코드를 기준으로 본다.
+
+- **Task 1** (`meals`): 테스트가 `served_on` 날짜 대신 id 로 식사를 찾도록 바뀌었다(다른 테스트·E2E 가 같은 날짜에 식사를 만들 수 있어서). 제목도 `'테스트 점심 060'` 처럼 파일 번호가 박힌 고유한 이름으로 고정했다. 관리자도 `created_by` 컬럼을 직접 넣을 수 없다는 검증과, NFC 정규화로 다른 표기(NFD)가 같은 식사와 충돌한다는 검증을 더했다. `060_meals.sql` 은 계획의 `plan(16)` 이 아니라 `plan(23)`.
+- **Task 2** (장부·뷰): `cancel_reason` 에도 `memo` 와 같은 100자 제한 체크를 추가했고, `usages` 에 `used_via <> 'self' or recorded_by = person_id` 제약(`usages_self_recorded_by_person`)을 더했다. `070_ledger.sql` 은 `plan(31)`.
+- **Task 3** (`issue_tickets`/`create_next_sunday_lunch`): `issue_tickets` 에 `person_is_minor` 오류(자녀 이름으로는 발급하지 않는다)를 추가했다. `create_next_sunday_lunch` 는 `p_today date default 서울 오늘` 기본 인자를 받고, "동시 클릭만 on conflict 로 수렴하고 순차 재호출은 다음 일요일을 새로 만든다(프론트는 자동 재시도하지 않는다)"는 재호출 의미를 테스트로 고정했다. 이 함수는 "가장 늦은 '주일 점심'"이라는 전역 상태에 의존하므로, 테스트는 트랜잭션 안에서 기존 '주일 점심' 장부·식사를 먼저 지워 로컬에 남은 수동·E2E 데이터의 영향을 받지 않게 했다(끝에 rollback 되므로 실제 데이터는 그대로). `080_issue_tickets.sql` 은 `plan(33)`.
+- **Task 4** (`use_ticket`): 잠금을 멱등 조회보다 **먼저** 걸도록 바꿨다(같은 request_id 의 동시 재시도가 먼저 커밋된 행을 보도록). 멱등 분기와 `unique_violation` 분기 모두 "다른 식사로 재사용된 request_id" 를 `duplicate_request` 로 거부하도록 조건(`v_row.meal_id <> p_meal_id`)을 넓혔다. `090_use_ticket.sql` 은 `plan(22)`.
+- **Task 5** (프론트 공통): `unwrap` 의 입력 타입을 `PostgrestResult<T>` 로 이름 붙였고, 통신 오류(타임아웃 등)가 실제 supabase-js 가 던지는 직렬화 모양과 같은지 검증하는 테스트를 추가했다.
+- **Task 6** (라우팅 뼈대): 뷰포트 높이(`min-h-dvh`)를 화면마다 반복하지 않고 `PersonShell` 이 한 번만 갖도록 옮겼다(하위 화면은 `flex-1`). `useCurrentPerson` 은 `RequirePerson` 바깥에서 쓰면 명시적으로 던진다. 관리자 영역 판정에 `role` 을 포함해 Outlet context 왕복을 테스트로 확인했다.
+- **Task 7** (`useFamilyTickets`): 사용 기록(usages) 조회를 가족으로 좁혔다(관리자가 보면 RLS 상 모든 가족이 보이므로 그대로 두면 다른 가족 기록이 섞인다). "오늘" 판정은 서버 필터를 믿되, `queryFn` 안에서 자정을 넘기는 경우에 대비해 다시 계산한다. 같은 날짜 정렬의 동률 처리, 오류 경로 테스트를 더했다.
+- **Task 8** (훅): `useUseTicket` 에 진행 중 시도를 가두는 in-flight(`Promise` 캐시) 중복 방지를 추가하고, 요청 키를 `{mealId, id}` 로 식사마다 다른 `request_id` 를 쓰게 했다. 타임아웃 뒤 재시도 테스트, `useHold` 의 `pointerleave` 처리 근거 주석과 테스트를 보강했다.
+- **Task 9** (홈 화면): 조회 화면을 `status` 가 아니라 `data` 기준으로 그리도록 바꿨다(공통 규약 — 폴링 실패에도 목록을 유지). 식권 행에 `touch-pan-y`(세로 스크롤은 허용하고 드래그는 누름을 취소)와 iOS 롱프레스 콜아웃 방지 클래스를 추가했다. `Spinner` 는 inline 으로 쓰고, 리뷰 중 한 번 빠졌던 로그아웃 재시도 테스트를 복원했다. 아래 Task 9 스니펫의 렌더 게이트(`tickets.status === 'success'`)는 실제로는 `tickets.data` 유무 기준으로 바뀌었으며, 그 부분은 실제 코드로 바로 교체해 두었다.
+- **Task 10** (내역): 정렬 기준을 문자열 비교 대신 `Date.parse` 로 바꿨다(표시 형식이 달라도 실제 시각으로 비교). 오류 분기에 다시 시도·안내 UI를 추가했고, `usages` 타입 캐스트를 제거했다. 발급 뮤테이션이 무효화할 쿼리 키 목록에 `ledgerQueryKey` 를 더해 내보냈고, `useUseTicket` 의 `onSettled` 가 재조회 promise 를 돌려주도록 고쳐 재조회가 끝날 때까지 `isPending` 이 유지되게 했다(회귀 테스트 포함).
+- **Task 11** (관리자 식사 화면): 식사·잔량 두 조회가 모두 `data` 를 가졌을 때만 카드를 그리도록 바꿨다(공통 규약 — 하나만 왔을 때 0으로 채워 그리면 잘못된 숫자·버튼이 보인다). `addMealErrorMessage` 를 분리해 내보냈고, 지난 식사 정렬과 폼의 오류 리셋 규율을 정리했다.
+- **Task 12** (발급 화면): 선택한 식사가 목록에서 사라지면 다음 식사로 자동 전환하고, 등록 중에는 취소를 잠근다. 단가 기본값은 "유료(0원 제외)·미취소" 발급만 보도록 `useLatestUnitPrice` 에 `.gt('unit_price', 0)` 과 `.is('cancelled_at', null)` 을 더했다(이월 0원 발급 뒤 기본값이 0원이 되는 문제 수정). 검색 결과는 `keepPreviousData` 로 깜빡임을 줄였고, 오류 코드 추출 `codeOf` 를 `lib/errors.ts` 에서 내보내 재사용했으며, 테스트용 가짜 Supabase 빌더에 `gt` 체인을 추가했다.
+- **Task 13** (E2E): 관리자 시드 이메일을 계획의 `admin@test.local` 대신 `e2e-admin@test.local` 로 바꿨다(pgTAP `030_people_rls.sql` 이 이미 `admin@test.local` 을 임시 사용자로 쓰고 있어, `auth.users` 의 이메일 부분 유니크 인덱스와 충돌해 그 파일 전체가 깨진다). GoTrue 가 토큰 컬럼(`confirmation_token` 등)이 NULL 이면 500 을 내는 문제가 있어, 실제 가입이 만드는 행처럼 빈 문자열로 채워 넣었다. 공유 DB 를 쓰는 E2E 는 `playwright.config.ts` 에 `workers: 1` 을 추가해 직렬 실행하도록 했고, 기존 가입(onboarding) E2E 의 홈 화면 단언을 "오늘은 식사가 없어요 | 이 식사의 식권이 없어요" 정규식으로 바꿔 다른 테스트가 먼저 오늘 식사를 만들어 둬도 깨지지 않게 했다.
+
+---
+
 ## 파일 구조
 
 **DB (`supabase/`)**
@@ -2854,7 +2874,7 @@ import type { Person } from '../features/auth/usePerson'
 import { signOut } from '../features/auth/signIn'
 import type { TicketGroup } from '../features/tickets/groupTickets'
 import { TodayMealCard } from '../features/tickets/TodayMealCard'
-import { useFamilyTickets } from '../features/tickets/useFamilyTickets'
+import { useFamilyTickets, type FamilyTickets } from '../features/tickets/useFamilyTickets'
 import { useOnline } from '../features/tickets/useOnline'
 import { formatMealDate, formatShortDate } from '../lib/dates'
 import { toUserMessage } from '../lib/errors'
@@ -2863,14 +2883,18 @@ import { maskPhone } from '../lib/phone'
 export function HomePage({ person }: { person: Person }) {
   const tickets = useFamilyTickets(person)
   const online = useOnline()
-  const members = tickets.data?.members ?? []
 
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4 p-4">
       <header className="flex items-baseline justify-between">
         <div>
           <h1 className="text-lg font-extrabold">{person.name} 님</h1>
-          <p className="text-xs text-gray-500">{members.length > 1 ? `우리 가족 식권 · ${members.length}명` : '내 식권'}</p>
+          {/* data 가 아직 없을 때(처음 불러오는 중) "내 식권" 이 잠깐 떴다 가족 수로 바뀌는 깜빡임을 막는다 */}
+          {tickets.data && (
+            <p className="text-xs text-gray-500">
+              {tickets.data.members.length > 1 ? `우리 가족 식권 · ${tickets.data.members.length}명` : '내 식권'}
+            </p>
+          )}
         </div>
         <div className="text-right text-xs text-gray-600">
           <div>{maskPhone(person.phone)}</div>
@@ -2878,14 +2902,22 @@ export function HomePage({ person }: { person: Person }) {
         </div>
       </header>
 
-      {tickets.status === 'pending' && <Spinner inline />}
-      {tickets.status === 'error' && (
+      {/* 공통 규약: 조회 화면은 status 가 아니라 data 로 분기한다 — 폴링 한 번 실패에 목록이 통째로 사라지지 않게. */}
+      {tickets.data ? (
+        <>
+          {tickets.status === 'error' && (
+            <p role="status" className="text-center text-xs text-gray-500">최신 정보를 받지 못했어요. 다시 시도하는 중…</p>
+          )}
+          <Tickets data={tickets.data} online={online} />
+        </>
+      ) : tickets.status === 'error' ? (
         <div role="alert" className="rounded-2xl border border-red-200 bg-white p-4 text-center text-sm text-red-600">
           식권을 불러오지 못했어요
           <button type="button" onClick={() => void tickets.refetch()} className="ml-2 underline">다시 시도</button>
         </div>
+      ) : (
+        <Spinner inline />
       )}
-      {tickets.status === 'success' && <Tickets data={tickets.data} online={online} />}
 
       <div className="flex-1" />
       <Footer />
@@ -2893,9 +2925,7 @@ export function HomePage({ person }: { person: Person }) {
   )
 }
 
-type Data = NonNullable<ReturnType<typeof useFamilyTickets>['data']>
-
-function Tickets({ data, online }: { data: Data; online: boolean }) {
+function Tickets({ data, online }: { data: FamilyTickets; online: boolean }) {
   const next = data.upcoming[0]
   return (
     <>
@@ -4693,7 +4723,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `supabase/seeds/010_e2e_admin.sql`
 - Create: `e2e/tickets.spec.ts`
 
-- [ ] **Step 1: 관리자 시드 — `supabase/seeds/010_e2e_admin.sql`**
+- [x] **Step 1: 관리자 시드 — `supabase/seeds/010_e2e_admin.sql`**
 
 운영에는 적용되지 않는다(`db push` 는 migrations 만 올린다). 로컬 `db reset` 과 CI 의 `supabase start` 에서만 돈다.
 
@@ -4728,12 +4758,12 @@ end
 $$;
 ```
 
-- [ ] **Step 2: 시드 적용 확인**
+- [x] **Step 2: 시드 적용 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 시드 오류 없이 reset 완료, pgTAP 전부 통과(테스트들은 자기 트랜잭션의 행만 세므로 시드 행에 영향받지 않는다). `npm run dev` 후 개발 로그인 폼에 `e2e-admin@test.local / password123` 을 넣으면 "권사 님" 홈과 하단 "관리" 탭이 보인다.
 
-- [ ] **Step 3: E2E 작성 — `e2e/tickets.spec.ts`**
+- [x] **Step 3: E2E 작성 — `e2e/tickets.spec.ts`**
 
 ```ts
 import { expect, test, type Page } from '@playwright/test'
@@ -4847,12 +4877,12 @@ test('관리자 발급 → 선발급 가입 자동 연결 → 꾹 눌러 사용 
 })
 ```
 
-- [ ] **Step 4: 실행**
+- [x] **Step 4: 실행**
 
 Run: `npm run e2e`
 Expected: 기존 onboarding 2개 + 이번 1개 통과. 실패하면 `npx playwright show-report` 로 스크린샷·트레이스를 본다. 흔한 원인: (a) 꾹 누르기 시간이 모자람 → `hold(…, 900)` 은 600ms 에 여유를 둔 값이니 그대로 두고 버튼 위치(boundingBox)를 확인, (b) 발급 화면 기본 식사가 다른 식사 → "변경" 단계가 있으니 라벨 문자열(`mealLabel`)이 화면과 같은지 확인.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add supabase/seeds/010_e2e_admin.sql e2e/tickets.spec.ts
@@ -4870,7 +4900,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md` (§7.1 제약, §7.3 함수 시그니처·코드)
 - Modify: `docs/superpowers/plans/2026-10-08-phase2-tickets.md` (체크박스, 실제 코드와 어긋난 곳)
 
-- [ ] **Step 1: README 보강**
+- [x] **Step 1: README 보강**
 
 "로컬 개발" 절에 추가:
 
@@ -4895,7 +4925,7 @@ update public.issuances set cancelled_at = now(), cancelled_by = (select id from
 ```
 ```
 
-- [ ] **Step 2: 설계 문서 동기화**
+- [x] **Step 2: 설계 문서 동기화**
 
 §8.3 발급의 단가 기본값 문구를 "**가장 최근의 유료(0원 제외)·미취소 발급 단가**" 로 고친다 (Task 12 리뷰: 이월 0원 발급 뒤 다음 단가 기본값이 0원이 되는 문제). 또 §8.3 발급 검색 결과의 "방문자 태그·가족 수" 는 2단계 범위 밖(3·4단계)임을 적는다.
 
@@ -4933,7 +4963,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ## 완료 기준
 
-- `npm run db:test`(159 assertions), `npm run lint`, `npm run test:coverage`(80%+), `npm run build`, `npm run e2e`(3개) 모두 통과.
+- `npm run db:test`(pgTAP 189 assertions), `npm run lint`, `npm run test:coverage`(Vitest 270개, 80%+), `npm run build`, `npm run e2e`(3개) 모두 통과.
 - 로컬에서: 관리자 로그인 → 식사 만들기 → 발급(검색·새로 등록) → 교인 가입(선발급 자동 연결) → 홈에 식권 낱장 → 600ms 꾹 → 회색 전환 + 잔량 감소 → 내역 표시. 짧은 탭·오프라인·당일 아님에서는 사용되지 않는다.
 - 운영에서: Deploy 성공 후 권사님 계정을 SQL 로 관리자 지정 → 실제 폰에서 발급·사용 확인(감도는 수동 확인 항목, 설계 §12.6).
 
