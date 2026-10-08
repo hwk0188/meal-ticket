@@ -1,5 +1,5 @@
 begin;
-select plan(28);
+select plan(29);
 
 -- 테이블: 함수로만 쓴다. 정책 없음, API 역할 권한 없음.
 select has_table('public', 'pairing_codes', 'pairing_codes 테이블이 있다');
@@ -27,7 +27,7 @@ select tests.create_user('pair-m@test.local') as m_uid \gset
 select tests.create_user() as k_uid \gset
 select tests.create_user('pair-n@test.local') as n_uid \gset
 insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
-values ('김철수', '01077770001', :'a_uid', now(), '2026-10-07');
+values ('김철수', '01077000001', :'a_uid', now(), '2026-10-07');
 select id as a_pid, family_id as a_fid from public.people where auth_user_id = :'a_uid' \gset
 insert into public.people (name, family_id, auth_user_id, is_minor, guardian_id, guardian_consented_at)
 values ('민준', :'a_fid', :'m_uid', true, :'a_pid', now());
@@ -48,6 +48,7 @@ select tests.authenticate_as(:'k_uid');
 select lives_ok($$ select public.create_pairing_code('child') $$, '같은 계정이 다시 요청하면 새 코드');
 select tests.clear_auth();
 select is((select count(*) from public.pairing_codes where auth_user_id = :'k_uid'), 1::bigint, '한 계정에 코드는 하나뿐이다 (이전 코드는 지워진다)');
+-- 코드는 100만 가지 중 균등 추출이라 1e-6 확률로 같은 값이 나올 수 있다 (실패해도 버그가 아닐 수 있다)
 select isnt((select code from public.pairing_codes where auth_user_id = :'k_uid'), :'k_code1', '새 코드는 이전 코드와 다르다');
 select tests.authenticate_as(:'n_uid');
 select lives_ok($$ select public.create_pairing_code('child') $$, '카카오 로그인 뒤 "만 14세 미만" 을 고른 계정(사람 행 없음)도 자녀 코드를 받는다');
@@ -75,28 +76,39 @@ select throws_ok($$ select public.create_pairing_code(null) $$, 'P0001', 'invali
 select tests.clear_auth();
 
 -- 만료·사용된 남의 코드 자리는 재활용된다: 그 코드와 같은 값을 뽑는 상황은 강제할 수 없으므로 upsert 문장만 직접 검증한다
+-- 이 upsert 는 create_pairing_code 본문의 문장과 같아야 한다 (migration 20261009000001 참고). 함수 쪽을 바꾸면 여기도 바꾼다.
 select tests.create_user() as old_uid \gset
+select tests.create_user() as recycle_uid \gset
 insert into public.pairing_codes (code, auth_user_id, kind, expires_at, used_at)
 values ('000000', :'old_uid', 'child', now() - interval '1 minute', now() - interval '2 minutes');
 insert into public.pairing_codes as pc (code, auth_user_id, kind, expires_at)
-values ('000000', :'k_uid', 'child', now() + interval '10 minutes')
+values ('000000', :'recycle_uid', 'child', now() + interval '10 minutes')
 on conflict (code) do update set auth_user_id = excluded.auth_user_id, kind = excluded.kind, created_at = now(), expires_at = excluded.expires_at, used_at = null
   where pc.used_at is not null or pc.expires_at < now();
 select results_eq(
   $$ select auth_user_id, used_at from public.pairing_codes where code = '000000' $$,
-  format($$ values (%L::uuid, null::timestamptz) $$, :'k_uid'),
+  format($$ values (%L::uuid, null::timestamptz) $$, :'recycle_uid'),
   '사용된 코드 자리는 새 계정의 코드로 덮어쓸 수 있다');
 -- 살아 있는 코드는 덮어쓰지 못한다
 insert into public.pairing_codes as pc (code, auth_user_id, kind, expires_at)
 values ('000000', :'old_uid', 'child', now() + interval '10 minutes')
 on conflict (code) do update set auth_user_id = excluded.auth_user_id, kind = excluded.kind, created_at = now(), expires_at = excluded.expires_at, used_at = null
   where pc.used_at is not null or pc.expires_at < now();
-select is((select auth_user_id from public.pairing_codes where code = '000000'), :'k_uid'::uuid, '살아 있는 남의 코드는 덮어쓰지 않는다');
+select is((select auth_user_id from public.pairing_codes where code = '000000'), :'recycle_uid'::uuid, '살아 있는 남의 코드는 덮어쓰지 않는다');
 
 -- 형식 제약
 select throws_ok(
   format($$ insert into public.pairing_codes (code, auth_user_id, kind, expires_at) values ('12345', %L, 'child', now()) $$, :'old_uid'),
   '23514', null, '6자리 숫자가 아닌 코드는 거부한다');
+
+-- 토큰은 유효한데 계정이 지워진 경우 (JWT 는 최대 1시간 더 살아 있다): FK 23503 대신 약속된 코드
+select tests.create_user() as gone_uid \gset
+select tests.clear_auth();
+delete from auth.users where id = :'gone_uid';
+select set_config('request.jwt.claims', json_build_object('sub', :'gone_uid', 'role', 'authenticated', 'aud', 'authenticated')::text, true);
+set local role authenticated;
+select throws_ok($$ select public.create_pairing_code('child') $$, 'P0001', 'not_authenticated', '계정이 지워진 토큰은 not_authenticated');
+reset role;
 
 -- JWT 없이 직접 호출
 select tests.clear_auth();

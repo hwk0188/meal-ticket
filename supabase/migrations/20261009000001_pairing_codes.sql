@@ -3,6 +3,8 @@
 -- =========================================================
 -- 코드 난수는 pgcrypto 의 gen_random_bytes 로 뽑는다. Supabase 는 기본으로 켜 두지만 명시해 로컬·운영을 같게 한다.
 create extension if not exists pgcrypto with schema extensions;
+-- pgcrypto 가 다른 스키마에 이미 있으면 위 문장은 조용히 넘어간다. 함수는 실행 시점에야 extensions.gen_random_bytes 를 찾으므로 여기서 미리 확인한다.
+do $$ begin perform extensions.gen_random_bytes(1); end $$;
 
 create table public.pairing_codes (
   code text primary key check (code ~ '^[0-9]{6}$'),
@@ -26,7 +28,7 @@ create or replace function public.lock_family_meal(p_family_id uuid, p_meal_id u
 returns void
 language sql
 set search_path = ''
-as $$ select pg_advisory_xact_lock(hashtext(p_family_id::text), hashtext(p_meal_id::text)) $$;
+as $$ select pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext(p_family_id::text), pg_catalog.hashtext(p_meal_id::text)) $$;
 comment on function public.lock_family_meal(uuid, uuid) is '가족·식사 단위 트랜잭션 advisory lock. use_ticket 과 같은 키.';
 revoke execute on function public.lock_family_meal(uuid, uuid) from public, anon, authenticated;
 
@@ -34,7 +36,7 @@ revoke execute on function public.lock_family_meal(uuid, uuid) from public, anon
 -- 연결 코드 발급.
 --   child: 사람 행이 없는 계정만 (익명 계정, 또는 카카오 로그인 뒤 "만 14세 미만" 을 고른 계정).
 --   adult: 가입을 마친 어른만 (배우자 가족에 합류할 때 보여 주는 코드).
---   같은 계정의 이전 코드는 지운다 (한 폰에 코드는 하나). 만료·사용된 남의 코드 자리는 재활용한다.
+--   같은 계정의 이전 코드는 지운다 (한 폰에 코드는 하나). 동시 호출은 계정 단위 잠금으로 직렬화한다. 만료·사용된 남의 코드 자리는 재활용한다.
 -- 코드: not_authenticated | invalid_kind | already_registered | not_registered | not_adult | code_generation_failed
 -- =========================================================
 create or replace function public.create_pairing_code(p_kind text)
@@ -51,7 +53,6 @@ declare
   v_person public.people;
   v_code text;
   v_expires timestamptz := now() + interval '10 minutes';
-  v_try integer;
 begin
   if v_uid is null then
     raise exception 'not_authenticated';
@@ -78,12 +79,17 @@ begin
     end if;
   end if;
 
+  -- 같은 계정의 동시 호출(연타·느린 네트워크)을 직렬화한다. 단일 키 잠금(objsubid 1)이라 lock_family_meal 의
+  -- 두 키 잠금(objsubid 2)과 겹치지 않는다. 트랜잭션이 끝나면 풀린다.
+  perform pg_advisory_xact_lock(hashtext('pairing_code:' || v_uid::text));
+
   delete from public.pairing_codes pc where pc.auth_user_id = v_uid;
 
   for v_try in 1..10 loop
     -- 암호학적 난수 4바이트 → 0..999999 (random() 은 예측 가능해 쓰지 않는다)
     v_code := lpad((((('x' || encode(extensions.gen_random_bytes(4), 'hex'))::bit(32)::bigint) % 1000000))::text, 6, '0');
     -- 살아 있는 남의 코드와 겹치면 where 절이 막아 아무 행도 바뀌지 않는다(found = false) → 다시 뽑는다.
+    -- 이 upsert 는 100_pairing_codes.sql 의 재활용 테스트가 그대로 복사해 검증한다. 바꾸면 그쪽도 바꾼다.
     insert into public.pairing_codes as pc (code, auth_user_id, kind, expires_at)
     values (v_code, v_uid, p_kind, v_expires)
     on conflict (code) do update
