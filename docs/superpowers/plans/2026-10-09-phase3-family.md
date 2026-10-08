@@ -4339,7 +4339,7 @@ test('아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰
       await parent.getByLabel('자녀 이름').fill('서연')
       await parent.getByLabel('자녀 폰에 뜬 코드').fill(code)
       await parent.getByLabel(/법정대리인 동의/).check()
-      await parent.getByRole('button', { name: '연결하기' }).click()
+      await parent.getByRole('button', { name: '연결하기', exact: true }).click() // 기본은 부분 일치 — '다시 연결하기' 와 섞이지 않게
       await expect(parent.getByText('서연 님을 연결했어요')).toBeVisible()
       await expect(parent.getByText('우리 가족 · 2명')).toBeVisible()
       const rows = parent.getByRole('list', { name: '가족 구성원' }).getByRole('listitem')
