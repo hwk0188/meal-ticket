@@ -2671,7 +2671,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/features/family/useFamilyMembers.ts`, `src/features/family/useFamilyMembers.test.tsx`
 - Create: `src/features/family/useFamilyActions.ts`, `src/features/family/useFamilyActions.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/family/familySchema.test.ts`:
 
@@ -2911,12 +2911,12 @@ describe('useUpdateProfile', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/family`
 Expected: 모듈 없음.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/family/familySchema.ts`:
 
@@ -3104,12 +3104,12 @@ export function profileErrorMessage(err: unknown): string {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test -- src/features/family && npm run lint && npx tsc -b`
 Expected: 전부 통과.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/features/family/familySchema.ts src/features/family/familySchema.test.ts src/features/family/useFamilyMembers.ts src/features/family/useFamilyMembers.test.tsx src/features/family/useFamilyActions.ts src/features/family/useFamilyActions.test.tsx
