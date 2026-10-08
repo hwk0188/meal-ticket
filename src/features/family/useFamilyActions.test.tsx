@@ -139,7 +139,7 @@ describe('useDeleteAccount', () => {
 
 describe('useUpdateProfile', () => {
   const me = { id: 'p1', auth_user_id: 'u1' }
-  it('people 행을 고치고 내 사람 캐시를 바꿔 끼운 뒤 구성원 목록을 무효화한다', async () => {
+  it('people 행을 고치고 내 사람 캐시를 바꿔 끼운 뒤 가족 쪽 캐시 전부를 무효화한다', async () => {
     const updated = { id: 'p1', name: '김철수A', phone: '01099998888' }
     const q = ok(updated)
     from.mockReturnValue(q)
@@ -154,7 +154,7 @@ describe('useUpdateProfile', () => {
     expect(q.has('select', '*')).toBe(true)
     expect(q.has('single')).toBe(true)
     expect(client.getQueryData(['person', 'u1'])).toEqual(updated)
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['family-members'] })
+    expectExactInvalidation(invalidate)
   })
 
   it('번호 중복(23505)은 구체적인 문구', () => {

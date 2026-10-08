@@ -2,8 +2,6 @@ import { z } from 'zod'
 import { nameSchema, phoneSchema } from '../../lib/fieldSchemas'
 import { validateWith, type Validation } from '../../lib/validate'
 
-// 가입 화면과 같은 이름 규칙. 공용 정의는 lib/fieldSchemas 에 있다 (여기서도 쓰는 코드가 있어 다시 내보낸다).
-export { nameSchema }
 // 코드는 "4829 1357" 처럼 띄워 보여 주므로 숫자만 남긴 뒤 8자리인지 본다 (DB 와 같은 길이 — 2단계 리뷰에서 6→8 로 늘렸다)
 export const codeSchema = z
   .string()
