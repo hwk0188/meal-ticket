@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { Button, TextField } from '../components/ui'
 import { church } from '../config/church'
@@ -13,6 +13,15 @@ export function StartPage() {
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
   const busy = pending !== null
+
+  useEffect(() => {
+    // bfcache 복원(아이폰 사파리에서 카카오 화면에서 '뒤로')은 pending 을 그대로 되살린다 → 두 버튼이 영구 잠김
+    const onShow = (e: Event & { persisted?: boolean }) => {
+      if (e.persisted) setPending(null)
+    }
+    window.addEventListener('pageshow', onShow)
+    return () => window.removeEventListener('pageshow', onShow)
+  }, [])
 
   async function run(kind: Pending, action: () => Promise<void>, { unlockOnSuccess = true } = {}) {
     setPending(kind)
@@ -63,6 +72,12 @@ export function StartPage() {
         아이 계정으로 시작하기
         <span className="mt-0.5 block text-xs font-normal text-gray-500">카카오 없이 · 보호자 연결 필요</span>
       </Button>
+
+      {pending === 'child' && (
+        <p role="status" className="text-center text-sm text-gray-600">
+          아이 계정을 만들고 있어요…
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="text-center text-sm text-red-600">

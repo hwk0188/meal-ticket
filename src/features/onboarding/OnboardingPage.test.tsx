@@ -163,6 +163,7 @@ describe('OnboardingPage', () => {
     renderPage()
     expect(screen.getByRole('radio', { name: '어른이에요' })).toBeChecked()
     await userEvent.click(screen.getByRole('radio', { name: '만 14세 미만이에요' }))
+    expect(screen.getByRole('radio', { name: '어른이에요' })).not.toBeChecked()
     expect(screen.queryByLabelText('이름')).not.toBeInTheDocument()
     expect(screen.getByText(/가족 › 자녀 추가/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '연결 코드 받기' })).toHaveAttribute('href', expect.stringContaining('pair'))

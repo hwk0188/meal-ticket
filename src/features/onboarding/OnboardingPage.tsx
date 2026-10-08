@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
+import { SegmentedControl } from '../../components/SegmentedControl'
 import { Button, Checkbox, TextField } from '../../components/ui'
 import { church } from '../../config/church'
 import { messageOf, toUserMessage } from '../../lib/errors'
@@ -20,6 +21,24 @@ async function claimPerson(values: OnboardingValues) {
       p_phone: values.phone,
       p_consent_version: church.consentVersion,
     }),
+  )
+}
+
+/** 만 14세 미만: 이름·번호를 적지 않고 보호자 폰의 연결 코드로 가족에 들어온다. */
+function MinorNotice() {
+  return (
+    <section className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-sm leading-relaxed">
+      <p>
+        만 14세 미만은 이름·번호를 적지 않아요. 보호자 폰의 <strong>가족 › 자녀 추가</strong>에서 연결 코드를 입력하면
+        이 폰에 가족 식권이 보여요.
+      </p>
+      <Link
+        to="/pair"
+        className="block w-full rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white active:bg-blue-700"
+      >
+        연결 코드 받기
+      </Link>
+    </section>
   )
 }
 
@@ -94,40 +113,18 @@ export function OnboardingPage() {
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col gap-4 p-6">
       <h1 className="text-2xl font-extrabold">처음 오셨네요</h1>
 
-      <div role="radiogroup" aria-label="가입 유형" className="grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1 text-sm font-bold">
-        <button
-          type="button"
-          role="radio"
-          aria-checked={!minor}
-          onClick={() => setMinor(false)}
-          className={`rounded-lg py-2 ${minor ? 'text-gray-500' : 'bg-white text-blue-600 shadow-sm'}`}
-        >
-          어른이에요
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={minor}
-          onClick={() => setMinor(true)}
-          className={`rounded-lg py-2 ${minor ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}
-        >
-          만 14세 미만이에요
-        </button>
-      </div>
+      <SegmentedControl
+        label="가입 유형"
+        value={minor ? 'minor' : 'adult'}
+        onChange={(v) => setMinor(v === 'minor')}
+        options={[
+          { value: 'adult', label: '어른이에요' },
+          { value: 'minor', label: '만 14세 미만이에요' },
+        ]}
+      />
 
       {minor ? (
-        <section className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-sm leading-relaxed">
-          <p>
-            만 14세 미만은 이름·번호를 적지 않아요. 보호자 폰의 <strong>가족 › 자녀 추가</strong>에서 연결 코드를 입력하면
-            이 폰에 가족 식권이 보여요.
-          </p>
-          <Link
-            to="/pair"
-            className="block w-full rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white"
-          >
-            연결 코드 받기
-          </Link>
-        </section>
+        <MinorNotice />
       ) : (
         <>
           <p className="text-sm text-gray-600">권사님이 식권을 발급할 때 쓰는 정보예요. 입금하신 이름과 같게 적어 주세요.</p>

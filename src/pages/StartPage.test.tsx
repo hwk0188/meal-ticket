@@ -138,6 +138,7 @@ describe('StartPage', () => {
     await userEvent.click(button)
     expect(signInAsChild).toHaveBeenCalledOnce()
     await waitFor(() => expect(button).toBeDisabled())
+    expect(screen.getByRole('status')).toHaveTextContent('아이 계정을 만들고 있어요')
     // 카카오 이동 안내는 뜨지 않는다
     expect(screen.queryByText(/카카오 로그인 화면으로 이동/)).not.toBeInTheDocument()
   })
@@ -150,5 +151,22 @@ describe('StartPage', () => {
     await userEvent.click(button)
     expect(await screen.findByRole('alert')).toHaveTextContent('아이 계정 시작이 꺼져 있어요. 권사님께 문의해 주세요.')
     expect(button).not.toBeDisabled()
+  })
+
+  it('bfcache 복원(카카오 화면에서 뒤로)이면 잠금을 풀고 카카오 이동 안내를 치운다', async () => {
+    signInWithKakao.mockResolvedValue(undefined)
+    renderPage()
+    const button = screen.getByRole('button', { name: '카카오로 시작하기' })
+    await userEvent.click(button)
+    await waitFor(() => expect(button).toBeDisabled())
+
+    act(() => {
+      const event = new Event('pageshow')
+      Object.defineProperty(event, 'persisted', { value: true })
+      window.dispatchEvent(event)
+    })
+
+    expect(button).not.toBeDisabled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })
