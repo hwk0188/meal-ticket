@@ -4504,7 +4504,9 @@ PR 은 사용자가 merge 한다. merge 전에 사용자에게 **Supabase 콘솔
 ## 4단계로 넘기는 것
 
 - `merge_people` · `link_person` · `admin_reset_person` · `cancel_issuance` · `use_ticket_as_admin` · `void_usage`, 식사 상세 현황판, 사람 탭, 통계·CSV·공유 (2단계 인계 그대로).
-- **`use_ticket` 을 `public.lock_family_meal(uuid, uuid)` 로 바꾼다** — 헬퍼는 이번 단계가 만들었고 `100_pairing_codes.sql` 이 키가 같음을 `pg_locks` 로 고정한다. 4단계 함수(`cancel_issuance` 등)도 같은 헬퍼로 잠근다.
+- **`use_ticket` 을 `public.lock_family_meal(uuid, uuid)` 로 바꾼다** — 헬퍼는 이번 단계가 만들었고 `100_pairing_codes.sql` 이 키가 같음을 `pg_locks` 로 고정한다. 4단계 함수(`cancel_issuance` 등)도 같은 헬퍼로 잠근다. **같은 재정의에서 사람 행을 `for update` 로 읽는다** (최종 리뷰): 지금은 사람 행을 잠그지 않고 읽은 뒤 (family_id, meal_id) 를 잠그므로, 그 사이 합류가 커밋되고 옛 가족에 산 사람이 남아 있으면(장부가 안 옮겨 간 경우) 그 한 번의 사용이 옛 가족 풀에 기록될 수 있다 — 초과 사용·FK 손상은 없고 창은 RPC 한 번 폭. 새 마이그레이션으로 재정의하고(2단계 파일은 이미 운영에 적용됐으니 고치지 않는다) 090 에 pgTAP 를 더한다. `issue_tickets` 는 이번 단계가 이미 같은 이유로 `for update` 를 넣었다.
+- (최종 리뷰) `add_family_member` 의 종류 검사(`expected_child_code`/`expected_adult_code`)는 `used_at` 분기보다 앞에 있어, 무차별 대입 중 "다른 종류의 살아 있는(또는 방금 쓰인) 코드" 가 존재한다는 사실이 `invalid_code` 와 다른 코드로 드러난다(10⁸ × 10분 한도는 그대로). Task 10 재리뷰에서 "쓰인 자녀 코드 + 이름 없음" 을 멱등 경로로 흘리지 않으려고 택한 순서다 — 바꾸려면 `used_at is not null` 일 때만 `invalid_code` 로 뭉갠다.
+- (최종 리뷰) E2E `hold()` 의 드문 실패 기전: `hover()` 가 좌표를 정한 뒤 `mouse.down()` 까지의 몇 ms 사이에 리플로우(차가운 Vite 첫 로드, `role="status"` 줄 등장, 5초 폴링 재렌더)가 끼면 pointerdown 이 버튼 밖에 떨어진다 — 식사 카드 수와는 무관. 요소에 고정하려면 `locator.dispatchEvent('pointerdown'/'pointerup')` 로 바꾸거나 `holdToUse()` 를 둔다. CI 는 `retries: 1` 이라 노출이 낮다.
 - 사람 탭의 "가족 수" 태그와 발급 검색 결과의 가족 수 — 이제 의미가 생겼다(`people` 을 `family_id` 로 묶어 세면 된다).
 - `admin_reset_person` 이 생기면 README 의 "관리자 대신 처리 SQL" 임시 절차를 지운다.
 - **`merge_people(from, into)` 는 자녀의 `guardian_id` 를 바꾸므로 대상 보호자(`into`)의 사람 행을 `for update` 로 잠가야 한다** (Task 3 리뷰). (Task 12 리뷰) 내 `family_id` 를 바꾸는 새 동작(`merge_people`·`admin_reset_person` 등)은 화면에서 `onLeave` 처럼 **가족 연결 패널을 먼저 닫고 `familyAtOpen` 을 비워야** 한다 — 안 그러면 `joined` 가 "가족이 연결되었어요" 를 잘못 띄운다. `delete_my_account` 의 `has_children` 검사는 "내 행을 잠그지 않고는 내 밑에 자녀를 만들 수 없다" 는 불변식에 기대고 있어, 이를 어기면 익명화된 보호자 밑에 살아 있는 자녀가 남을 수 있다. 같은 이유로 4단계 함수도 "어른(보호자) 행 → 자녀 행" 잠금 순서를 지킨다.

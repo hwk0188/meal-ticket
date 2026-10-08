@@ -434,7 +434,7 @@ Supabase 설정: Kakao provider(REST API key, client secret), "Allow users witho
 - 같은 가족의 두 어른이 각자 다른 가족으로 합류하면, 나중에 커밋된 쪽이 옛 가족의 장부 풀을 통째로 가져간다(순서 의존 — 손상은 없고 설계상 그렇다).
 - 가족 합치기(`add_family_member` adult 경로) 때는 장부 `family_id` 를 통째로 새 가족으로 옮긴다(풀 병합). `leave_family` 는 장부를 옛 가족에 두고 나간다(2단계 계획 인계 항목).
 - pg_cron 의 빈 가족 정리는 장부(issuances·usages)가 없는 가족만 지운다(2단계 계획 인계 항목).
-- 4단계에서 잔량을 바꾸는 함수(`cancel_issuance`·`void_usage`·`use_ticket_as_admin`)는 `use_ticket` 과 같은 잠금 키를 쓰는 공통 헬퍼 `lock_family_meal(uuid, uuid)` 를 통해 잠근다(2단계 계획 인계 항목).
+- 4단계에서 잔량을 바꾸는 함수(`cancel_issuance`·`void_usage`·`use_ticket_as_admin`)는 `use_ticket` 과 같은 잠금 키를 쓰는 공통 헬퍼 `lock_family_meal(uuid, uuid)` 를 통해 잠근다(2단계 계획 인계 항목). 그때 `use_ticket` 도 재정의해 사람 행을 `for update` 로 읽는다 — 지금은 합류가 그 사이에 커밋되면(옛 가족에 산 사람이 남아 장부가 옮겨 가지 않은 경우) 한 번의 사용이 옛 가족 풀에 기록될 수 있다(3단계 최종 리뷰; 초과 사용·손상은 없음).
 - `cancel_issuance` 는 잔량이 음수가 되면 `would_go_negative` 로 반드시 거부해야 한다(2단계 계획 인계 항목).
 - 취소된 발급이 있는 식사의 삭제 정책(soft-delete 또는 삭제 버튼 숨김)을 4단계에서 정해야 한다(2단계 계획 인계 항목).
 - 가족 이력이 쌓이면 홈·잔량 조회에 90일 등 이력 창을 두는 것을 검토한다(2단계 계획 인계 항목).
