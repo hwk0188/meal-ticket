@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 
 export type AuthState = { status: 'loading' } | { status: 'ready'; session: Session | null }
@@ -24,6 +25,7 @@ function stripOAuthParams() {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: 'loading' })
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     let active = true
@@ -47,17 +49,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setState({ status: 'ready', session: null })
       })
 
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
       settledByListener = true
       setState({ status: 'ready', session })
       stripOAuthParams()
+      // 어떤 경로로 로그아웃되든(버튼·탈퇴·코드 화면 "처음으로"·다른 탭·세션 만료) 캐시를 비운다 — 공용 폰에 남은
+      // 가족 정보가 다음 사람에게 보이지 않게. 콜백 안에서 supabase 를 다시 부르면 auth lock 에 재진입하므로
+      // 한 틱 미룬다 (설계 §15). clear 자체는 supabase 를 부르지 않지만, 캐시가 비면 화면의 쿼리가 곧바로 다시 돌 수 있다.
+      if (event === 'SIGNED_OUT') setTimeout(() => queryClient.clear(), 0)
     })
 
     return () => {
       active = false
       data.subscription.unsubscribe()
     }
-  }, [])
+  }, [queryClient])
 
   return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>
 }

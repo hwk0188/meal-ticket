@@ -87,7 +87,7 @@ export function toUserMessage(err: unknown): string {
   const rpc = rpcCodeOf(err) ?? (code && isRpcErrorCode(code) ? code : undefined)
   if (rpc) return MESSAGES[rpc]
   if (code && AUTH_CODES.has(code)) return MESSAGES.not_authenticated
-  if (code && CODE_MESSAGES[code]) return CODE_MESSAGES[code]
+  if (code && Object.hasOwn(CODE_MESSAGES, code)) return CODE_MESSAGES[code]
   const name = fieldOf(err, 'name')
   if (name === 'TimeoutError' || name === 'AbortError') return NETWORK
   const message = messageOf(err)

@@ -66,6 +66,10 @@ describe('2단계 오류 문구', () => {
       .toBe('같은 값이 이미 있어요.')
   })
 
+  it('CODE_MESSAGES 에 없는 프로토타입 키(toString 등)는 일반 문구를 쓴다', () => {
+    expect(toUserMessage({ code: 'toString', message: 'x' })).toBe('잠시 후 다시 시도해 주세요.')
+  })
+
   it('타임아웃·중단은 통신 문구', () => {
     expect(toUserMessage(new DOMException('signal timed out', 'TimeoutError'))).toBe('통신이 불안정해요. 잠시 후 다시 시도해 주세요.')
     expect(toUserMessage(new DOMException('The operation was aborted.', 'AbortError'))).toBe('통신이 불안정해요. 잠시 후 다시 시도해 주세요.')

@@ -1515,7 +1515,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/components/SignOutButton.tsx`, `src/components/SignOutButton.test.tsx`
 - Modify: `src/pages/HomePage.tsx` (Footer), `src/pages/HomePage.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/auth/AuthProvider.test.tsx` — 모든 `render(<AuthProvider>…)` 를 `QueryClientProvider` 로 감싸는 헬퍼로 바꾸고 테스트 추가:
 
@@ -1696,12 +1696,12 @@ describe('HomePage · 로그아웃', () => {
 
 (`renderPage` 는 `useFamilyTickets` 등 다른 목을 그대로 쓴다. 홈의 `role="status"` 는 여러 개일 수 있으므로 위 단언이 모호해지면 `screen.getByText(/보호자가 새 코드로/)` 로 바꾼다.)
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/auth/AuthProvider src/components src/pages/HomePage`
 Expected: `ConfirmButton`·`SignOutButton` 없음, AuthProvider 의 SIGNED_OUT 캐시 정리 없음, 홈의 익명 확인 없음.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/auth/AuthProvider.tsx` — `useQueryClient` 를 쓰고 `onAuthStateChange` 콜백에 한 줄 추가:
 
@@ -1845,12 +1845,12 @@ function Footer() {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과. `App.test.tsx` 는 `App` 이 `QueryClientProvider` 를 이미 갖고 있어 그대로 통과.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/features/auth/AuthProvider.tsx src/features/auth/AuthProvider.test.tsx src/components/ConfirmButton.tsx src/components/ConfirmButton.test.tsx src/components/SignOutButton.tsx src/components/SignOutButton.test.tsx src/pages/HomePage.tsx src/pages/HomePage.test.tsx
