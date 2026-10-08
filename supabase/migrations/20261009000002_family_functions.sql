@@ -177,7 +177,9 @@ begin
         update public.issuances set family_id = v_me.family_id where family_id = v_old_family;
         update public.usages set family_id = v_me.family_id where family_id = v_old_family;
         -- 참조가 하나도 남지 않았을 때만 지운다 (cleanup_empty_families 와 같은 조건). 익명화된 옛 구성원 행이나
-        -- 방금 커밋된 장부가 남아 있으면 FK 원시 오류(23503) 대신 빈 껍데기로 남긴다 — 정리 작업이 나중에 치운다.
+        -- 방금 커밋된 장부가 남아 있으면 FK 원시 오류(23503) 대신 빈 껍데기로 남긴다 — 이 껍데기는 영구히 남는다
+        -- (cleanup_empty_families 도 똑같은 조건이라 지우지 않고, 남은 참조가 있는 한 FK 가 어차피 막는다). 작고
+        -- families select 정책 아래 보이지도 않으니 무해하다.
         delete from public.families f
          where f.id = v_old_family
            and not exists (select 1 from public.people p where p.family_id = f.id)
