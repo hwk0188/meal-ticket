@@ -45,12 +45,14 @@ npm run dev                # http://localhost:5173
 ### 2. 카카오 개발자 콘솔
 
 1. https://developers.kakao.com → 내 애플리케이션 → 애플리케이션 추가. 앱 이름 `OO교회 식권`, 회사명 교회명.
-2. **앱 설정 › 비즈니스**: **개인 개발자 비즈 앱 전환**(무료, 사업자번호 불필요). Supabase 가 카카오에 `account_email` scope 를 항상 요청하기 때문에, 이메일 동의항목을 등록할 수 있는 비즈 앱이어야 로그인이 된다(아니면 KOE205 오류).
-3. **앱 설정 › 플랫폼 › Web**: 사이트 도메인 `https://<github-user>.github.io`.
-4. **제품 설정 › 카카오 로그인**: 활성화 ON. OpenID Connect 는 OFF. Redirect URI에 Supabase Callback URL 등록.
-5. **제품 설정 › 카카오 로그인 › 동의항목**: 닉네임(profile_nickname) 필수 동의, 프로필 사진(profile_image) **선택 동의**, 카카오계정 이메일(account_email) **선택 동의**. 교인이 선택 항목을 거부해도 로그인된다.
-6. **제품 설정 › 카카오 로그인 › 보안**: Client Secret 코드 생성, 상태 "사용함".
-7. **앱 설정 › 앱 키**의 REST API 키와 위 Client Secret을 Supabase Kakao provider에 입력. Supabase 쪽 **"Allow users without an email"** 을 켠다(이메일을 거부한 교인도 가입 가능).
+2. **앱 › 일반 › 비즈니스 정보**: **개인 개발자 비즈 앱 전환**(무료, 사업자번호 불필요). Supabase 가 카카오에 `account_email` scope 를 항상 요청하기 때문에, 이메일 동의항목을 등록할 수 있는 비즈 앱이어야 로그인이 된다(아니면 KOE205 오류).
+3. Web 플랫폼(사이트 도메인) 등록은 **필요 없다**. 카카오 인증은 Supabase 서버가 REST API 키로 처리하므로 JavaScript 키·SDK 도메인을 쓰지 않는다. (개편된 콘솔에는 "앱 설정/제품 설정" 묶음이 없고, 좌측 메뉴가 **앱**, **카카오 로그인** 등으로 나뉜다.)
+4. **카카오 로그인 › 사용 설정**: 활성화 ON. OpenID Connect 는 OFF.
+   리다이렉트 URI는 **앱 › 플랫폼 키 › REST API 키**의 "카카오 로그인 리다이렉트 URI"에 Supabase Callback URL(`https://<project-ref>.supabase.co/auth/v1/callback`)을 등록하고 **저장**. 리다이렉트 URI는 **키별로 따로** 관리되므로 JavaScript 키 쪽에 넣으면 KOE006(등록되지 않은 리다이렉트 URI)이 난다. Supabase 는 REST API 키를 client_id 로 쓴다.
+   ※ 카카오는 리다이렉트 URI·동의항목 검사를 **사용자가 카카오 로그인을 마친 뒤**에 하므로, 로그인 없이 authorize 주소만 열어 보는 방식으로는 설정 오류를 미리 잡을 수 없다. 실제 로그인으로만 확인된다.
+5. **카카오 로그인 › 동의항목**: 닉네임(profile_nickname)·프로필 사진(profile_image)·카카오계정 이메일(account_email) 세 항목을 모두 **선택 동의**로 켠다(앱은 세 값을 쓰지 않으며, 회원번호만 계정 키로 쓴다). "사용 안 함"인 항목이 있으면 Supabase 가 그 scope 를 요청하다가 KOE205 오류가 난다. 교인이 세 항목을 모두 거부해도 로그인된다.
+6. **앱 › 플랫폼 키 › REST API 키 › 클라이언트 시크릿**: 코드 생성 후 **활성화 ON**, 저장.
+7. **앱 › 플랫폼 키 › REST API 키** 값과 위 클라이언트 시크릿을 Supabase Kakao provider의 Client ID / Client Secret에 입력. Supabase 쪽 **"Allow users without an email"** 을 켠다(이메일을 거부한 교인도 가입 가능).
 8. 운영 전까지는 콘솔에서 **팀원**으로 교회 담당자 계정을 추가해 둔다.
 
 ### 3. GitHub 저장소
