@@ -52,9 +52,10 @@ export function Checkbox({ children, ...rest }: CheckboxProps) {
   )
 }
 
-export function Spinner({ label = '불러오는 중…' }: { label?: string }) {
+/** 기본은 화면 전체 가운데(Gate 용). inline 은 페이지 안 한 구역에 끼울 때 — 뷰포트 높이를 차지하지 않는다. */
+export function Spinner({ label = '불러오는 중…', inline = false }: { label?: string; inline?: boolean }) {
   return (
-    <div role="status" aria-live="polite" className="flex min-h-dvh items-center justify-center text-sm text-gray-500">
+    <div role="status" aria-live="polite" className={`flex items-center justify-center text-sm text-gray-500 ${inline ? 'py-10' : 'min-h-dvh'}`}>
       {label}
     </div>
   )

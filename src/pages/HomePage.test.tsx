@@ -68,15 +68,27 @@ describe('HomePage · 머리말', () => {
 })
 
 describe('HomePage · 식권 구역', () => {
-  it('불러오는 중 / 실패', () => {
+  it('처음 불러오는 중(data 없음)이면 인라인 스피너', () => {
     useFamilyTickets.mockReturnValue({ status: 'pending', refetch: () => {} })
-    const { unmount } = renderPage()
+    renderPage()
     expect(screen.getByRole('status')).toHaveTextContent('불러오는 중')
-    unmount()
+  })
+
+  it('data 없이 실패하면 안내와 "다시 시도" 버튼 — 누르면 refetch 를 부른다', async () => {
     const refetch = vi.fn<() => void>()
     useFamilyTickets.mockReturnValue({ status: 'error', refetch })
     renderPage()
     expect(screen.getByRole('alert')).toHaveTextContent('식권을 불러오지 못했어요')
+    await userEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    expect(refetch).toHaveBeenCalledOnce()
+  })
+
+  it('data 가 있는 채로 폴링이 실패하면 목록은 그대로, 조용한 안내만 보여 준다 (경보 아님)', () => {
+    useFamilyTickets.mockReturnValue({ status: 'error', data: empty, refetch: () => {} })
+    renderPage()
+    expect(screen.getByText('오늘은 식사가 없어요')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('최신 정보를 받지 못했어요')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('오늘 식사가 없으면 안내 카드 + 다가오는 식권 + 접힌 지난 식권', async () => {
@@ -135,5 +147,19 @@ describe('HomePage · 로그아웃', () => {
     renderPage()
     await userEvent.click(screen.getByRole('button', { name: '로그아웃' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('잠시 후 다시 시도해 주세요.')
+  })
+
+  it('다시 시도해 성공하면 안내 문구를 지운다', async () => {
+    signOut.mockRejectedValueOnce(new Error('network')).mockResolvedValue(undefined)
+    renderPage()
+    const button = screen.getByRole('button', { name: '로그아웃' })
+
+    await userEvent.click(button)
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    // 실패 뒤에는 버튼이 다시 살아나야 사용자가 할 수 있는 일이 남는다.
+    expect(button).not.toBeDisabled()
+
+    await userEvent.click(button)
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
   })
 })

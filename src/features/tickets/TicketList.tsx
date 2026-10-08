@@ -61,7 +61,9 @@ function UsedRow({ row, total }: { row: TicketRow; total: number }) {
 function OpenRow({ row, total, disabled, onUse }: { row: TicketRow; total: number; disabled: boolean; onUse: () => void }) {
   const { holding, handlers } = useHold({ onComplete: onUse, disabled })
   function onKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
-    // 키보드·보조기기 사용자는 꾹 누를 수 없으므로 Enter/Space 로 바로 쓴다
+    // 키보드·보조기기 사용자는 꾹 누를 수 없으므로 Enter/Space 로 바로 쓴다. 키를 누르고 있으면 브라우저가
+    // keydown 을 반복해서 보내는데(auto-repeat), 그대로 두면 한 번 누른 채로 여러 장이 쓰여 버린다.
+    if (e.repeat) return
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       if (!disabled) onUse()
@@ -75,9 +77,11 @@ function OpenRow({ row, total, disabled, onUse }: { row: TicketRow; total: numbe
         disabled={disabled}
         onKeyDown={onKeyDown}
         {...handlers}
-        className="relative flex w-full touch-none select-none items-center gap-3 overflow-hidden rounded-xl border-2 border-blue-600 bg-white px-4 py-4 text-left [-webkit-touch-callout:none] disabled:border-gray-300 disabled:text-gray-400"
+        className="relative flex w-full touch-pan-y select-none items-center gap-3 overflow-hidden rounded-xl border-2 border-blue-600 bg-white px-4 py-4 text-left [-webkit-touch-callout:none] disabled:border-gray-300 disabled:text-gray-400"
       >
-        {/* iOS 는 버튼 롱프레스에 contextmenu 를 내지 않고 콜아웃을 띄우므로 touch-callout 도 끈다. */}
+        {/* touch-pan-y: 세로 스크롤(목록이 길 때)은 브라우저가 가져가게 둔다 — 그 드래그는 pointercancel 로
+            잡혀 useHold 가 취소하므로(설계대로) 식권이 잘못 쓰이지 않는다. iOS 는 버튼 롱프레스에 contextmenu 를
+            내지 않고 콜아웃을 띄우므로 touch-callout 도 끈다. */}
         {/* 왼쪽에서 차오르는 색. HOLD_MS 동안 꽉 차면 useHold 가 onUse 를 부른다 */}
         <span
           aria-hidden

@@ -6,7 +6,7 @@ import type { Person } from '../features/auth/usePerson'
 import { signOut } from '../features/auth/signIn'
 import type { TicketGroup } from '../features/tickets/groupTickets'
 import { TodayMealCard } from '../features/tickets/TodayMealCard'
-import { useFamilyTickets } from '../features/tickets/useFamilyTickets'
+import { useFamilyTickets, type FamilyTickets } from '../features/tickets/useFamilyTickets'
 import { useOnline } from '../features/tickets/useOnline'
 import { formatMealDate, formatShortDate } from '../lib/dates'
 import { toUserMessage } from '../lib/errors'
@@ -15,14 +15,18 @@ import { maskPhone } from '../lib/phone'
 export function HomePage({ person }: { person: Person }) {
   const tickets = useFamilyTickets(person)
   const online = useOnline()
-  const members = tickets.data?.members ?? []
 
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4 p-4">
       <header className="flex items-baseline justify-between">
         <div>
           <h1 className="text-lg font-extrabold">{person.name} 님</h1>
-          <p className="text-xs text-gray-500">{members.length > 1 ? `우리 가족 식권 · ${members.length}명` : '내 식권'}</p>
+          {/* data 가 아직 없을 때(처음 불러오는 중) "내 식권" 이 잠깐 떴다 가족 수로 바뀌는 깜빡임을 막는다 */}
+          {tickets.data && (
+            <p className="text-xs text-gray-500">
+              {tickets.data.members.length > 1 ? `우리 가족 식권 · ${tickets.data.members.length}명` : '내 식권'}
+            </p>
+          )}
         </div>
         <div className="text-right text-xs text-gray-600">
           <div>{maskPhone(person.phone)}</div>
@@ -30,14 +34,23 @@ export function HomePage({ person }: { person: Person }) {
         </div>
       </header>
 
-      {tickets.status === 'pending' && <Spinner label="불러오는 중…" />}
-      {tickets.status === 'error' && (
+      {/* 폴링 중 한 번의 요청 실패로 목록이 사라지면(이미 읽은 data 가 있는데도) 꾹 누르는 중인 행이 통째로
+          사라질 수 있다. data 가 있으면 그대로 보여 주고, 실패는 조용한 안내 한 줄로만 알린다. */}
+      {tickets.data ? (
+        <>
+          {tickets.status === 'error' && (
+            <p role="status" className="text-center text-xs text-gray-500">최신 정보를 받지 못했어요. 다시 시도하는 중…</p>
+          )}
+          <Tickets data={tickets.data} online={online} />
+        </>
+      ) : tickets.status === 'error' ? (
         <div role="alert" className="rounded-2xl border border-red-200 bg-white p-4 text-center text-sm text-red-600">
           식권을 불러오지 못했어요
           <button type="button" onClick={() => void tickets.refetch()} className="ml-2 underline">다시 시도</button>
         </div>
+      ) : (
+        <Spinner inline />
       )}
-      {tickets.status === 'success' && <Tickets data={tickets.data} online={online} />}
 
       <div className="flex-1" />
       <Footer />
@@ -45,9 +58,7 @@ export function HomePage({ person }: { person: Person }) {
   )
 }
 
-type Data = NonNullable<ReturnType<typeof useFamilyTickets>['data']>
-
-function Tickets({ data, online }: { data: Data; online: boolean }) {
+function Tickets({ data, online }: { data: FamilyTickets; online: boolean }) {
   const next = data.upcoming[0]
   return (
     <>
