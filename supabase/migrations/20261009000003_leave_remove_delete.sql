@@ -99,7 +99,7 @@ begin
   -- 여기서 지우는 것은 "잠그기 전" auth_user_id 기준이다 — 두 탭 경쟁: 이 트랜잭션이 코드를 지우는 사이
   -- relink_child 가 먼저 끝나 이 자녀 행의 auth_user_id 가 바뀌면, 새 계정 쪽에 이미 쓰인 코드 행이 하나
   -- 남을 수 있다. 무해하다(이미 used_at 이 찍힌 죽은 행이라 다시 못 쓴다) — 매시간 cleanup_pairing_codes 가
-  -- 지운다. 자녀 행을 잠근 뒤(④ 아래) 다시 지우면 되지 않느냐 하면: 그러면 ①(코드)보다 ②(사람 행 for update)가
+  -- 지운다. 자녀 행을 잠근 뒤(② 뒤) 다시 지우면 되지 않느냐 하면: 그러면 ①(코드)보다 ②(사람 행 for update)가
   -- 먼저 와 버려 이 파일의 잠금 순서를 어기고 다른 함수와 교착할 수 있다 — 그래서 그대로 둔다.
   delete from public.pairing_codes where auth_user_id = v_child.auth_user_id;
   select * into v_child from public.people
@@ -153,7 +153,9 @@ begin
   if exists (select 1 from public.people where guardian_id = v_me.id and is_minor and deleted_at is null) then
     raise exception 'has_children';
   end if;
-  -- 마지막 관리자가 탈퇴하면 role 을 바꿀 화면이 없어(관리자 지정은 SQL 로만) 운영이 멈춘다
+  -- 마지막 관리자가 탈퇴하면 role 을 바꿀 화면이 없어(관리자 지정은 SQL 로만) 운영이 멈춘다.
+  -- 관리자 수는 전역이지만 잠금은 내 가족뿐이라, 서로 다른 가족의 두 관리자가 같은 순간에 탈퇴하면 둘 다 통과할 수 있다.
+  -- 관리자는 한두 명이고 복구는 같은 SQL 한 줄이라 그대로 둔다 (직렬화된 불변식이 아니다).
   if v_me.role = 'admin' and not exists (
     select 1 from public.people where role = 'admin' and deleted_at is null and id <> v_me.id
   ) then
