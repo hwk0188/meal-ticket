@@ -4931,7 +4931,7 @@ update public.issuances set cancelled_at = now(), cancelled_by = (select id from
 
 §7.1 `issuances`·`usages` 표 아래에 한 줄: "제약: `(cancelled_at is null) = (cancelled_by is null)`, `(voided_at is null) = (voided_by is null)`. `usages.request_id` 는 not null unique." §7.3 표에서 `use_ticket` 행의 코드를 `not_registered | invalid_request | meal_not_found | not_today | no_remaining | duplicate_request` 로, `create_next_sunday_lunch` 를 `create_next_sunday_lunch(p_today date default 서울 오늘)` 로 적고 "기준일 = max(가장 늦은 주일 점심, 어제)" 규칙을 덧붙인다. §7.2 뷰 설명에 "`meal_id`/`family_id` 가 coalesce 식이라 PostgREST 임베딩 불가 → 프론트는 id 목록으로 meals 를 따로 읽는다" 를 추가한다.
 
-- [ ] **Step 3: 전체 검증**
+- [x] **Step 3: 전체 검증** (2026-10-08: pgTAP 189 · lint · 커버리지 96.8/90.4/96.0/98.7 · build · 하위 경로 build · E2E 3 통과)
 
 ```bash
 npm run db:reset && npm run db:test      # pgTAP 159 assertions
