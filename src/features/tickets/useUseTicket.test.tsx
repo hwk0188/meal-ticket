@@ -105,6 +105,29 @@ describe('useUseTicket', () => {
     await expect(p2).resolves.toEqual(usage)
   })
 
+  it('캐시 재조회가 끝날 때까지 pending 을 유지한다 (onSettled 가 promise 를 돌려준다)', async () => {
+    rpc.mockReturnValue(ok(usage))
+    const { wrapper, invalidate } = makeWrapper()
+    let release: () => void = () => {}
+    invalidate.mockReturnValue(
+      new Promise<void>((resolve) => {
+        release = resolve
+      }),
+    )
+    const { result } = renderHook(() => useUseTicket('m1'), { wrapper })
+    act(() => {
+      void result.current.mutateAsync().catch(() => undefined)
+    })
+    await waitFor(() => expect(invalidate).toHaveBeenCalled())
+    // 재조회가 끝나기 전에는 성공으로 바뀌면 안 된다 (TodayMealCard 가 묵은 remaining 으로 버튼을 다시 연다)
+    expect(result.current.isPending).toBe(true)
+    await act(async () => {
+      release()
+    })
+    await waitFor(() => expect(result.current.isPending).toBe(false))
+    expect(result.current.isSuccess).toBe(true)
+  })
+
   it('★ 응답이 없으면 5초 뒤 타임아웃으로 중단하고, 다음 시도는 같은 request_id 로 재시도한다', async () => {
     const { wrapper } = makeWrapper()
     const { result } = renderHook(() => useUseTicket('m1'), { wrapper })

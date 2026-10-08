@@ -51,9 +51,11 @@ export function useUseTicket(mealId: string) {
     },
     // 성공이든 실패든 잔량을 다시 읽는다 (no_remaining 이면 다른 폰이 쓴 것이라 목록이 바뀌어 있다)
     // 내역 화면도 같이 무효화한다 — 사용 성공은 usages 테이블에 새 행을 만들므로 내역에도 바로 보여야 한다.
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ticketsQueryKey })
-      void queryClient.invalidateQueries({ queryKey: ledgerQueryKey })
-    },
+    // promise 를 돌려줘야 TanStack 이 재조회가 끝날 때까지 isPending 을 유지한다 (끝나기 전에 버튼이 열리면 묵은 잔량으로 또 누른다)
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ticketsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ledgerQueryKey }),
+      ]),
   })
 }
