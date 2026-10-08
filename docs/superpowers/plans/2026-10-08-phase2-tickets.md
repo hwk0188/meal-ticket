@@ -112,7 +112,7 @@ npm ci && npm run db:start   # 로컬 Supabase (Docker 필요). 이미 떠 있�
 - Create: `supabase/migrations/20261008000001_meals.sql`
 - Test: `supabase/tests/database/060_meals.sql`
 
-- [ ] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/060_meals.sql`**
+- [x] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/060_meals.sql`**
 
 ```sql
 begin;
@@ -175,12 +175,12 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: `060_meals.sql` 에서 `has_table` 등 실패 (`meals` 없음). 기존 010~050 은 통과.
 
-- [ ] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261008000001_meals.sql`**
+- [x] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261008000001_meals.sql`**
 
 ```sql
 -- =========================================================
@@ -241,12 +241,12 @@ create policy meals_delete_admin on public.meals
   for delete to authenticated using ((select public.is_admin()));
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 060 포함 전부 통과. 020 의 "anon 에게 열린 public 함수는 ping 뿐" 도 그대로 통과(트리거 함수 revoke 덕분).
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add supabase/migrations/20261008000001_meals.sql supabase/tests/database/060_meals.sql
@@ -263,7 +263,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `supabase/migrations/20261008000002_ledger.sql`
 - Test: `supabase/tests/database/070_ledger.sql`
 
-- [ ] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/070_ledger.sql`**
+- [x] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/070_ledger.sql`**
 
 ```sql
 begin;
@@ -357,12 +357,12 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 070 실패 (`issuances` 없음).
 
-- [ ] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261008000002_ledger.sql`**
+- [x] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261008000002_ledger.sql`**
 
 ```sql
 -- =========================================================
@@ -452,12 +452,12 @@ revoke all on public.ticket_balances from anon;
 grant select on public.ticket_balances to authenticated;
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 070 포함 전부 통과.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add supabase/migrations/20261008000002_ledger.sql supabase/tests/database/070_ledger.sql
@@ -474,7 +474,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `supabase/migrations/20261008000003_issue_tickets.sql`
 - Test: `supabase/tests/database/080_issue_tickets.sql`
 
-- [ ] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/080_issue_tickets.sql`**
+- [x] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/080_issue_tickets.sql`**
 
 ```sql
 begin;
@@ -539,12 +539,12 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 080 실패 (함수 없음).
 
-- [ ] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261008000003_issue_tickets.sql`**
+- [x] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261008000003_issue_tickets.sql`**
 
 ```sql
 -- =========================================================
@@ -659,12 +659,12 @@ revoke execute on function public.create_next_sunday_lunch(date) from public, an
 grant execute on function public.create_next_sunday_lunch(date) to authenticated;
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 080 포함 전부 통과.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add supabase/migrations/20261008000003_issue_tickets.sql supabase/tests/database/080_issue_tickets.sql
@@ -682,7 +682,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Test: `supabase/tests/database/090_use_ticket.sql`
 - Regenerate: `src/lib/database.types.ts`
 
-- [ ] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/090_use_ticket.sql`**
+- [x] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/090_use_ticket.sql`**
 
 ```sql
 begin;
@@ -769,12 +769,12 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 090 실패 (함수 없음).
 
-- [ ] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261008000004_use_ticket.sql`**
+- [x] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261008000004_use_ticket.sql`**
 
 ```sql
 -- =========================================================
@@ -857,17 +857,17 @@ revoke execute on function public.use_ticket(uuid, uuid) from public, anon;
 grant execute on function public.use_ticket(uuid, uuid) to authenticated;
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 010~090 전부 통과 (1단계 80 + 이번 79 = 159 assertions).
 
-- [ ] **Step 5: 타입 재생성 + 확인**
+- [x] **Step 5: 타입 재생성 + 확인**
 
 Run: `npm run db:types && grep -c "ticket_balances\|issue_tickets\|use_ticket\|create_next_sunday_lunch" src/lib/database.types.ts`
 Expected: 0보다 큰 수. `git diff --stat src/lib/database.types.ts` 에 변경이 보인다. `npm run build` 가 여전히 통과한다(기존 코드는 새 타입을 아직 안 쓴다).
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add supabase/migrations/20261008000004_use_ticket.sql supabase/tests/database/090_use_ticket.sql src/lib/database.types.ts
@@ -888,7 +888,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `src/lib/errors.ts`, `src/lib/errors.test.ts`
 - Modify: `src/features/auth/usePerson.ts:194-196`, `src/features/onboarding/OnboardingPage.tsx:560-563` (중복 제거)
 
-- [ ] **Step 1: 실패하는 테스트 — `src/lib/postgrest.test.ts`**
+- [x] **Step 1: 실패하는 테스트 — `src/lib/postgrest.test.ts`**
 
 ```ts
 import { toError, unwrap } from './postgrest'
@@ -917,7 +917,7 @@ describe('unwrap', () => {
 })
 ```
 
-- [ ] **Step 2: 실패하는 테스트 — `src/lib/dates.test.ts`**
+- [x] **Step 2: 실패하는 테스트 — `src/lib/dates.test.ts`**
 
 ```ts
 import { formatClock, formatDateTime, formatMealDate, formatShortDate, formatTime, nextSundayAfter, todaySeoul } from './dates'
@@ -966,7 +966,7 @@ describe('nextSundayAfter', () => {
 })
 ```
 
-- [ ] **Step 3: 실패하는 테스트 — `src/lib/money.test.ts`**
+- [x] **Step 3: 실패하는 테스트 — `src/lib/money.test.ts`**
 
 ```ts
 import { formatWon } from './money'
@@ -980,7 +980,7 @@ describe('formatWon', () => {
 })
 ```
 
-- [ ] **Step 4: 실패하는 테스트 — `src/lib/timeout.test.ts`**
+- [x] **Step 4: 실패하는 테스트 — `src/lib/timeout.test.ts`**
 
 ```ts
 import { withTimeout } from './timeout'
@@ -1010,7 +1010,7 @@ describe('withTimeout', () => {
 })
 ```
 
-- [ ] **Step 5: 실패하는 테스트 추가 — `src/lib/errors.test.ts` 끝에 덧붙인다**
+- [x] **Step 5: 실패하는 테스트 추가 — `src/lib/errors.test.ts` 끝에 덧붙인다**
 
 파일 상단 import 에 `rpcCodeOf` 를 추가한다 (예: `import { messageOf, rpcCodeOf, toUserMessage } from './errors'`).
 
@@ -1054,12 +1054,12 @@ describe('2단계 오류 문구', () => {
 })
 ```
 
-- [ ] **Step 6: 실패 확인**
+- [x] **Step 6: 실패 확인**
 
 Run: `npx vitest run src/lib`
 Expected: 새 파일들 "Cannot find module", errors.test 의 새 케이스 실패.
 
-- [ ] **Step 7: 구현 — `src/lib/postgrest.ts`**
+- [x] **Step 7: 구현 — `src/lib/postgrest.ts`**
 
 ```ts
 import type { PostgrestError } from '@supabase/supabase-js'
@@ -1078,7 +1078,7 @@ export function unwrap<T>(result: PostgrestResponse<T>): T {
 }
 ```
 
-- [ ] **Step 8: 구현 — `src/lib/dates.ts`**
+- [x] **Step 8: 구현 — `src/lib/dates.ts`**
 
 ```ts
 // 모든 날짜 판정은 Asia/Seoul (설계 §2). 폰의 시간대가 달라도 식사일·사용 시각이 흔들리지 않게 한다.
@@ -1146,7 +1146,7 @@ export function nextSundayAfter(base: string): string {
 }
 ```
 
-- [ ] **Step 9: 구현 — `src/lib/money.ts`, `src/lib/timeout.ts`**
+- [x] **Step 9: 구현 — `src/lib/money.ts`, `src/lib/timeout.ts`**
 
 ```ts
 // src/lib/money.ts
@@ -1171,7 +1171,7 @@ export function withTimeout(ms: number): { signal: AbortSignal; done: () => void
 }
 ```
 
-- [ ] **Step 10: 구현 — `src/lib/errors.ts` 수정**
+- [x] **Step 10: 구현 — `src/lib/errors.ts` 수정**
 
 `MESSAGES` 에 2단계 코드를 추가하고, 제약 코드와 타임아웃 분기를 넣고, `rpcCodeOf` 를 export 한다. 파일 전체:
 
@@ -1265,7 +1265,7 @@ export function toUserMessage(err: unknown): string {
 }
 ```
 
-- [ ] **Step 11: 중복 제거 — `usePerson.ts` 와 `OnboardingPage.tsx`**
+- [x] **Step 11: 중복 제거 — `usePerson.ts` 와 `OnboardingPage.tsx`**
 
 `src/features/auth/usePerson.ts` 의 queryFn 끝부분을:
 
@@ -1296,12 +1296,12 @@ async function claimPerson(values: OnboardingValues) {
 
 (`import { unwrap } from '../../lib/postgrest'`). 기존 `usePerson.test.tsx` · `OnboardingPage.test.tsx` 는 그대로 통과해야 한다(동작 동일).
 
-- [ ] **Step 12: 통과 확인**
+- [x] **Step 12: 통과 확인**
 
 Run: `npx vitest run src/lib src/features/auth src/features/onboarding && npm run lint && npx tsc -b --noEmit`
 Expected: 전부 통과, lint·타입 오류 없음.
 
-- [ ] **Step 13: 커밋**
+- [x] **Step 13: 커밋**
 
 ```bash
 git add src/lib/postgrest.ts src/lib/postgrest.test.ts src/lib/dates.ts src/lib/dates.test.ts src/lib/money.ts src/lib/money.test.ts src/lib/timeout.ts src/lib/timeout.test.ts src/lib/errors.ts src/lib/errors.test.ts src/features/auth/usePerson.ts src/features/onboarding/OnboardingPage.tsx
@@ -1322,7 +1322,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 라우트 자체(`/history`, `/admin/*`)는 각 화면을 만드는 Task 10·11·12 에서 `App.tsx` 에 붙인다. 여기서는 가드와 틀만 만든다.
 
-- [ ] **Step 1: 실패하는 테스트 — `src/components/TabBar.test.tsx`**
+- [x] **Step 1: 실패하는 테스트 — `src/components/TabBar.test.tsx`**
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -1360,7 +1360,7 @@ describe('TabBar', () => {
 
 > `MemoryRouter` 안의 `NavLink` 는 `href="/"` 를 만든다 (실제 앱은 `HashRouter` 라 `#/`). 테스트는 MemoryRouter 기준이다.
 
-- [ ] **Step 2: 실패하는 테스트 — `src/components/PersonShell.test.tsx`**
+- [x] **Step 2: 실패하는 테스트 — `src/components/PersonShell.test.tsx`**
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -1403,7 +1403,7 @@ describe('PersonShell', () => {
 })
 ```
 
-- [ ] **Step 3: 실패하는 테스트 추가 — `src/features/auth/Gate.test.tsx`**
+- [x] **Step 3: 실패하는 테스트 추가 — `src/features/auth/Gate.test.tsx`**
 
 파일 상단을 다음처럼 바꾼다: `FakePerson` 의 `data` 타입에 `role`·`family_id` 를 추가하고(`{ id: string; name: string; role?: string; family_id?: string }`), `vi.hoisted` 에 `useCurrentPerson` 을 더해 **기존 `vi.mock('./usePerson', …)` 줄을 교체**하며, `renderAt` 이 레이아웃 라우트까지 포함하게 한다. 그 다음 아래 describe 둘을 덧붙인다.
 
@@ -1478,12 +1478,12 @@ describe('RequireAdmin', () => {
 })
 ```
 
-- [ ] **Step 4: 실패 확인**
+- [x] **Step 4: 실패 확인**
 
 Run: `npx vitest run src/components src/features/auth`
 Expected: TabBar·PersonShell "Cannot find module", Gate 새 테스트 실패 (`RequirePerson` 없음).
 
-- [ ] **Step 5: 구현 — `src/components/TabBar.tsx`**
+- [x] **Step 5: 구현 — `src/components/TabBar.tsx`**
 
 ```tsx
 import { NavLink } from 'react-router'
@@ -1516,7 +1516,7 @@ export function TabBar({ items }: { items: readonly TabItem[] }) {
 }
 ```
 
-- [ ] **Step 6: 구현 — `src/components/PersonShell.tsx`**
+- [x] **Step 6: 구현 — `src/components/PersonShell.tsx`**
 
 ```tsx
 import type { ReactNode } from 'react'
@@ -1550,7 +1550,7 @@ export function PersonShell({ person, children }: { person: Person; children: Re
 }
 ```
 
-- [ ] **Step 7: 구현 — `src/features/auth/usePerson.ts` 에 추가**
+- [x] **Step 7: 구현 — `src/features/auth/usePerson.ts` 에 추가**
 
 ```ts
 import { useOutletContext } from 'react-router'
@@ -1561,7 +1561,7 @@ export function useCurrentPerson(): Person {
 }
 ```
 
-- [ ] **Step 8: 구현 — `src/features/auth/Gate.tsx` 수정**
+- [x] **Step 8: 구현 — `src/features/auth/Gate.tsx` 수정**
 
 ```tsx
 import type { ReactNode } from 'react'
@@ -1634,12 +1634,12 @@ export function RequireAdmin({ children }: { children: ReactNode }) {
 }
 ```
 
-- [ ] **Step 9: 통과 확인**
+- [x] **Step 9: 통과 확인**
 
 Run: `npx vitest run src/components src/features/auth src/pages && npm run lint && npx tsc -b --noEmit`
 Expected: 전부 통과. (기존 `HomePage.test.tsx` 는 `HomePage` 를 직접 그리므로 영향 없음.)
 
-- [ ] **Step 10: 커밋**
+- [x] **Step 10: 커밋**
 
 ```bash
 git add src/components/TabBar.tsx src/components/TabBar.test.tsx src/components/PersonShell.tsx src/components/PersonShell.test.tsx src/features/auth/Gate.tsx src/features/auth/Gate.test.tsx src/features/auth/usePerson.ts
@@ -1657,7 +1657,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/features/tickets/useFamilyTickets.ts`, `src/features/tickets/useFamilyTickets.test.tsx`
 - Create: `src/test/fakeSupabase.ts` (테스트 전용 가짜 쿼리 빌더 — 이후 Task 들도 쓴다)
 
-- [ ] **Step 1: 실패하는 테스트 — `src/features/tickets/groupTickets.test.ts`**
+- [x] **Step 1: 실패하는 테스트 — `src/features/tickets/groupTickets.test.ts`**
 
 ```ts
 import { groupTickets, type Balance, type Meal } from './groupTickets'
@@ -1699,7 +1699,7 @@ describe('groupTickets', () => {
 })
 ```
 
-- [ ] **Step 2: 가짜 Supabase 빌더 — `src/test/fakeSupabase.ts`** (테스트 전용. 커버리지 제외 디렉터리에 있다)
+- [x] **Step 2: 가짜 Supabase 빌더 — `src/test/fakeSupabase.ts`** (테스트 전용. 커버리지 제외 디렉터리에 있다)
 
 ```ts
 import type { PostgrestError } from '@supabase/supabase-js'
@@ -1749,7 +1749,7 @@ export function fail(message: string, code = 'P0001'): FakeQuery<never> {
 }
 ```
 
-- [ ] **Step 3: 실패하는 테스트 — `src/features/tickets/useFamilyTickets.test.tsx`**
+- [x] **Step 3: 실패하는 테스트 — `src/features/tickets/useFamilyTickets.test.tsx`**
 
 ```tsx
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -1827,12 +1827,12 @@ describe('useFamilyTickets', () => {
 })
 ```
 
-- [ ] **Step 4: 실패 확인**
+- [x] **Step 4: 실패 확인**
 
 Run: `npx vitest run src/features/tickets`
 Expected: "Cannot find module".
 
-- [ ] **Step 5: 구현 — `src/features/tickets/groupTickets.ts`**
+- [x] **Step 5: 구현 — `src/features/tickets/groupTickets.ts`**
 
 ```ts
 import type { Database } from '../../lib/database.types'
@@ -1874,7 +1874,7 @@ export function groupTickets(meals: readonly Meal[], balances: readonly Balance[
 }
 ```
 
-- [ ] **Step 6: 구현 — `src/features/tickets/useFamilyTickets.ts`**
+- [x] **Step 6: 구현 — `src/features/tickets/useFamilyTickets.ts`**
 
 ```ts
 import { useQuery } from '@tanstack/react-query'
@@ -1926,12 +1926,12 @@ export function useFamilyTickets(person: Person) {
 }
 ```
 
-- [ ] **Step 7: 통과 확인**
+- [x] **Step 7: 통과 확인**
 
 Run: `npx vitest run src/features/tickets && npm run lint && npx tsc -b --noEmit`
 Expected: 통과. (타입 오류가 나면 `database.types.ts` 가 Task 4 에서 재생성되었는지 확인.)
 
-- [ ] **Step 8: 커밋**
+- [x] **Step 8: 커밋**
 
 ```bash
 git add src/features/tickets/groupTickets.ts src/features/tickets/groupTickets.test.ts src/features/tickets/useFamilyTickets.ts src/features/tickets/useFamilyTickets.test.tsx src/test/fakeSupabase.ts
@@ -1950,7 +1950,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/features/tickets/Clock.tsx`, `src/features/tickets/Clock.test.tsx`
 - Create: `src/features/tickets/useUseTicket.ts`, `src/features/tickets/useUseTicket.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트 — `src/features/tickets/useHold.test.ts`**
+- [x] **Step 1: 실패하는 테스트 — `src/features/tickets/useHold.test.ts`**
 
 ```ts
 import { act, renderHook } from '@testing-library/react'
@@ -2036,7 +2036,7 @@ describe('useHold', () => {
 })
 ```
 
-- [ ] **Step 2: 실패하는 테스트 — `src/features/tickets/useOnline.test.ts`, `Clock.test.tsx`**
+- [x] **Step 2: 실패하는 테스트 — `src/features/tickets/useOnline.test.ts`, `Clock.test.tsx`**
 
 ```ts
 // src/features/tickets/useOnline.test.ts
@@ -2087,7 +2087,7 @@ describe('Clock', () => {
 })
 ```
 
-- [ ] **Step 3: 실패하는 테스트 — `src/features/tickets/useUseTicket.test.tsx`**
+- [x] **Step 3: 실패하는 테스트 — `src/features/tickets/useUseTicket.test.tsx`**
 
 ```tsx
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -2159,12 +2159,12 @@ describe('useUseTicket', () => {
 })
 ```
 
-- [ ] **Step 4: 실패 확인**
+- [x] **Step 4: 실패 확인**
 
 Run: `npx vitest run src/features/tickets`
 Expected: 네 파일 모두 "Cannot find module".
 
-- [ ] **Step 5: 구현 — `src/features/tickets/useHold.ts`**
+- [x] **Step 5: 구현 — `src/features/tickets/useHold.ts`**
 
 ```ts
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type SyntheticEvent } from 'react'
@@ -2231,7 +2231,7 @@ export function useHold({ onComplete, disabled = false, duration = HOLD_MS }: Op
 }
 ```
 
-- [ ] **Step 6: 구현 — `useOnline.ts`, `Clock.tsx`**
+- [x] **Step 6: 구현 — `useOnline.ts`, `Clock.tsx`**
 
 ```ts
 // src/features/tickets/useOnline.ts
@@ -2272,7 +2272,7 @@ export function Clock() {
 }
 ```
 
-- [ ] **Step 7: 구현 — `src/features/tickets/useUseTicket.ts`**
+- [x] **Step 7: 구현 — `src/features/tickets/useUseTicket.ts`**
 
 ```ts
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -2319,12 +2319,12 @@ export function useUseTicket(mealId: string) {
 }
 ```
 
-- [ ] **Step 8: 통과 확인**
+- [x] **Step 8: 통과 확인**
 
 Run: `npx vitest run src/features/tickets && npm run lint && npx tsc -b --noEmit`
 Expected: 통과.
 
-- [ ] **Step 9: 커밋**
+- [x] **Step 9: 커밋**
 
 ```bash
 git add src/features/tickets/useHold.ts src/features/tickets/useHold.test.ts src/features/tickets/useOnline.ts src/features/tickets/useOnline.test.ts src/features/tickets/Clock.tsx src/features/tickets/Clock.test.tsx src/features/tickets/useUseTicket.ts src/features/tickets/useUseTicket.test.tsx
@@ -2343,7 +2343,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/features/tickets/TodayMealCard.tsx`, `src/features/tickets/TodayMealCard.test.tsx`
 - Rewrite: `src/pages/HomePage.tsx`, `src/pages/HomePage.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트 — `src/features/tickets/buildRows.test.ts`**
+- [x] **Step 1: 실패하는 테스트 — `src/features/tickets/buildRows.test.ts`**
 
 ```ts
 import { buildRows, FOLD_THRESHOLD } from './buildRows'
@@ -2381,7 +2381,7 @@ describe('buildRows', () => {
 })
 ```
 
-- [ ] **Step 2: 실패하는 테스트 — `src/features/tickets/TicketList.test.tsx`**
+- [x] **Step 2: 실패하는 테스트 — `src/features/tickets/TicketList.test.tsx`**
 
 ```tsx
 import { act, render, screen } from '@testing-library/react'
@@ -2438,7 +2438,7 @@ describe('TicketList', () => {
 })
 ```
 
-- [ ] **Step 3: 실패하는 테스트 — `src/features/tickets/TodayMealCard.test.tsx`**
+- [x] **Step 3: 실패하는 테스트 — `src/features/tickets/TodayMealCard.test.tsx`**
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -2508,7 +2508,7 @@ describe('TodayMealCard', () => {
 })
 ```
 
-- [ ] **Step 4: 실패하는 테스트 — `src/pages/HomePage.test.tsx` 재작성**
+- [x] **Step 4: 실패하는 테스트 — `src/pages/HomePage.test.tsx` 재작성**
 
 기존 로그아웃 테스트 4개는 그대로 두고(`signOut` mock), 위쪽의 첫 테스트를 바꾸고 식권 구역 테스트를 더한다. 전체:
 
@@ -2654,12 +2654,12 @@ describe('HomePage · 로그아웃', () => {
 })
 ```
 
-- [ ] **Step 5: 실패 확인**
+- [x] **Step 5: 실패 확인**
 
 Run: `npx vitest run src/features/tickets src/pages/HomePage.test.tsx`
 Expected: 새 모듈 없음, HomePage 새 테스트 실패.
 
-- [ ] **Step 6: 구현 — `src/features/tickets/buildRows.ts`**
+- [x] **Step 6: 구현 — `src/features/tickets/buildRows.ts`**
 
 ```ts
 import { formatTime } from '../../lib/dates'
@@ -2695,7 +2695,7 @@ export function buildRows({ issued, used, usages, members }: Input): TicketRow[]
 }
 ```
 
-- [ ] **Step 7: 구현 — `src/features/tickets/TicketList.tsx`**
+- [x] **Step 7: 구현 — `src/features/tickets/TicketList.tsx`**
 
 ```tsx
 import { useState, type KeyboardEvent } from 'react'
@@ -2793,7 +2793,7 @@ function OpenRow({ row, total, disabled, onUse }: { row: TicketRow; total: numbe
 }
 ```
 
-- [ ] **Step 8: 구현 — `src/features/tickets/TodayMealCard.tsx`**
+- [x] **Step 8: 구현 — `src/features/tickets/TodayMealCard.tsx`**
 
 ```tsx
 import { formatMealDate } from '../../lib/dates'
@@ -2843,7 +2843,7 @@ export function TodayMealCard({ group, usages, members, online }: Props) {
 }
 ```
 
-- [ ] **Step 9: 구현 — `src/pages/HomePage.tsx` 재작성**
+- [x] **Step 9: 구현 — `src/pages/HomePage.tsx` 재작성**
 
 ```tsx
 import { useQueryClient } from '@tanstack/react-query'
@@ -2978,7 +2978,7 @@ function Footer() {
 }
 ```
 
-- [ ] **Step 10: 통과 확인 + 눈으로 확인**
+- [x] **Step 10: 통과 확인 + 눈으로 확인**
 
 Run: `npx vitest run src/features/tickets src/pages && npm run lint && npx tsc -b --noEmit`
 Expected: 통과.
@@ -2993,7 +2993,7 @@ insert into public.issuances (person_id, family_id, meal_id, quantity, unit_pric
 select me.id, me.family_id, coalesce((select id from m), (select id from public.meals where served_on = (now() at time zone 'Asia/Seoul')::date limit 1)), 4, 5000, me.id from me;
 ```
 
-- [ ] **Step 11: 커밋**
+- [x] **Step 11: 커밋**
 
 ```bash
 git add src/features/tickets/buildRows.ts src/features/tickets/buildRows.test.ts src/features/tickets/TicketList.tsx src/features/tickets/TicketList.test.tsx src/features/tickets/TodayMealCard.tsx src/features/tickets/TodayMealCard.test.tsx src/pages/HomePage.tsx src/pages/HomePage.test.tsx
@@ -3012,7 +3012,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/pages/HistoryPage.tsx`, `src/pages/HistoryPage.test.tsx`
 - Modify: `src/App.tsx`
 
-- [ ] **Step 1: 실패하는 테스트 — `src/features/history/mergeLedger.test.ts`**
+- [x] **Step 1: 실패하는 테스트 — `src/features/history/mergeLedger.test.ts`**
 
 ```ts
 import { mergeLedger, type IssuanceRow, type UsageRow } from './mergeLedger'
@@ -3046,7 +3046,7 @@ describe('mergeLedger', () => {
 })
 ```
 
-- [ ] **Step 2: 실패하는 테스트 — `src/features/history/useFamilyLedger.test.tsx`**
+- [x] **Step 2: 실패하는 테스트 — `src/features/history/useFamilyLedger.test.tsx`**
 
 ```tsx
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -3092,7 +3092,7 @@ describe('useFamilyLedger', () => {
 })
 ```
 
-- [ ] **Step 3: 실패하는 테스트 — `src/pages/HistoryPage.test.tsx`**
+- [x] **Step 3: 실패하는 테스트 — `src/pages/HistoryPage.test.tsx`**
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -3147,12 +3147,12 @@ describe('HistoryPage', () => {
 })
 ```
 
-- [ ] **Step 4: 실패 확인**
+- [x] **Step 4: 실패 확인**
 
 Run: `npx vitest run src/features/history src/pages/HistoryPage.test.tsx`
 Expected: "Cannot find module".
 
-- [ ] **Step 5: 구현 — `src/features/history/mergeLedger.ts`**
+- [x] **Step 5: 구현 — `src/features/history/mergeLedger.ts`**
 
 ```ts
 type MealRef = { title: string; served_on: string } | null
@@ -3213,7 +3213,7 @@ export function mergeLedger(issuances: readonly IssuanceRow[], usages: readonly 
 }
 ```
 
-- [ ] **Step 6: 구현 — `src/features/history/useFamilyLedger.ts`**
+- [x] **Step 6: 구현 — `src/features/history/useFamilyLedger.ts`**
 
 ```ts
 import { useQuery } from '@tanstack/react-query'
@@ -3246,7 +3246,7 @@ export function useFamilyLedger(person: Person) {
 
 > `as IssuanceRow[]` 캐스트는 supabase-js 가 추론한 임베딩 타입을 우리 행 타입으로 좁히는 용도다. 추론 타입이 이미 맞으면 캐스트를 지운다(tsc 가 알려 준다).
 
-- [ ] **Step 7: 구현 — `src/pages/HistoryPage.tsx`**
+- [x] **Step 7: 구현 — `src/pages/HistoryPage.tsx`**
 
 ```tsx
 import { Spinner } from '../components/ui'
@@ -3308,7 +3308,7 @@ function Entry({ entry }: { entry: LedgerEntry }) {
 }
 ```
 
-- [ ] **Step 8: 라우트 — `src/App.tsx`**
+- [x] **Step 8: 라우트 — `src/App.tsx`**
 
 ```tsx
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -3350,12 +3350,12 @@ export default function App() {
 }
 ```
 
-- [ ] **Step 9: 통과 확인**
+- [x] **Step 9: 통과 확인**
 
 Run: `npx vitest run && npm run lint && npx tsc -b --noEmit`
 Expected: 전부 통과. 브라우저에서 홈 하단 탭 "내역" 을 누르면 Task 9 에서 만든 발급·사용이 보인다.
 
-- [ ] **Step 10: 커밋**
+- [x] **Step 10: 커밋**
 
 ```bash
 git add src/features/history src/pages/HistoryPage.tsx src/pages/HistoryPage.test.tsx src/App.tsx
@@ -3378,7 +3378,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/pages/admin/AdminMealsPage.tsx`, `src/pages/admin/AdminMealsPage.test.tsx`
 - Modify: `src/App.tsx`
 
-- [ ] **Step 1: 실패하는 테스트 — 순수 함수 셋**
+- [x] **Step 1: 실패하는 테스트 — 순수 함수 셋**
 
 `src/lib/dates.test.ts` 에 추가:
 
@@ -3461,7 +3461,7 @@ describe('validateMeal', () => {
 })
 ```
 
-- [ ] **Step 2: 실패하는 테스트 — `src/features/admin/useMeals.test.tsx`**
+- [x] **Step 2: 실패하는 테스트 — `src/features/admin/useMeals.test.tsx`**
 
 ```tsx
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -3535,7 +3535,7 @@ describe('mutations', () => {
 })
 ```
 
-- [ ] **Step 3: 실패하는 테스트 — `src/features/admin/MealForm.test.tsx`**
+- [x] **Step 3: 실패하는 테스트 — `src/features/admin/MealForm.test.tsx`**
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -3570,7 +3570,7 @@ describe('MealForm', () => {
 })
 ```
 
-- [ ] **Step 4: 실패하는 테스트 — `src/pages/admin/AdminMealsPage.test.tsx`**
+- [x] **Step 4: 실패하는 테스트 — `src/pages/admin/AdminMealsPage.test.tsx`**
 
 ```tsx
 import { render, screen } from '@testing-library/react'
@@ -3659,12 +3659,12 @@ describe('AdminMealsPage', () => {
 })
 ```
 
-- [ ] **Step 5: 실패 확인**
+- [x] **Step 5: 실패 확인**
 
 Run: `npx vitest run src/lib/dates.test.ts src/features/admin src/pages/admin`
 Expected: `addDays` 없음, 나머지 "Cannot find module".
 
-- [ ] **Step 6: 구현 — `src/lib/dates.ts` 에 추가**
+- [x] **Step 6: 구현 — `src/lib/dates.ts` 에 추가**
 
 ```ts
 /** 'YYYY-MM-DD' 에 날수를 더한다 (UTC 산술이라 시간대·서머타임 영향 없음) */
@@ -3674,7 +3674,7 @@ export function addDays(ymdText: string, days: number): string {
 }
 ```
 
-- [ ] **Step 7: 구현 — 순수 함수 셋**
+- [x] **Step 7: 구현 — 순수 함수 셋**
 
 ```ts
 // src/features/admin/nextSundayLunch.ts
@@ -3745,7 +3745,7 @@ export function validateMeal(input: MealInput): { ok: true; values: MealValues }
 }
 ```
 
-- [ ] **Step 8: 구현 — `src/features/admin/useMeals.ts`**
+- [x] **Step 8: 구현 — `src/features/admin/useMeals.ts`**
 
 ```ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -3803,7 +3803,7 @@ export function useDeleteMeal() {
 }
 ```
 
-- [ ] **Step 9: 구현 — `src/features/admin/MealForm.tsx`**
+- [x] **Step 9: 구현 — `src/features/admin/MealForm.tsx`**
 
 ```tsx
 import { useState, type FormEvent } from 'react'
@@ -3844,7 +3844,7 @@ export function MealForm({ today, pending, onSubmit, onCancel }: Props) {
 }
 ```
 
-- [ ] **Step 10: 구현 — `src/pages/admin/AdminMealsPage.tsx`**
+- [x] **Step 10: 구현 — `src/pages/admin/AdminMealsPage.tsx`**
 
 ```tsx
 import { useState } from 'react'
@@ -3945,7 +3945,7 @@ function MealCard({ meal, summary, onDelete, deleting }: { meal: Meal; summary?:
 }
 ```
 
-- [ ] **Step 11: 라우트 — `src/App.tsx` 의 `RequirePerson` 아래에 추가**
+- [x] **Step 11: 라우트 — `src/App.tsx` 의 `RequirePerson` 아래에 추가**
 
 ```tsx
 import { RequireAdmin } from './features/auth/Gate'   // 기존 import 줄에 합친다
@@ -3957,14 +3957,14 @@ import { AdminMealsPage } from './pages/admin/AdminMealsPage'
             </Route>
 ```
 
-- [ ] **Step 12: 통과 확인 + 눈으로 확인**
+- [x] **Step 12: 통과 확인 + 눈으로 확인**
 
 Run: `npx vitest run && npm run lint && npx tsc -b --noEmit`
 Expected: 통과.
 
 브라우저: 개발 로그인한 계정을 관리자로 만든다(Studio SQL: `update public.people set role = 'admin' where auth_user_id = (select id from auth.users where email = '<본인 이메일>');`). 새로고침하면 하단 탭에 "관리" 가 생기고, 식사 화면에서 "다음 주일 점심 만들기" 를 누르면 카드가 생긴다. 발급 없는 식사는 삭제가 되고, Task 9 에서 발급을 넣은 식사는 삭제 버튼이 없다.
 
-- [ ] **Step 13: 커밋**
+- [x] **Step 13: 커밋**
 
 ```bash
 git add src/lib/dates.ts src/lib/dates.test.ts src/features/admin src/pages/admin/AdminMealsPage.tsx src/pages/admin/AdminMealsPage.test.tsx src/App.tsx
@@ -3984,7 +3984,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/pages/admin/IssuePage.tsx`, `src/pages/admin/IssuePage.test.tsx`
 - Modify: `src/test/fakeSupabase.ts` (`ilike` 체인 추가), `src/App.tsx`
 
-- [ ] **Step 1: 실패하는 테스트 — `src/features/admin/issueSchema.test.ts`**
+- [x] **Step 1: 실패하는 테스트 — `src/features/admin/issueSchema.test.ts`**
 
 ```ts
 import { validateIssue, validateNewPerson } from './issueSchema'
@@ -4018,7 +4018,7 @@ describe('validateNewPerson', () => {
 })
 ```
 
-- [ ] **Step 2: 실패하는 테스트 — `src/features/admin/usePeopleSearch.test.tsx`**
+- [x] **Step 2: 실패하는 테스트 — `src/features/admin/usePeopleSearch.test.tsx`**
 
 ```tsx
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -4084,7 +4084,7 @@ describe('useRegisterPerson', () => {
 })
 ```
 
-- [ ] **Step 3: 실패하는 테스트 — `src/features/admin/useIssue.test.tsx`**
+- [x] **Step 3: 실패하는 테스트 — `src/features/admin/useIssue.test.tsx`**
 
 ```tsx
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -4155,7 +4155,7 @@ describe('useIssueTickets', () => {
 })
 ```
 
-- [ ] **Step 4: 실패하는 테스트 — `src/pages/admin/IssuePage.test.tsx`**
+- [x] **Step 4: 실패하는 테스트 — `src/pages/admin/IssuePage.test.tsx`**
 
 ```tsx
 import { render, screen, waitFor } from '@testing-library/react'
@@ -4282,12 +4282,12 @@ describe('IssuePage · 2단계 (장수·단가)', () => {
 })
 ```
 
-- [ ] **Step 5: 실패 확인**
+- [x] **Step 5: 실패 확인**
 
 Run: `npx vitest run src/features/admin src/pages/admin/IssuePage.test.tsx`
 Expected: "Cannot find module".
 
-- [ ] **Step 6: 구현 — `src/test/fakeSupabase.ts` 에 `ilike = this.chain('ilike')` 한 줄 추가. `src/features/admin/issueSchema.ts`:**
+- [x] **Step 6: 구현 — `src/test/fakeSupabase.ts` 에 `ilike = this.chain('ilike')` 한 줄 추가. `src/features/admin/issueSchema.ts`:**
 
 ```ts
 import { z } from 'zod'
@@ -4346,7 +4346,7 @@ export function validateNewPerson(input: NewPersonInput): { ok: true; values: Ne
 
 > `result.data!` 는 오류가 없을 때만 닿는 분기라 안전하다. oxlint 가 non-null 단언을 막으면 `if (!result.success) return { ok: false, errors }` 로 분기를 나눠 쓴다.
 
-- [ ] **Step 7: 구현 — `src/features/admin/usePeopleSearch.ts`**
+- [x] **Step 7: 구현 — `src/features/admin/usePeopleSearch.ts`**
 
 ```ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -4393,7 +4393,7 @@ export function useRegisterPerson() {
 }
 ```
 
-- [ ] **Step 8: 구현 — `src/features/admin/useIssue.ts`**
+- [x] **Step 8: 구현 — `src/features/admin/useIssue.ts`**
 
 ```ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -4457,7 +4457,7 @@ export function useIssueTickets() {
 
 > `p_memo: null` 전달: 생성된 타입이 `p_memo?: string` 이면 `args.memo ?? undefined` 로 바꾼다 (PostgREST 는 빠진 인자를 기본값 null 로 본다). 테스트의 기대값도 그에 맞춘다.
 
-- [ ] **Step 9: 구현 — `src/pages/admin/IssuePage.tsx`**
+- [x] **Step 9: 구현 — `src/pages/admin/IssuePage.tsx`**
 
 ```tsx
 import { useState, type FormEvent } from 'react'
@@ -4661,7 +4661,7 @@ function AmountStep({ person, meal, onBack, onDone }: { person: PersonHit; meal:
 }
 ```
 
-- [ ] **Step 10: 라우트 — `src/App.tsx` 의 `RequirePerson` 아래에 추가**
+- [x] **Step 10: 라우트 — `src/App.tsx` 의 `RequirePerson` 아래에 추가**
 
 ```tsx
 import { IssuePage } from './pages/admin/IssuePage'
@@ -4669,14 +4669,14 @@ import { IssuePage } from './pages/admin/IssuePage'
               <Route path="/admin/issue" element={<RequireAdmin><IssuePage /></RequireAdmin>} />
 ```
 
-- [ ] **Step 11: 통과 확인 + 눈으로 확인**
+- [x] **Step 11: 통과 확인 + 눈으로 확인**
 
 Run: `npx vitest run && npm run lint && npx tsc -b --noEmit`
 Expected: 통과.
 
 브라우저(관리자 계정): 발급 탭 → 다음 식사가 기본 선택 → 이름 두 글자 검색 → 선택 → 장수 2, 단가 5000 → 발급 → 완료 문구. 같은 발급을 60초 안에 반복하면 확인 창. "새로 등록" 으로 이름·번호를 넣으면 바로 선택된다. 홈(내 식권)에서 자기에게 발급한 식권이 보인다.
 
-- [ ] **Step 12: 커밋**
+- [x] **Step 12: 커밋**
 
 ```bash
 git add src/features/admin src/pages/admin/IssuePage.tsx src/pages/admin/IssuePage.test.tsx src/test/fakeSupabase.ts src/App.tsx
