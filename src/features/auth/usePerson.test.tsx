@@ -134,7 +134,7 @@ describe('usePerson', () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(3_000)
       })
-      // 관찰자별 타이머: 가드 쪽(false)은 타이머가 없고, 화면 쪽 타이머 한 번 → 요청 +1 (3이 아니라 2)
+      // 같은 키를 두 관찰자가 봐도 3초마다 요청은 한 번이고(중복 요청 없음) 둘 다 같은 데이터를 본다 — 가드 쪽(false)은 타이머를 만들지 않는다.
       expect(maybeSingle).toHaveBeenCalledTimes(2)
       expect(guard.result.current.data).toBeNull()
       expect(page.result.current.data).toBeNull()

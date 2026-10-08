@@ -32,6 +32,7 @@ export function ProfileSection({ me }: { me: Person }) {
     setPhone(formatPhone(me.phone ?? ''))
     setErrors({})
     setEditing(true)
+    del.reset() // 탈퇴 오류(has_children 등)가 보이는 중 수정을 열면 함께 지운다
   }
   function cancel() {
     setEditing(false)
@@ -44,8 +45,18 @@ export function ProfileSection({ me }: { me: Person }) {
       <h2 className="text-xs font-bold text-gray-500">내 정보</h2>
       {editing ? (
         <form onSubmit={onSubmit} noValidate className="flex flex-col gap-3">
-          <TextField label="이름" name="profile-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={20} error={errors.name} />
-          <TextField label="휴대폰 번호" name="profile-phone" type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} error={errors.phone} />
+          <TextField label="이름" name="profile-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} maxLength={20} error={errors.name} />
+          <TextField
+            label="휴대폰 번호"
+            name="profile-phone"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            placeholder="010-0000-0000"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            error={errors.phone}
+          />
           {update.isError && <p role="alert" className="text-sm text-red-600">{profileErrorMessage(update.error)}</p>}
           <div className="flex gap-2">
             <Button variant="ghost" onClick={cancel} disabled={update.isPending}>취소</Button>
@@ -54,12 +65,21 @@ export function ProfileSection({ me }: { me: Person }) {
         </form>
       ) : (
         <div className="flex items-center justify-between text-sm">
-          <span>{me.name} · {maskPhone(me.phone)}</span>
+          <span>{[me.name, maskPhone(me.phone)].filter(Boolean).join(' · ')}</span>
           <button type="button" onClick={startEditing} className="px-3 py-2 text-xs text-blue-600 underline">수정</button>
         </div>
       )}
       <div className="flex flex-col items-end gap-1">
-        <ConfirmButton label={del.isPending ? '처리 중…' : '탈퇴'} message={DELETE_NOTICE} confirmLabel="탈퇴하기" onConfirm={() => del.mutate()} disabled={del.isPending} />
+        <ConfirmButton
+          label={del.isPending ? '처리 중…' : '탈퇴'}
+          message={DELETE_NOTICE}
+          confirmLabel="탈퇴하기"
+          onConfirm={() => {
+            update.reset() // 수정 오류가 남아 있던 채로 탈퇴하면 (이미 사라진) 그 상태가 다시 보이지 않도록 먼저 지운다
+            del.mutate()
+          }}
+          disabled={del.isPending}
+        />
         {del.isError && <p role="alert" className="text-sm text-red-600">{toUserMessage(del.error)}</p>}
         {/* 익명화는 끝났는데 로그아웃만 실패한 경우 (Task 10 리뷰): 다시 누르면 not_registered 가 되므로 재시도를 권하지 않는다 */}
         {del.data?.signedOut === false && (

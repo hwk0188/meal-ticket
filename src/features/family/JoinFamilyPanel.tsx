@@ -9,8 +9,8 @@ import { useJoinFamily } from './useFamilyActions'
 type Props = { onDone: (message: string) => void; onCancel: () => void }
 type Mode = 'enter' | 'show'
 
-const ENTER_HINT = '상대 폰의 가족 › 가족 연결 › 내 코드 보여 주기에 뜬 숫자를 넣으면, 그분이 우리 가족으로 들어와요. 그분 가족에 남은 사람이 없으면 식권도 함께 옮겨 와요.'
-const SHOW_HINT = '상대 폰의 가족 › 가족 연결 › 상대 코드 입력에 이 숫자를 넣으면 내가 그 가족으로 들어가요. 우리 가족에 나뿐이면 내 식권도 함께 옮겨 가요.'
+const ENTER_HINT = '상대 폰의 가족 › 가족 연결 › 내 코드 보여 주기에 뜬 숫자를 넣으면, 그분과 그분의 자녀가 우리 가족으로 들어와요. 그분 가족에 남은 사람이 없으면 식권도 함께 옮겨 와요.'
+const SHOW_HINT = '상대 폰의 가족 › 가족 연결 › 상대 코드 입력에 이 숫자를 넣으면 나와 내 자녀가 그 가족으로 들어가요. 우리 가족에 나와 내 자녀만 있으면 내 식권도 함께 옮겨 가요.'
 
 /** 어른끼리 가족 합치기. 코드를 "넣는" 쪽 가족이 남고, "보여 주는" 쪽이 그리로 옮겨 간다 (설계 §5.1 준비 3). */
 export function JoinFamilyPanel({ onDone, onCancel }: Props) {
@@ -33,7 +33,11 @@ export function JoinFamilyPanel({ onDone, onCancel }: Props) {
       <SegmentedControl
         label="연결 방법"
         value={mode}
-        onChange={setMode}
+        onChange={(next) => {
+          setMode(next)
+          setError(undefined)
+          join.reset()
+        }}
         options={[
           { value: 'enter', label: '상대 코드 입력' },
           { value: 'show', label: '내 코드 보여 주기' },

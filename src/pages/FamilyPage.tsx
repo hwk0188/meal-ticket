@@ -27,7 +27,7 @@ export function FamilyPage() {
   const leave = useLeaveFamily()
   const remove = useRemoveChild()
   // 내 코드를 보여 주는 동안(가족 연결 패널)은 배우자가 나를 자기 가족으로 합칠 수 있다 → 내 사람 행(family_id)을 폴링한다
-  usePerson(userId, { refetchInterval: panel === 'join' ? PAIR_POLL_MS : false })
+  usePerson(userId, { refetchInterval: panel === 'join' && !joined ? PAIR_POLL_MS : false })
   const actionError = leave.isError ? toUserMessage(leave.error) : remove.isError ? toUserMessage(remove.error) : null
   const myChildren = (members.data ?? []).filter((m) => m.is_minor && m.guardian_id === me.id)
 
@@ -71,6 +71,11 @@ export function FamilyPage() {
             me={me}
             pending={leave.isPending || remove.isPending}
             onLeave={() => {
+              // leave_family 도 내 family_id 를 바꾼다 — 패널을 미리 닫고 기준을 지워 두지 않으면,
+              // invalidateFamily 의 내 사람 행 재조회(뮤테이션 자체의 onSuccess 보다 먼저 온다)가
+              // "상대가 나를 합쳤다" 는 합류 알림으로 잘못 비친다.
+              setPanel('none')
+              setFamilyAtOpen(null)
               resetActions()
               leave.mutate(undefined, { onSuccess: () => done('새 가족이 되었어요') })
             }}

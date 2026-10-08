@@ -2,12 +2,12 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { JoinFamilyPanel } from './JoinFamilyPanel'
 
-type Mutation = { isPending: boolean; isError: boolean; error?: Error; mutate: (vars: unknown, opts?: { onSuccess?: (row: { name: string }) => void }) => void }
+type Mutation = { isPending: boolean; isError: boolean; error?: Error; mutate: (vars: unknown, opts?: { onSuccess?: (row: { name: string }) => void }) => void; reset: () => void }
 const { useJoinFamily } = vi.hoisted(() => ({ useJoinFamily: vi.fn<() => Mutation>() }))
 vi.mock('./useFamilyActions', () => ({ useJoinFamily }))
 vi.mock('../pairing/PairingCodeCard', () => ({ PairingCodeCard: ({ kind, hint }: { kind: string; hint: string }) => <p>card:{kind}:{hint}</p> }))
 
-const idle = (): Mutation => ({ isPending: false, isError: false, mutate: vi.fn<Mutation['mutate']>() })
+const idle = (): Mutation => ({ isPending: false, isError: false, mutate: vi.fn<Mutation['mutate']>(), reset: vi.fn<() => void>() })
 
 function renderPanel() {
   const onDone = vi.fn<(m: string) => void>()
@@ -46,5 +46,18 @@ describe('JoinFamilyPanel', () => {
     expect(screen.queryByLabelText('상대 폰에 뜬 코드')).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: '닫기' }))
     expect(onCancel).toHaveBeenCalledOnce()
+  })
+
+  it('모드를 바꾸면 AddChildForm 처럼 칸 오류·뮤테이션 오류를 지운다', async () => {
+    const join = idle()
+    useJoinFamily.mockReturnValue(join)
+    renderPanel()
+    await userEvent.type(screen.getByLabelText('상대 폰에 뜬 코드'), '1')
+    await userEvent.click(screen.getByRole('button', { name: '우리 가족으로 연결' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('8자리 숫자')
+    await userEvent.click(screen.getByRole('radio', { name: '내 코드 보여 주기' }))
+    await userEvent.click(screen.getByRole('radio', { name: '상대 코드 입력' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(join.reset).toHaveBeenCalled()
   })
 })

@@ -119,7 +119,7 @@ describe('useDeleteAccount', () => {
     expect(signOut).not.toHaveBeenCalled()
   })
 
-  it('signOut 이 실패해도 성공으로 끝나고 signedOut=false, [\'person\'] 을 무효화한다', async () => {
+  it('signOut 이 실패해도 성공으로 끝나고 signedOut=false, 캐시는 건드리지 않는다 (안내 문구가 가드보다 먼저 보여야 한다)', async () => {
     rpc.mockResolvedValue({ data: null, error: null })
     signOut.mockRejectedValue(new Error('network error'))
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -131,7 +131,9 @@ describe('useDeleteAccount', () => {
     })
     expect(resolved).toEqual({ signedOut: false })
     await waitFor(() => expect(result.current.status).toBe('success'))
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['person'] })
+    // 여기서 ['person'] 을 무효화하면 가드가 바로 가입 화면으로 보내 안내 문구가 보이기도 전에 사라진다 —
+    // 다음 재조회(포커스·재진입)에서 가드가 보내도록 캐시는 그대로 둔다.
+    expect(invalidate).not.toHaveBeenCalled()
     expect(consoleError).toHaveBeenCalled()
     consoleError.mockRestore()
   })

@@ -189,9 +189,45 @@ describe('FamilyPage', () => {
     expect(screen.getByText('가족이 연결되었어요')).toBeInTheDocument()
     expect(screen.queryByText('가족 연결 패널')).not.toBeInTheDocument()
     expect(useFamilyMembers).toHaveBeenLastCalledWith('f2')
+    // 합류가 확인된 뒤에는 더 폴링할 필요가 없다
+    expect(usePerson).toHaveBeenLastCalledWith('u1', { refetchInterval: false })
     await userEvent.click(screen.getByRole('button', { name: '닫기' }))
     expect(screen.queryByText('가족이 연결되었어요')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '+ 자녀 추가' })).toBeInTheDocument()
+  })
+
+  it('가족 나가기 중에는(아직 응답 전) 합류로 오인하지 않는다', async () => {
+    const spouse: FamilyMember = {
+      id: 'p3', name: '이영희', phone: '01098765432', is_minor: false, guardian_id: null,
+      auth_user_id: 'u3', consented_at: '2026-10-07T00:00:00Z', guardian_consented_at: null, created_at: '2026-10-07T00:00:00Z',
+    }
+    useFamilyMembers.mockReturnValue({ status: 'success', data: [...rows, spouse], refetch: () => {} })
+    const leave = idle()
+    leave.mutate = vi.fn<Mutation['mutate']>() // 응답이 오기 전 상태를 흉내 — onSuccess 를 부르지 않는다
+    useLeaveFamily.mockReturnValue(leave)
+    const utils = renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /가족 연결/ }))
+    expect(screen.getByText('가족 연결 패널')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '가족 나가기' }))
+    await userEvent.click(screen.getByRole('button', { name: '나가기' }))
+    // leave_family 는 아직 응답하지 않았지만, 실제로는 이 무렵 family_id 가 이미 바뀌어 있을 수 있다
+    useCurrentPerson.mockReturnValue({ ...me, family_id: 'f2' })
+    utils.rerender(<MemoryRouter><FamilyPage /></MemoryRouter>)
+    expect(screen.queryByText('가족이 연결되었어요')).not.toBeInTheDocument()
+    expect(screen.queryByText('가족 연결 패널')).not.toBeInTheDocument()
+  })
+
+  it('합류 뒤 가족 연결 패널을 다시 열면 그 가족을 새로 기준 삼는다', async () => {
+    const utils = renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /가족 연결/ }))
+    useCurrentPerson.mockReturnValue({ ...me, family_id: 'f2' })
+    utils.rerender(<MemoryRouter><FamilyPage /></MemoryRouter>)
+    expect(screen.getByText('가족이 연결되었어요')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '닫기' }))
+    // 아직 family_id 는 f2 그대로다 (useCurrentPerson mock 유지) — 다시 열면 f2 를 새 기준으로 잡아야 한다
+    await userEvent.click(screen.getByRole('button', { name: /가족 연결/ }))
+    expect(screen.getByText('가족 연결 패널')).toBeInTheDocument()
+    expect(screen.queryByText('가족이 연결되었어요')).not.toBeInTheDocument()
   })
 
   it('내 정보 구역이 맨 아래에 있다', () => {

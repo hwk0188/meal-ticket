@@ -78,7 +78,9 @@ describe('ProfileSection', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('앱을 닫고 다시 열어 주세요')
   })
 
-  it('탈퇴는 확인을 거쳐 delete_my_account, has_children 이면 문구', async () => {
+  it('탈퇴는 확인을 거쳐 delete_my_account 전에 update 오류 상태를 지운다, has_children 이면 문구', async () => {
+    const update = idle()
+    useUpdateProfile.mockReturnValue(update)
     const del = idle()
     useDeleteAccount.mockReturnValue(del)
     const { rerender } = render(<ProfileSection me={me} />)
@@ -86,8 +88,33 @@ describe('ProfileSection', () => {
     expect(screen.getByRole('status')).toHaveTextContent('익명 처리')
     await userEvent.click(screen.getByRole('button', { name: '탈퇴하기' }))
     expect(del.mutate).toHaveBeenCalledOnce()
+    expect(update.reset).toHaveBeenCalled()
+    const resetMock = update.reset as unknown as { mock: { invocationCallOrder: number[] } }
+    const mutateMock = del.mutate as unknown as { mock: { invocationCallOrder: number[] } }
+    expect(resetMock.mock.invocationCallOrder[0]).toBeLessThan(mutateMock.mock.invocationCallOrder[0])
     useDeleteAccount.mockReturnValue({ ...idle(), isError: true, error: new Error('has_children') })
     rerender(<ProfileSection me={me} />)
     expect(screen.getByRole('alert')).toHaveTextContent('자녀를 먼저 삭제해 주세요')
+  })
+
+  it('탈퇴 오류가 보이는 중 "수정" 을 누르면 탈퇴 오류 상태도 지운다', async () => {
+    const del = { ...idle(), isError: true, error: new Error('has_children') }
+    useDeleteAccount.mockReturnValue(del)
+    render(<ProfileSection me={me} />)
+    await userEvent.click(screen.getByRole('button', { name: '수정' }))
+    expect(del.reset).toHaveBeenCalled()
+  })
+
+  it('이름·번호 칸에 모바일 자동완성 힌트가 있다', async () => {
+    render(<ProfileSection me={me} />)
+    await userEvent.click(screen.getByRole('button', { name: '수정' }))
+    expect(screen.getByLabelText('이름')).toHaveAttribute('autocomplete', 'name')
+    expect(screen.getByLabelText('휴대폰 번호')).toHaveAttribute('autocomplete', 'tel')
+    expect(screen.getByLabelText('휴대폰 번호')).toHaveAttribute('placeholder', '010-0000-0000')
+  })
+
+  it('번호가 없으면 이름만 보여 준다 (줄표가 남지 않는다)', () => {
+    render(<ProfileSection me={{ ...me, phone: null }} />)
+    expect(screen.getByText('김철수')).toBeInTheDocument()
   })
 })

@@ -81,7 +81,6 @@ export type DeleteAccountResult = { signedOut: boolean }
  * (한 틱 미룬) clear 보다 먼저 실행되고, 이미 폐기된 토큰으로 401 재조회를 쏘게 된다.
  */
 export function useDeleteAccount() {
-  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (): Promise<DeleteAccountResult> => {
       unwrap(await supabase.rpc('delete_my_account'))
@@ -90,9 +89,9 @@ export function useDeleteAccount() {
         return { signedOut: true }
       } catch (error) {
         // 익명화는 이미 커밋됐다 — 오류로 올리면 '다시 시도' 가 뜨고 두 번째 시도는 not_registered 가 된다.
-        // 세션은 아직 살아 있으므로(SIGNED_OUT 없음) 내 사람 행만 다시 읽게 해 가드가 가입 화면으로 보내게 한다.
+        // 여기서 캐시를 무효화하면 가드가 바로 가입 화면으로 보내 안내 문구가 보이기도 전에 사라지므로 하지 않는다 —
+        // 다음 재조회(포커스·재진입) 때 가드가 보낸다.
         console.error('탈퇴 뒤 로그아웃 실패', error)
-        await queryClient.invalidateQueries({ queryKey: ['person'] })
         return { signedOut: false }
       }
     },
