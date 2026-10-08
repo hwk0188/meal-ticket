@@ -19,25 +19,13 @@ export function useHold({ onComplete, disabled = false, duration = HOLD_MS }: Op
     latest.current = onComplete
   }, [onComplete])
 
-  // 타이머 콜백이 "완료되는 순간" disabled 였는지 보려고 ref 로 따라간다. (effect 안에서 ref 에 값만
-  // 쓰는 것은 안전하다 — oxlint 의 react(refs) 규칙은 렌더 '중' 읽기를 막을 뿐, 이벤트·이펙트에서의
-  // 접근은 규칙 설명에서도 허용한다.)
-  const disabledRef = useRef(disabled)
-  useEffect(() => {
-    disabledRef.current = disabled
-  }, [disabled])
-
-  const clearTimer = useCallback(() => {
+  const cancel = useCallback(() => {
     if (timer.current !== null) {
       clearTimeout(timer.current)
       timer.current = null
     }
-  }, [])
-
-  const cancel = useCallback(() => {
-    clearTimer()
     setHolding(false)
-  }, [clearTimer])
+  }, [])
 
   const start = useCallback(
     (e: PointerEvent<HTMLElement>) => {
@@ -48,20 +36,25 @@ export function useHold({ onComplete, disabled = false, duration = HOLD_MS }: Op
       timer.current = setTimeout(() => {
         timer.current = null
         setHolding(false)
-        // 누르는 중 disabled 가 되면(처리 중 등) 완료 콜백은 부르지 않는다 — 눌림 자체는 취소된 것이다.
-        if (!disabledRef.current) latest.current()
+        latest.current()
       }, duration)
     },
     [disabled, duration],
   )
 
+  // disabled 로 바뀌는 순간(처리 중, 잔량 0, 오프라인) 진행 중인 누름을 끊는다. 비활성화된 버튼은 pointerup 을
+  // 전달하지 않을 수 있어, 여기서 타이머를 치우지 않으면 손을 뗀 뒤에도 완료 콜백이 뒤늦게 불릴 수 있다.
+  // (외부 조건 → 내부 상태 리셋은 effect 의 정당한 용도라 규칙을 이 줄만 해제한다.)
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect
+    if (disabled) cancel()
+  }, [disabled, cancel])
+
   // 언마운트되면 타이머를 치운다.
-  useEffect(() => clearTimer, [clearTimer])
+  useEffect(() => cancel, [cancel])
 
   return {
-    // disabled 가 되는 즉시 화면에서는 누른 상태를 보이지 않는다. ref 를 렌더 중에 읽지 않도록
-    // props 만으로 계산한다 — 실제 취소(완료 콜백 억제)는 위 disabledRef 가 맡는다.
-    holding: holding && !disabled,
+    holding,
     handlers: {
       onPointerDown: start,
       onPointerUp: cancel,

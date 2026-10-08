@@ -63,6 +63,20 @@ describe('useHold', () => {
     expect(onComplete).not.toHaveBeenCalled()
   })
 
+  it('disabled 가 되었다 풀려도 끊긴 타이머는 되살아나지 않는다 (지워진 것이지 억눌린 것이 아니다)', () => {
+    const onComplete = vi.fn<() => void>()
+    const { result, rerender } = renderHook(({ disabled }) => useHold({ onComplete, disabled }), { initialProps: { disabled: false } })
+    act(() => result.current.handlers.onPointerDown(down()))
+    expect(result.current.holding).toBe(true)
+
+    // 폴링 응답으로 잠깐 disabled 가 되었다가(처리 중 등) 곧바로 풀린다 — 그 사이 손가락은 그대로 화면에 있다 해도
+    // disabled 였던 순간 타이머가 지워졌어야 한다. 풀린 뒤 시간을 더 줘도 완료 콜백이 불리면 안 된다.
+    rerender({ disabled: true })
+    rerender({ disabled: false })
+    act(() => vi.advanceTimersByTime(1000))
+    expect(onComplete).not.toHaveBeenCalled()
+  })
+
   it('마우스 오른쪽 버튼은 무시한다', () => {
     const onComplete = vi.fn<() => void>()
     const { result } = renderHook(() => useHold({ onComplete }))
