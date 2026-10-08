@@ -1533,13 +1533,14 @@ const ADMIN_TABS: readonly TabItem[] = [
   { to: '/', label: '내 식권', icon: '🎫' },
 ]
 
-/** 가입을 마친 사람의 화면 틀: 내용 + 하단 탭. 탭 높이만큼 아래 여백을 둔다. */
+/** 가입을 마친 사람의 화면 틀: 내용 + 하단 탭. 틀이 뷰포트 높이를 맡고(min-h-dvh), 고정 탭 높이 + 안전 영역만큼 아래 여백을 둔다. 자식 <main> 은 min-h-dvh 대신 flex-1 로 채운다. */
 export function PersonShell({ person, children }: { person: Person; children: ReactNode }) {
   const { pathname } = useLocation()
-  const inAdminArea = pathname.startsWith('/admin')
+  // 교인이 /admin 주소를 직접 치면 RequireAdmin 이 돌려보내기 전 한 프레임 동안 관리자 탭이 보이지 않게 역할도 본다
+  const inAdminArea = person.role === 'admin' && (pathname === '/admin' || pathname.startsWith('/admin/'))
   const items = inAdminArea ? ADMIN_TABS : person.role === 'admin' ? [...MEMBER_TABS, ADMIN_LINK] : MEMBER_TABS
   return (
-    <div className="pb-20">
+    <div className="flex min-h-dvh flex-col pb-[calc(5rem+env(safe-area-inset-bottom))]">
       {children}
       <TabBar items={items} />
     </div>
@@ -2857,7 +2858,7 @@ export function HomePage({ person }: { person: Person }) {
   const members = tickets.data?.members ?? []
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col gap-4 p-4">
+    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4 p-4">
       <header className="flex items-baseline justify-between">
         <div>
           <h1 className="text-lg font-extrabold">{person.name} 님</h1>
@@ -3252,7 +3253,7 @@ export function HistoryPage() {
   const ledger = useFamilyLedger(person)
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col gap-4 p-4">
+    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4 p-4">
       <h1 className="text-lg font-extrabold">내역</h1>
       {ledger.status === 'pending' && <Spinner label="불러오는 중…" />}
       {ledger.status === 'error' && <p role="alert" className="text-center text-sm text-red-600">내역을 불러오지 못했어요</p>}
@@ -3863,7 +3864,7 @@ export function AdminMealsPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col gap-4 p-4">
+    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4 p-4">
       <header className="flex items-center justify-between">
         <h1 className="text-lg font-extrabold">식사</h1>
         <span className="rounded bg-blue-600 px-2 py-0.5 text-xs font-bold text-white">관리자</span>
@@ -4467,7 +4468,7 @@ export function IssuePage() {
   const [done, setDone] = useState<string | null>(null)
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col gap-4 p-4">
+    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4 p-4">
       <header className="flex items-center justify-between">
         <h1 className="text-lg font-extrabold">발급</h1>
         <span className="rounded bg-blue-600 px-2 py-0.5 text-xs font-bold text-white">관리자</span>
