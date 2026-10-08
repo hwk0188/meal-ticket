@@ -4955,7 +4955,7 @@ git commit -m "docs: 2단계 반영 — README 로컬 관리자·발급 정정 �
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 5: 브랜치 마무리**
+- [x] **Step 5: 브랜치 마무리** (PR #2 생성, 2026-10-08)
 
 `superpowers:finishing-a-development-branch` 로 PR 을 만든다. CI(`DB · 단위 · E2E 테스트`)가 초록이면 merge → Deploy 가 마이그레이션 4개를 운영 DB 에 올리고 Pages 를 배포한다. **merge 전 확인**: `supabase/seeds/*` 는 운영에 가지 않는다(Deploy 는 `db push`). 운영 관리자 지정은 README §4 절차(SQL 로 `role = 'admin'`)대로 한다.
 
