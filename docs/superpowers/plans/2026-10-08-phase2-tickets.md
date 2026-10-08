@@ -1805,6 +1805,7 @@ describe('useFamilyTickets', () => {
     // 관리자도 이 훅을 쓰므로(관리자는 뷰에서 모든 가족을 본다) 자기 가족으로 좁혀야 한다
     expect(queries.ticket_balances![0]!.has('eq', 'family_id', 'f1')).toBe(true)
     expect(queries.people![0]!.has('eq', 'family_id', 'f1')).toBe(true)
+    expect(queries.usages![0]!.has('eq', 'family_id', 'f1')).toBe(true)
     expect(queries.usages![0]!.has('in', 'meal_id', ['m1'])).toBe(true)
     expect(queries.usages![0]!.has('is', 'voided_at', null)).toBe(true)
   })
@@ -1899,20 +1900,24 @@ export function useFamilyTickets(person: Person) {
   return useQuery({
     queryKey: [...ticketsQueryKey, person.family_id, today],
     queryFn: async (): Promise<FamilyTickets> => {
+      // 자정을 넘겨도 다음 폴링이 새 날짜로 읽도록 queryFn 안에서 다시 계산한다 (결과가 바뀌면 리렌더로 키가 따라온다).
+      const day = todaySeoul()
       const [balances, todayMeals, members] = await Promise.all([
         supabase.from('ticket_balances').select('*').eq('family_id', person.family_id).then(unwrap),
-        supabase.from('meals').select('*').eq('served_on', today).then(unwrap),
+        supabase.from('meals').select('*').eq('served_on', day).then(unwrap),
         supabase.from('people').select('id, name').eq('family_id', person.family_id).is('deleted_at', null).then(unwrap),
       ])
-      const mealIds = [...new Set([...balances.map((b) => b.meal_id).filter((id): id is string => id !== null), ...todayMeals.map((m) => m.id)])]
       const todayIds = todayMeals.map((m) => m.id)
-      const [meals, usages] = await Promise.all([
+      // 오늘 식사는 이미 손에 있으니 잔량 행의 나머지 식사만 더 읽는다
+      const mealIds = [...new Set(balances.map((b) => b.meal_id).filter((id): id is string => id !== null && !todayIds.includes(id)))]
+      const [otherMeals, usages] = await Promise.all([
         mealIds.length ? supabase.from('meals').select('*').in('id', mealIds).then(unwrap) : Promise.resolve<Meal[]>([]),
         todayIds.length
-          ? supabase.from('usages').select('*').in('meal_id', todayIds).is('voided_at', null).order('used_at').then(unwrap)
+          // 관리자는 RLS 로 모든 가족의 사용 기록을 볼 수 있으므로 여기서도 가족으로 좁힌다
+          ? supabase.from('usages').select('*').eq('family_id', person.family_id).in('meal_id', todayIds).is('voided_at', null).order('used_at').then(unwrap)
           : Promise.resolve<Usage[]>([]),
       ])
-      return { ...groupTickets(meals, balances, today), usages, members }
+      return { ...groupTickets([...todayMeals, ...otherMeals], balances, day), usages, members }
     },
     refetchInterval: TICKETS_POLL_MS,
   })
@@ -4932,4 +4937,5 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - `cancel_issuance` · `use_ticket_as_admin` · `void_usage` · `merge_people` · `link_person` · `admin_reset_person`, 식사 상세 현황판(`#/admin/meals/:id`), 사람 탭, 통계·CSV·카톡 공유.
 - 발급 화면 검색 결과의 "가족 수" 태그(3단계 뒤 의미가 생긴다).
 - **잔량을 바꾸는 4단계 함수(`cancel_issuance` · `void_usage` · `use_ticket_as_admin`)는 `use_ticket` 과 같은 잠금 키 `pg_advisory_xact_lock(hashtext(family_id::text), hashtext(meal_id::text))` 을 잡아야 한다** (Task 4 리뷰 권고 — 동시 취소+사용이 잔량을 음수로 만들 수 있다). 키가 어긋나지 않게 `public.lock_family_meal(uuid, uuid)` 헬퍼를 4단계 첫 마이그레이션에서 만들고 `use_ticket` 도 그 헬퍼를 쓰도록 바꾼다.
+- `groupTickets` 는 `remaining` 이 음수가 될 수 있다고 가정하지 않는다. 4단계 `cancel_issuance` 는 설계대로 `would_go_negative` 로 거부해야 하며(아니면 홈에 "−1장 남음" 이 뜬다), 홈의 지난 식권·잔량 뷰 조회는 가족 이력 전체를 매 폴링마다 읽으므로(1년 ≈ 52행, URL 한계 ≈ 210개 id) 이력이 쌓이면 `meals` 조회에 `served_on` 기간 창(예: 90일)을 두는 것을 4단계에서 검토한다 (Task 7 리뷰 메모).
 - 2단계 pgTAP 실제 개수: 060=23, 070=31, 080=33, 090=22 (계획 본문의 16/20/22/21 은 리뷰 보강 전 수치). 전체 189.
