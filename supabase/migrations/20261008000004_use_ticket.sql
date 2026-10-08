@@ -67,7 +67,7 @@ begin
   exception when unique_violation then
     -- 가족·식사 잠금이 같은 식사의 재시도는 직렬화하므로, 여기 닿는 것은 다른 사람·다른 식사에서 온 같은 request_id 뿐이다.
     select * into v_row from public.usages where request_id = p_request_id;
-    if not found or v_row.person_id <> v_person.id then
+    if not found or v_row.person_id <> v_person.id or v_row.meal_id <> p_meal_id then
       raise exception 'duplicate_request';
     end if;
   end;
