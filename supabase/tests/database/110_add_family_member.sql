@@ -1,7 +1,7 @@
 begin;
 -- 두 세션이 겹치는 경합(A·B 가 서로의 어른 코드를 동시에 흡수 / 합치는 중 발급)은 pgTAP(단일 세션)로
 -- 재현할 수 없어 리뷰 때 psql 두 세션으로 수동 검증했다 (2026-10-09: 한 쪽이 기다렸다가 순차 성공, 교착 없음).
-select plan(60);
+select plan(62);
 
 select is(has_function_privilege('anon', 'public.add_family_member(text,text,text)', 'EXECUTE'), false, 'anon 은 add_family_member 를 실행할 수 없다');
 select is(has_function_privilege('anon', 'public.relink_child(uuid,text)', 'EXECUTE'), false, 'anon 은 relink_child 를 실행할 수 없다');
@@ -42,7 +42,12 @@ select id as admin_pid from public.people where auth_user_id = :'admin_uid' \gse
 insert into public.people (name, phone, family_id, auth_user_id, consented_at, consent_version)
 values ('최지우', '01088880004', :'c_fid', :'d_uid', now(), '2026-10-07');
 select id as d_pid from public.people where auth_user_id = :'d_uid' \gset
-insert into public.meals (title, served_on, created_by) values ('테스트 점심 110', '2026-10-18', :'admin_pid') returning id as meal_id \gset
+-- 식사 날짜는 고정값이 아니라 "서울 오늘" 로 둔다: 고정 날짜를 쓰면 그날이 지난 뒤 어른 합류의 식사 잠금 루프
+-- (served_on >= 서울 오늘) 가 조용히 빈 루프가 되어, 아래 잠금 단언이 아무것도 검증하지 않게 된다.
+select (now() at time zone 'Asia/Seoul')::date as today \gset
+insert into public.meals (title, served_on, created_by) values ('테스트 점심 110', :'today', :'admin_pid') returning id as meal_id \gset
+-- 지난 식사: use_ticket 이 당일만 쓰므로 합칠 때 잠그지 않아야 한다 (제목은 이 파일 전용 고유값)
+insert into public.meals (title, served_on, created_by) values ('테스트 점심 110 지난주', :'today'::date - 7, :'admin_pid') returning id as past_meal_id \gset
 
 -- ---------- child ----------
 select tests.authenticate_as(:'k1_uid');
@@ -136,6 +141,9 @@ insert into public.issuances (person_id, family_id, meal_id, quantity, unit_pric
 values (:'b_pid', :'b_fid', :'meal_id', 2, 5000, :'admin_pid') returning id as b_issuance \gset
 insert into public.usages (family_id, person_id, meal_id, used_via, recorded_by, request_id)
 values (:'b_fid', :'b_pid', :'meal_id', 'self', :'b_pid', gen_random_uuid()) returning id as b_usage \gset
+-- 지난 식사의 발급도 하나 적어 둔다 (장부는 함께 옮겨지지만 식사 잠금은 잡히지 않아야 한다)
+insert into public.issuances (person_id, family_id, meal_id, quantity, unit_price, issued_by)
+values (:'b_pid', :'b_fid', :'past_meal_id', 1, 5000, :'admin_pid') returning id as b_past_issuance \gset
 select tests.authenticate_as(:'b_uid');
 select (select code from public.create_pairing_code('adult')) as b_code \gset
 select tests.authenticate_as(:'a_uid');
@@ -152,6 +160,19 @@ select is((select family_id from public.usages where id = :'b_usage'), :'a_fid':
 select is((select count(*) from public.families where id = :'b_fid'), 0::bigint, '비어 버린 옛 가족 행은 지워진다');
 select is((select remaining from public.ticket_balances where family_id = :'a_fid' and meal_id = :'meal_id'), 1, '새 가족 잔량 = 옮겨 온 발급 2 − 사용 1');
 select isnt((select used_at from public.pairing_codes where code = :'b_code'), null, '어른 코드도 사용 처리된다');
+-- 합치는 동안 잡은 식사 잠금은 트랜잭션이 끝날 때까지 이 세션이 쥐고 있다 (use_ticket 과 같은 두 키: 옛 가족·식사)
+select is(
+  (select count(*) from pg_locks
+    where locktype = 'advisory' and objsubid = 2 and pid = pg_backend_pid()
+      and classid::bigint = (hashtext(:'b_fid'::text)::bigint & 4294967295)
+      and objid::bigint = (hashtext(:'meal_id'::text)::bigint & 4294967295)),
+  1::bigint, '합치는 동안 옛 가족·오늘 식사의 use_ticket 잠금을 쥐었다');
+select is(
+  (select count(*) from pg_locks
+    where locktype = 'advisory' and objsubid = 2 and pid = pg_backend_pid()
+      and classid::bigint = (hashtext(:'b_fid'::text)::bigint & 4294967295)
+      and objid::bigint = (hashtext(:'past_meal_id'::text)::bigint & 4294967295)),
+  0::bigint, '지난 식사는 잠그지 않는다 (use_ticket 이 쓸 수 없는 식사까지 잠그지 않는다)');
 
 -- 멱등 재시도: 사용된 어른 코드로 다시 불러도 그 어른 행이 그대로 돌아온다
 select tests.authenticate_as(:'a_uid');

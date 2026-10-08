@@ -1,4 +1,14 @@
 -- =========================================================
+-- 이 파일(가족을 건드리는 모든 함수)의 잠금 규칙. 어기면 40P01(교착)이 난다.
+--   ① pairing_codes 행 → ② 쓸 people 행 (id 순, for update) → ③ lock_family (가족 id 순) → ④ lock_family_meal (meal_id 순).
+--   가족 잠금을 쥔 채 사람 행을 새로 잠그지 않는다 — 잠글 사람 행은 ② 에서 모두 잡아 둔다.
+--   코드 행보다 사람 행을 먼저 잠그면 add_family_member(①→②)와 맞물려 교착한다
+--   (T1: 코드 X 를 쥐고 자녀 C 를 기다림 / T2: C 를 쥐고 X 를 기다림).
+--   ※ 아는 예외: 매시간 도는 cleanup_pairing_codes 의 벌크 delete(①)는 delete_my_account·remove_child 의
+--     코드 삭제와 원리상 교착할 수 있다 — 다음 시간 재시도로 수습되므로 따로 손대지 않는다.
+-- =========================================================
+
+-- =========================================================
 -- 가족 잠금 헬퍼. 가족 하나를 트랜잭션 단위로 직렬화한다 (구성원·장부를 옮기는 함수들 사이).
 -- 단일 키 잠금(objsubid 1)에 'family:' 이름공간을 붙였다 — lock_family_meal 의 두 키 공간(objsubid 2) 과도,
 -- create_pairing_code 의 'pairing_code:' 키와도 절대 겹치지 않는다.
@@ -20,9 +30,8 @@ revoke execute on function public.lock_family(uuid) from public, anon, authentic
 --   멱등 재시도(RPC 규약): 이미 쓴 코드로 다시 불러도 그 코드가 만든 결과가 그대로 살아 있으면
 --     (내 가족에 사는 내 자녀 / 내 가족에 사는 그 어른) 아무것도 바꾸지 않고 그 행을 돌려준다.
 --     남의 결과이거나 그 사이 바뀐 결과면 invalid_code. 만료·없는 코드·자기 코드는 그대로 invalid_code.
---   잠금 순서 (교착 예방 — 가족을 건드리는 함수는 모두 이 순서를 지킨다):
---     ① 코드 행 → ② 쓸 사람 행을 id 순으로 (호출자·대상은 한 문장에서, 이어서 함께 옮길 자녀) →
---     ③ 가족 잠금을 가족 id 순으로 (lock_family) → ④ 식사 잠금 (lock_family_meal, meal_id 순).
+--   잠금 순서: 파일 머리의 규칙 그대로 — ① 코드 행 → ② 호출자·대상(한 문장, id 순) 과 함께 옮길 자녀 →
+--     ③ 두 가족(가족 id 순) → ④ 옛 가족의 "오늘 이후" 식사(meal_id 순).
 --     사람 행보다 가족을 먼저 잠그면 A·B 가 서로의 어른 코드를 동시에 흡수할 때 교착한다.
 -- 코드: not_authenticated | not_registered | not_adult | invalid_code | invalid_name | consent_required | already_registered
 -- =========================================================
@@ -192,6 +201,8 @@ grant execute on function public.add_family_member(text, text, text) to authenti
 -- 자녀 재연결: 폰을 바꾼 자녀의 계정을 새 폰의 코드 계정으로 교체한다. 보호자만.
 -- 옛 계정은 사람 행을 잃어 다음 접속 때 가입 화면부터 다시 시작한다(옛 폰 접근 차단). 익명이면 하루 뒤 정리된다.
 -- 가족·보호자·미성년 여부는 그대로 두고 계정만 바꾼다 (장부도 움직이지 않는다).
+-- 잠금 순서: ① 코드 행 → ② 자녀 사람 행 (파일 머리의 규칙). 자녀 행을 먼저 잠그면 add_family_member 와
+--   잠금 종류 순서가 뒤집혀 교착한다 (그쪽은 코드 행을 쥐고 자녀 행을 기다린다). 가족 잠금은 쓰지 않는다.
 -- 코드: not_authenticated | not_registered | not_adult | child_not_found | invalid_code | already_registered
 -- =========================================================
 create or replace function public.relink_child(p_child_id uuid, p_code text)
@@ -217,23 +228,27 @@ begin
   if v_me.is_minor then
     raise exception 'not_adult';
   end if;
-  select * into v_child from public.people
-   where id = p_child_id and guardian_id = v_me.id and is_minor and deleted_at is null
-     for update;
-  if not found then
-    raise exception 'child_not_found';
-  end if;
 
+  -- ① 코드 행부터 잠근다 (사람 행보다 먼저 — 파일 머리의 잠금 규칙).
   select * into v_code from public.pairing_codes where code = v_code_text for update;
   if not found or v_code.kind <> 'child' or v_code.used_at is not null or v_code.expires_at < now()
      or v_code.auth_user_id = auth.uid() then
     raise exception 'invalid_code';
   end if;
+  -- 코드 행은 auth.users 에 on delete cascade 로 묶여 있어 보통 이 분기에 닿지 않는다 (방어선으로 남긴다)
   if not exists (select 1 from auth.users u where u.id = v_code.auth_user_id) then
     raise exception 'invalid_code';
   end if;
   if exists (select 1 from public.people where auth_user_id = v_code.auth_user_id and deleted_at is null) then
     raise exception 'already_registered';
+  end if;
+
+  -- ② 그다음 자녀 사람 행 (쓰는 행은 이 하나뿐이라 id 정렬은 필요 없다)
+  select * into v_child from public.people
+   where id = p_child_id and guardian_id = v_me.id and is_minor and deleted_at is null
+     for update;
+  if not found then
+    raise exception 'child_not_found';
   end if;
 
   begin
