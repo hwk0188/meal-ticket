@@ -377,7 +377,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `supabase/migrations/20261009000002_family_functions.sql`
 - Test: `supabase/tests/database/110_add_family_member.sql`
 
-- [ ] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/110_add_family_member.sql`**
+- [x] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/110_add_family_member.sql`**
 
 ```sql
 begin;
@@ -547,12 +547,12 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 110 에서 `add_family_member` 가 없어 실패. 010~100 통과.
 
-- [ ] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261009000002_family_functions.sql`**
+- [x] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261009000002_family_functions.sql`**
 
 ```sql
 -- =========================================================
@@ -709,12 +709,12 @@ revoke execute on function public.relink_child(uuid, text) from public, anon;
 grant execute on function public.relink_child(uuid, text) to authenticated;
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 110 의 41건 포함 전부 통과.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add supabase/migrations/20261009000002_family_functions.sql supabase/tests/database/110_add_family_member.sql
