@@ -4929,3 +4929,5 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 - `cancel_issuance` · `use_ticket_as_admin` · `void_usage` · `merge_people` · `link_person` · `admin_reset_person`, 식사 상세 현황판(`#/admin/meals/:id`), 사람 탭, 통계·CSV·카톡 공유.
 - 발급 화면 검색 결과의 "가족 수" 태그(3단계 뒤 의미가 생긴다).
+- **잔량을 바꾸는 4단계 함수(`cancel_issuance` · `void_usage` · `use_ticket_as_admin`)는 `use_ticket` 과 같은 잠금 키 `pg_advisory_xact_lock(hashtext(family_id::text), hashtext(meal_id::text))` 을 잡아야 한다** (Task 4 리뷰 권고 — 동시 취소+사용이 잔량을 음수로 만들 수 있다). 키가 어긋나지 않게 `public.lock_family_meal(uuid, uuid)` 헬퍼를 4단계 첫 마이그레이션에서 만들고 `use_ticket` 도 그 헬퍼를 쓰도록 바꾼다.
+- 2단계 pgTAP 실제 개수: 060=23, 070=31, 080=33, 090=22 (계획 본문의 16/20/22/21 은 리뷰 보강 전 수치). 전체 189.
