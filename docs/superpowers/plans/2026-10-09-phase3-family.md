@@ -45,6 +45,7 @@
 - **Task 1** (`pairing_codes`): 품질 리뷰가 같은 계정의 동시 호출이 살아 있는 코드를 둘 만드는 것을 재현해, `create_pairing_code` 가 삭제 전에 계정 단위 advisory lock(`pg_advisory_xact_lock(hashtext('pairing_code:' || uid))`, 단일 키라 `lock_family_meal` 의 두 키 공간과 겹치지 않음)을 잡도록 바꿨다. 테스트 전화번호 블록을 020 과 겹치지 않는 `0107700…` 으로, "토큰은 유효하지만 계정이 지워진 경우 → not_authenticated" 테스트 추가(`100` 은 29건), 재활용 upsert 테스트는 새 사용자를 쓰고 함수·테스트에 상호 참조 주석, pgcrypto 스키마 확인용 `do $$ perform extensions.gen_random_bytes(1) $$` 추가, `lock_family_meal` 본문 `pg_catalog` 한정, 죽은 `v_try` 선언 제거. 아래 Task 1 스니펫은 리뷰 전 버전이다.
 - **Task 2** (`add_family_member` · `relink_child`): 품질 리뷰(두 세션 재현)로 크게 보강했다. ① **연결 코드를 8자리로**(`^[0-9]{8}$`, `gen_random_bytes(8)`): 어른 코드를 맞히면 상대 가족·장부·전체 번호까지 넘어오는데 속도 제한이 없어 공간을 100배 키웠다 — 프런트(Task 9~13)의 6자리 가정도 모두 8자리로 바꿨다. ② **잠금 순서 규칙**(가족 함수 공통, 공통 규약에 명문화): "① `pairing_codes` 행 → ② 쓸 사람 행을 id 순으로 `for update` → ③ `lock_family(uuid)`(새 단일 키 헬퍼) 를 가족 id 순으로 → ④ `lock_family_meal`". `relink_child` 는 처음 코드 행을 사람 행 뒤에 잠갔다가(교착 가능) 코드 행을 먼저 잠그도록 고쳤다. 호출자 행을 잠그지 않아 합류 도중 호출자가 다른 가족으로 옮겨지면 엉뚱한 가족에 붙거나 FK 23503 이 나던 것, 자녀 삭제·나가기와 "빈 가족" 판정이 어긋나던 것을 막는다. ③ `issue_tickets` 가 사람 행을 `for update` 로 읽도록 재정의(합류 중 발급이 옛 가족에 떨어지는 경합). ④ 빈 가족 삭제는 `cleanup_empty_families` 와 같은 조건(사람·장부 모두 없음)에서만. ⑤ 사용된 코드로 재시도하면 이미 연결된 그 사람 행을 돌려준다(RPC 멱등 규약). ⑥ 자녀 추가에 `p_consent_version`(YYYY-MM-DD, `consent_required`) 를 받아 자녀 행 `consent_version` 에 남긴다(§10 증빙) — 프런트 `useAddChild` 가 `church.consentVersion` 을 보낸다. ⑦ 이름 유효성은 `normalize_name`, 코드 입력은 공백·개행 제거, `relink_child` 의 `unique_violation` → `already_registered`, 자녀 이동은 옛 가족 범위로만, 잠그는 식사는 오늘 이후만. `110` 은 62건(식사 잠금 범위를 `pg_locks` 로 고정하는 2건 포함). "코드 계정의 auth.users 행이 없는" 분기는 FK cascade 때문에 닿을 수 없어 테스트하지 않는다(방어 코드는 둔다). 아래 Task 1·2 스니펫은 리뷰 전 버전이다.
 - **Task 3** (계획 단계에서 미리 반영): 위 잠금 규칙에 맞춰 `leave_family` 는 내 행 → 옮길 자녀 행(id 순) → `lock_family`, `remove_child` 는 (잠금 없이 자녀를 읽어) 자녀 계정의 코드 행 삭제 → 자녀 행 `for update` → `lock_family`, `delete_my_account` 는 내 코드 행 삭제 → 내 행 → `lock_family` 순으로 잠근다(코드 행이 ① 클래스라 사람 행보다 먼저). 나가기는 내 가족 범위의 자녀만 옮긴다(다른 가족에 사는 자녀 테스트 추가). `120` 은 리뷰 반영 뒤 46건. 아래 Task 3 스니펫은 반영된 버전이며 2026-10-09 에 다시 롤백 검증했다. **품질 리뷰 뒤**: `delete_my_account` 에 마지막 관리자 보호(`last_admin` — 관리자 지정이 SQL 로만 가능해 마지막 관리자가 탈퇴하면 운영이 멈춘다) 추가, 헤더에 "어른 행을 자녀 행보다 먼저 잠근다" 불변식과 식사 잠금 생략 이유 주석, 테스트 보강(`not_registered`·본인 코드 삭제·`pg_locks`·익명 구성원 no-op·마지막 관리자). 가족 나가기 확인 문구는 발급·사용 내역도 남는다는 말을 넣었다(Task 11).
+- **Task 5** (프론트 공통): 품질 리뷰로 `toUserMessage` 가 `code` 필드의 값도 MESSAGES 에서 찾도록 바꿨다 — supabase-js 인증 오류(`AuthApiError.code = 'anonymous_provider_disabled'`, 익명 로그인이 꺼져 있을 때)는 코드가 `message` 가 아니라 `code` 에 온다. 문구 `anonymous_provider_disabled` 추가(총 8개). `usePerson` 의 "옵션 없음" 테스트와 `validateWith` 의 "한 필드 여러 오류" 분기 테스트를 실제로 검증하도록 보강, `formatDateTime` 이 `formatDate` 를 재사용, `UsePersonOptions` 타입 export, `mealSchema` 도 `validateWith` 로 통일(경로 없는 오류가 `"undefined"` 키로 가던 버그 수정). TanStack 은 관찰자마다 타이머를 따로 가지며 가드는 공유 Query 의 갱신만 받는다(계획의 "가장 짧은 주기" 설명은 틀렸고 결론만 맞다).
 - **Task 4** (정리 작업, 계획 단계에서 미리 반영): Task 1 리뷰 권고에 따라 `cleanup_orphan_anonymous_users` 가 **살아 있는 연결 코드를 가진 익명 계정은 지우지 않도록** 조건을 더했다(하루 전에 로그인해 둔 아이 폰이 지금 코드를 보여 주는 중일 수 있다 — 지우면 cascade 로 코드가 사라지고 그 폰이 로그아웃된다). `130` 은 18건. 아래 Task 4 스니펫은 반영된 버전(코드 리터럴도 8자리)이며 2026-10-09 에 다시 롤백 검증했다 — 구현 중 코드 리터럴이 6자리로 남아 있던 것을 8자리로 고쳤다. **품질 리뷰 뒤**: Supabase 공식 문서의 `grant … on schema cron to postgres` 두 줄을 **제거**했다(supautils 가 이미 권한을 주고, 그 grant 가 남으면 Supabase 의 pg_cron after-create 스크립트의 CASCADE 없는 revoke 가 2BP01 로 실패해 `db push` 가 깨진다) — 대신 그런 grant 가 있으면 먼저 거두는 prelude 를 둔다. 정리 함수는 SECURITY INVOKER(cron 이 postgres 로 실행; DEFINER 는 service_role 에 auth.users 삭제 권한을 넘겨 준다), 세 건수 단언은 다른 세션이 남긴 행에 깨지지 않게 `>=` 로, `cron.job` 의 command·active 를 고정하는 테스트 2건 추가(`130` 은 20건). 아래 Task 4 스니펫은 반영된 최종 버전이다.
 
 ---
@@ -1257,7 +1258,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ### Task 5: 프론트 공통 — 오류 문구 · `validateWith` · `formatDate` · `signInAsChild` · `usePerson` 폴링 옵션 · 가짜 빌더
 
 **Files:**
-- Modify: `src/lib/errors.ts` (MESSAGES 에 6개 추가), `src/lib/errors.test.ts`
+- Modify: `src/lib/errors.ts` (MESSAGES 에 7개 추가), `src/lib/errors.test.ts`
 - Create: `src/lib/validate.ts`, `src/lib/validate.test.ts`
 - Modify: `src/features/onboarding/onboardingSchema.ts` (`validateWith` 로 교체 — 동작 동일)
 - Modify: `src/lib/dates.ts` (`formatDate`), `src/lib/dates.test.ts`
@@ -2607,6 +2608,8 @@ export function PairPage() {
   const auth = useAuth()
   const userId = auth.status === 'ready' ? auth.session?.user.id : undefined
   // 보호자가 "자녀 추가" 를 마치면 이 계정에 사람 행이 생긴다. 같은 키를 보는 RequireSession 가드가 데이터를 받자마자 홈으로 보낸다.
+  // 폴링은 화면이 보일 때만 돈다(refetchIntervalInBackground 기본 false) — 화면이 꺼지거나 다른 앱으로 가면 멈추고, 돌아오면
+  // refetchOnWindowFocus 로 바로 다시 읽는다. "잠금 화면에서 안 바뀌었다" 는 버그가 아니다.
   usePerson(userId, { refetchInterval: PAIR_POLL_MS })
 
   return (
