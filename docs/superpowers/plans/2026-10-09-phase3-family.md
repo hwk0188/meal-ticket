@@ -34,7 +34,7 @@
 - 탈퇴한 카카오 계정의 `auth.users` 행 삭제 → 보류(사람 행만 익명화. 계정은 다음 로그인 때 가입 화면으로 간다). 5단계 운영 문서에서 결정.
 - PWA 매니페스트·상단 안전 영역(`pt-[env(safe-area-inset-top)]`) → 5단계(매니페스트가 생겨야 인셋이 생긴다). `#/pair` 의 "홈 화면에 추가" 는 안내 문구만.
 - 홈 머리말의 가족 아바타(설계 §8.2) → 두지 않는다. "우리 가족 식권 · N명" 문구로 충분하다(YAGNI).
-- 가족 탭의 "길게 눌러 가족 나가기/자녀 삭제"(설계 §8.2) → **행마다 보이는 작은 버튼 + 두 단계 확인**으로 바꾼다. 길게 누르기는 식권 사용 동작과 겹쳐 혼동을 주고, 보조기기·E2E 에서 닿지 않는다(설계 문서에 반영).
+- 가족 탭의 "길게 눌러 가족 나가기/자녀 삭제"(설계 §8.2) → **행마다 보이는 작은 버튼 + 두 단계 확인**으로 바꾼다. 길게 누르기는 식권 사용 동작과 겹쳐 혼동을 주고, 보조기기·E2E 에서 닿지 않는다(설계 문서는 Task 14 에서 반영).
 
 ---
 
@@ -46,6 +46,7 @@
 - **Task 2** (`add_family_member` · `relink_child`): 품질 리뷰(두 세션 재현)로 크게 보강했다. ① **연결 코드를 8자리로**(`^[0-9]{8}$`, `gen_random_bytes(8)`): 어른 코드를 맞히면 상대 가족·장부·전체 번호까지 넘어오는데 속도 제한이 없어 공간을 100배 키웠다 — 프런트(Task 9~13)의 6자리 가정도 모두 8자리로 바꿨다. ② **잠금 순서 규칙**(가족 함수 공통, 공통 규약에 명문화): "① `pairing_codes` 행 → ② 쓸 사람 행을 id 순으로 `for update` → ③ `lock_family(uuid)`(새 단일 키 헬퍼) 를 가족 id 순으로 → ④ `lock_family_meal`". `relink_child` 는 처음 코드 행을 사람 행 뒤에 잠갔다가(교착 가능) 코드 행을 먼저 잠그도록 고쳤다. 호출자 행을 잠그지 않아 합류 도중 호출자가 다른 가족으로 옮겨지면 엉뚱한 가족에 붙거나 FK 23503 이 나던 것, 자녀 삭제·나가기와 "빈 가족" 판정이 어긋나던 것을 막는다. ③ `issue_tickets` 가 사람 행을 `for update` 로 읽도록 재정의(합류 중 발급이 옛 가족에 떨어지는 경합). ④ 빈 가족 삭제는 `cleanup_empty_families` 와 같은 조건(사람·장부 모두 없음)에서만. ⑤ 사용된 코드로 재시도하면 이미 연결된 그 사람 행을 돌려준다(RPC 멱등 규약). ⑥ 자녀 추가에 `p_consent_version`(YYYY-MM-DD, `consent_required`) 를 받아 자녀 행 `consent_version` 에 남긴다(§10 증빙) — 프런트 `useAddChild` 가 `church.consentVersion` 을 보낸다. ⑦ 이름 유효성은 `normalize_name`, 코드 입력은 공백·개행 제거, `relink_child` 의 `unique_violation` → `already_registered`, 자녀 이동은 옛 가족 범위로만, 잠그는 식사는 오늘 이후만. `110` 은 62건(식사 잠금 범위를 `pg_locks` 로 고정하는 2건 포함). "코드 계정의 auth.users 행이 없는" 분기는 FK cascade 때문에 닿을 수 없어 테스트하지 않는다(방어 코드는 둔다). 아래 Task 1·2 스니펫은 리뷰 전 버전이다.
 - **Task 3** (계획 단계에서 미리 반영): 위 잠금 규칙에 맞춰 `leave_family` 는 내 행 → 옮길 자녀 행(id 순) → `lock_family`, `remove_child` 는 (잠금 없이 자녀를 읽어) 자녀 계정의 코드 행 삭제 → 자녀 행 `for update` → `lock_family`, `delete_my_account` 는 내 코드 행 삭제 → 내 행 → `lock_family` 순으로 잠근다(코드 행이 ① 클래스라 사람 행보다 먼저). 나가기는 내 가족 범위의 자녀만 옮긴다(다른 가족에 사는 자녀 테스트 추가). `120` 은 리뷰 반영 뒤 46건. 아래 Task 3 스니펫은 반영된 버전이며 2026-10-09 에 다시 롤백 검증했다. **품질 리뷰 뒤**: `delete_my_account` 에 마지막 관리자 보호(`last_admin` — 관리자 지정이 SQL 로만 가능해 마지막 관리자가 탈퇴하면 운영이 멈춘다) 추가, 헤더에 "어른 행을 자녀 행보다 먼저 잠근다" 불변식과 식사 잠금 생략 이유 주석, 테스트 보강(`not_registered`·본인 코드 삭제·`pg_locks`·익명 구성원 no-op·마지막 관리자). 가족 나가기 확인 문구는 발급·사용 내역도 남는다는 말을 넣었다(Task 11).
 - **Task 5** (프론트 공통): 품질 리뷰로 `toUserMessage` 가 `code` 필드의 값도 MESSAGES 에서 찾도록 바꿨다 — supabase-js 인증 오류(`AuthApiError.code = 'anonymous_provider_disabled'`, 익명 로그인이 꺼져 있을 때)는 코드가 `message` 가 아니라 `code` 에 온다. 문구 `anonymous_provider_disabled` 추가(총 8개). `usePerson` 의 "옵션 없음" 테스트와 `validateWith` 의 "한 필드 여러 오류" 분기 테스트를 실제로 검증하도록 보강, `formatDateTime` 이 `formatDate` 를 재사용, `UsePersonOptions` 타입 export, `mealSchema` 도 `validateWith` 로 통일(경로 없는 오류가 `"undefined"` 키로 가던 버그 수정). TanStack 은 관찰자마다 타이머를 따로 가지며 가드는 공유 Query 의 갱신만 받는다(계획의 "가장 짧은 주기" 설명은 틀렸고 결론만 맞다).
+- **Task 6** (로그아웃 경로 통합): 품질 리뷰로 `ConfirmButton` 의 접근성을 다듬었다 — 열리면 취소 버튼에 포커스, 취소하면 원래 버튼으로 포커스 복귀, 취소를 먼저(파괴적 버튼은 뒤) 배치, 버튼 `py-3`, `aria-describedby` 로 확인 버튼에 문구 연결, 정렬 `align` prop(기본 `end`, SignOutButton 은 `center`), 열린 채 `disabled` 가 되면 닫힘. 홈 바닥글은 세로 배치로 되돌려 문구·오류가 전체 폭을 쓴다. `signOut` 은 `scope: 'local'`(이 폰만 — 공용 폰에서 로그아웃해도 본인 폰은 유지). `AuthProvider` 는 SIGNED_OUT 타이머를 정리하고, 캐시 비움이 꼭 필요한 이유(`['pairing-code', kind]` 키가 사용자 범위가 아니라 새 익명 계정이 이전 계정의 코드를 캐시에서 읽을 수 있다)를 주석에 적었다. 리스트 행의 ConfirmButton 은 처리 중일 때 `label` 을 '처리 중…' 으로 바꾼다(Task 11·12). `useDeleteAccount` 는 onSuccess/onSettled 무효화를 두지 않는다(그 콜백이 clear 보다 먼저 돌아 폐기된 토큰으로 401 재조회를 쏜다).
 - **Task 4** (정리 작업, 계획 단계에서 미리 반영): Task 1 리뷰 권고에 따라 `cleanup_orphan_anonymous_users` 가 **살아 있는 연결 코드를 가진 익명 계정은 지우지 않도록** 조건을 더했다(하루 전에 로그인해 둔 아이 폰이 지금 코드를 보여 주는 중일 수 있다 — 지우면 cascade 로 코드가 사라지고 그 폰이 로그아웃된다). `130` 은 18건. 아래 Task 4 스니펫은 반영된 버전(코드 리터럴도 8자리)이며 2026-10-09 에 다시 롤백 검증했다 — 구현 중 코드 리터럴이 6자리로 남아 있던 것을 8자리로 고쳤다. **품질 리뷰 뒤**: Supabase 공식 문서의 `grant … on schema cron to postgres` 두 줄을 **제거**했다(supautils 가 이미 권한을 주고, 그 grant 가 남으면 Supabase 의 pg_cron after-create 스크립트의 CASCADE 없는 revoke 가 2BP01 로 실패해 `db push` 가 깨진다) — 대신 그런 grant 가 있으면 먼저 거두는 prelude 를 둔다. 정리 함수는 SECURITY INVOKER(cron 이 postgres 로 실행; DEFINER 는 service_role 에 auth.users 삭제 권한을 넘겨 준다), 세 건수 단언은 다른 세션이 남긴 행에 깨지지 않게 `>=` 로, `cron.job` 의 command·active 를 고정하는 테스트 2건 추가(`130` 은 20건). 아래 Task 4 스니펫은 반영된 최종 버전이다.
 
 ---
@@ -3057,7 +3058,11 @@ export function useRemoveChild() {
   })
 }
 
-/** 탈퇴: 익명화 뒤 로그아웃. 로그아웃이 세션·캐시를 비우고 Gate 가 시작 화면을 띄운다. has_children 이면 여기서 멈춘다. */
+/**
+ * 탈퇴: 익명화 뒤 로그아웃. 로그아웃이 세션·캐시를 비우고 Gate 가 시작 화면을 띄운다. has_children 이면 여기서 멈춘다.
+ * onSuccess/onSettled 에서 캐시를 무효화하지 않는다 — 그 콜백은 signOut() 직후 마이크로태스크로 돌아서 AuthProvider 의
+ * (한 틱 미룬) clear 보다 먼저 실행되고, 이미 폐기된 토큰으로 401 재조회를 쏘게 된다.
+ */
 export function useDeleteAccount() {
   return useMutation({
     mutationFn: async () => {
@@ -3459,7 +3464,7 @@ export function MemberList({ members, me, pending, onLeave, onRemoveChild }: Pro
           </div>
           {m.id === me.id && canLeave && (
             <ConfirmButton
-              label="가족 나가기"
+              label={pending ? '처리 중…' : '가족 나가기'}
               message="나와 내 자녀만 새 가족이 돼요. 남은 식권과 지금까지의 발급·사용 내역은 이 가족에 남아요."
               confirmLabel="나가기"
               onConfirm={onLeave}
@@ -3468,7 +3473,7 @@ export function MemberList({ members, me, pending, onLeave, onRemoveChild }: Pro
           )}
           {m.is_minor && m.guardian_id === me.id && (
             <ConfirmButton
-              label="자녀 삭제"
+              label={pending ? '처리 중…' : '자녀 삭제'}
               message={`${m.name} 의 이름을 지우고 연결을 끊어요. 되돌릴 수 없어요.`}
               confirmLabel="삭제"
               onConfirm={() => onRemoveChild(m)}
@@ -4063,7 +4068,7 @@ export function ProfileSection({ me }: { me: Person }) {
         </div>
       )}
       <div className="flex flex-col items-end gap-1">
-        <ConfirmButton label="탈퇴" message={DELETE_NOTICE} confirmLabel="탈퇴하기" onConfirm={() => del.mutate()} disabled={del.isPending} />
+        <ConfirmButton label={del.isPending ? '처리 중…' : '탈퇴'} message={DELETE_NOTICE} confirmLabel="탈퇴하기" onConfirm={() => del.mutate()} disabled={del.isPending} />
         {del.isError && <p role="alert" className="text-sm text-red-600">{toUserMessage(del.error)}</p>}
       </div>
     </section>
@@ -4375,7 +4380,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - §7.5: 세 작업의 함수 이름·시각(UTC 18:15/18:30 = KST 03:15/03:30), "빈 가족 정리는 사람 행도 장부도 없고 1시간 지난 가족만".
 - §8.2 가족: "길게 눌러" → "행마다 작은 버튼 + 두 단계 확인". 가족 연결에 "상대 코드 입력 / 내 코드 보여 주기" 두 모드. 아이 폰 로그아웃 확인 문구.
 - §12 E2E (b) 가 `e2e/family.spec.ts` 로 구현됨 (두 브라우저 컨텍스트).
-- §15: "연결 코드 무차별 대입 완화 보류(이유: RPC 예외는 같은 트랜잭션의 기록을 롤백한다; 코드는 8자리)", "탈퇴한 카카오 계정의 auth.users 정리 보류", "같은 가족에서 두 어른이 각자 다른 가족으로 합류하면 나중 커밋이 장부 풀을 가져간다".
+- §15: "로그아웃은 `scope: 'local'`(이 기기만) — 공용 폰에서 로그아웃해도 본인 폰 세션은 남는다", "연결 코드 무차별 대입 완화 보류(이유: RPC 예외는 같은 트랜잭션의 기록을 롤백한다; 코드는 8자리)", "탈퇴한 카카오 계정의 auth.users 정리 보류", "같은 가족에서 두 어른이 각자 다른 가족으로 합류하면 나중 커밋이 장부 풀을 가져간다".
 - §10: 익명화된 구성원 행은 가족 행과 함께 영구히 남는다(구성원 행이 하나라도 있으면 가족 행은 지우지 않는다 — `families` 는 세대 변동만큼만 늘어난다). 자녀 행의 `consent_version` 은 보호자가 체크한 법정대리인 동의 문구의 버전이다. `delete_my_account` 는 마지막 관리자를 거부한다(`last_admin`).
 
 - [ ] **Step 3: 이 계획 파일**
