@@ -47,6 +47,7 @@
 - **Task 3** (계획 단계에서 미리 반영): 위 잠금 규칙에 맞춰 `leave_family` 는 내 행 → 옮길 자녀 행(id 순) → `lock_family`, `remove_child` 는 (잠금 없이 자녀를 읽어) 자녀 계정의 코드 행 삭제 → 자녀 행 `for update` → `lock_family`, `delete_my_account` 는 내 코드 행 삭제 → 내 행 → `lock_family` 순으로 잠근다(코드 행이 ① 클래스라 사람 행보다 먼저). 나가기는 내 가족 범위의 자녀만 옮긴다(다른 가족에 사는 자녀 테스트 추가). `120` 은 리뷰 반영 뒤 46건. 아래 Task 3 스니펫은 반영된 버전이며 2026-10-09 에 다시 롤백 검증했다. **품질 리뷰 뒤**: `delete_my_account` 에 마지막 관리자 보호(`last_admin` — 관리자 지정이 SQL 로만 가능해 마지막 관리자가 탈퇴하면 운영이 멈춘다) 추가, 헤더에 "어른 행을 자녀 행보다 먼저 잠근다" 불변식과 식사 잠금 생략 이유 주석, 테스트 보강(`not_registered`·본인 코드 삭제·`pg_locks`·익명 구성원 no-op·마지막 관리자). 가족 나가기 확인 문구는 발급·사용 내역도 남는다는 말을 넣었다(Task 11).
 - **Task 5** (프론트 공통): 품질 리뷰로 `toUserMessage` 가 `code` 필드의 값도 MESSAGES 에서 찾도록 바꿨다 — supabase-js 인증 오류(`AuthApiError.code = 'anonymous_provider_disabled'`, 익명 로그인이 꺼져 있을 때)는 코드가 `message` 가 아니라 `code` 에 온다. 문구 `anonymous_provider_disabled` 추가(총 8개). `usePerson` 의 "옵션 없음" 테스트와 `validateWith` 의 "한 필드 여러 오류" 분기 테스트를 실제로 검증하도록 보강, `formatDateTime` 이 `formatDate` 를 재사용, `UsePersonOptions` 타입 export, `mealSchema` 도 `validateWith` 로 통일(경로 없는 오류가 `"undefined"` 키로 가던 버그 수정). TanStack 은 관찰자마다 타이머를 따로 가지며 가드는 공유 Query 의 갱신만 받는다(계획의 "가장 짧은 주기" 설명은 틀렸고 결론만 맞다).
 - **Task 7** (가드·가족 탭): 품질 리뷰로 세 가드를 **data 기준**으로 바꿨다(위 공통 규약) — 백그라운드 재조회가 실패해도 `data` 가 있으면 화면을 유지한다. `/pair` 라우트를 Task 7 에서 Spinner 자리표시자로 미리 두었다(가드가 보내는 경로에 라우트가 없으면 무한 리다이렉트; `App.test.tsx` 에 익명 세션 → `#/pair` 테스트). `ConfirmButton` 의 포커스 복귀는 ref 를 effect 안에서만 만지고 `disabled` 를 의존성에 넣어, 처리 중 비활성이었다가 다시 활성화될 때 원래 버튼으로 돌아간다(Task 11·12 의 자녀 삭제·가족 나가기·탈퇴가 이 모양이다).
+- **Task 11** (가족 화면 ①): 품질 리뷰로 ① `FamilyPage` 가 패널을 열거나 동작이 끝날 때 `leave.reset()`·`remove.reset()` 을 불러 이전 동작의 오류가 새 성공 알림 옆에 남지 않게 했다(`AdminMealsPage` 의 reset 규율과 같게), ② `AddChildForm` 의 `relinking` 은 상태가 아니라 `existing.some(c => c.id === childId)` 로 계산한다(재조회로 고른 자녀가 사라지면 새 자녀 모드로 돌아간다), 자녀를 고르면 두 뮤테이션의 오류도 지운다, 잠긴 연결하기 버튼 밑에 가입 화면과 같은 "동의에 체크하면 연결할 수 있어요" 안내(`aria-describedby`), "폰을 바꾼 자녀는 위에서…" 안내는 고를 자녀가 있을 때만, `FormErrors` 에서 쓰이지 않는 `childId` 제거, ③ `ConfirmButton` 에 `context?: string`(스크린 리더용 sr-only 접두사) 을 추가해 자녀가 둘일 때 "자녀 삭제" 버튼이 "서연 자녀 삭제" 로 구분되게 했다(접근성 이름이 바뀌므로 테스트는 `/자녀 삭제$/` 정규식), ④ 문구: `○○ 을(를) 삭제했어요` → `○○ 님을 삭제했어요`, `○○ 의 이름을` → `○○ 님의 이름을`, 태그 `text-[10px]` → `text-xs`, `open()` → `openPanel()`, 임시 가족 연결 구역 문구 해요체, ⑤ 테스트: 공허한 `PAIR_POLL_MS` 상수 테스트를 "가족 연결 패널을 열면 폴링 켜짐·닫으면 꺼짐" 으로 교체, 가족 나가기 흐름·`existingChildren` 전달·reset 호출 테스트 추가. 아래 Task 11 스니펫은 리뷰 전 버전이다. 리뷰어가 확인한 사실: 같은 `['person', uid]` 키를 보는 두 관찰자(가드 `refetchInterval: false` + 가족 화면 3초)는 query-core 5.104 에서 관찰자별 타이머라 서로 싸우지 않는다(Task 12 에서 테스트로 고정).
 - **Task 10** (가족 데이터): 품질 리뷰로 ① **DB** `add_family_member` 가 코드 종류와 호출 의도를 대조한다 — 자녀 추가 폼(이름 있음)에 어른 코드가 들어오면 `expected_child_code`, 가족 연결(이름 없음)에 자녀 코드가 들어오면 `expected_adult_code`(둘 다 8자리라 잘못 붙여 넣기 쉬운데, 이전에는 자녀 추가 폼이 가족 전체를 조용히 합쳐 버렸다; pgTAP 110 +2), ② `useDeleteAccount` 는 익명화 뒤 로그아웃이 실패해도 오류가 아니라 `{ signedOut: false }` 로 끝내고 `['person']` 만 무효화한다(오류로 올리면 '다시 시도' 가 뜨고 두 번째 시도는 `not_registered`), Task 12 `ProfileSection` 이 그 경우 "앱을 닫고 다시 열어 주세요" 를 보여 준다, ③ `useUpdateProfile` 도 `invalidateFamily` 로 넓힘(이름이 식권 라벨·내역에도 나온다), ④ `useFamilyMembers` 정렬에 `id` 보조 키, ⑤ `nameSchema`·`phoneSchema` 를 `src/lib/fieldSchemas.ts` 로 모아 가입 스키마와 공유, ⑥ 무효화 테스트를 훅별로 분리하고 키 목록 전체를 단언(위 공통 규약), ⑦ `'static'` 쿼리는 `invalidateQueries` 로도 재조회되지 않는다는 사실로 주석 정정(그래도 명시적 키 목록은 유지). 아래 Task 10 스니펫은 리뷰 전 버전이다.
 - **Task 9** (연결 코드 화면): 품질 리뷰로 ① 재발급 실패를 알리는 작은 안내(데이터 있음 + error) 추가, ② 1초마다 바뀌는 남은 시간은 `aria-live="off"`(스크린리더 홍수 방지)로 두고 만료 때만 sr-only alert 를 한 번 울림, ③ `gcTime` 을 0 이 아니라 `PAIR_CODE_TTL_MS`(10분)로 — 리마운트(StrictMode, Task 12 의 토글)가 코드를 조용히 재발급하지 않고 살아 있는 같은 코드를 다시 보여 준다; 이때 `staleTime` 은 `Infinity` 가 아니라 **`'static'`** 이어야 한다(재발급 실패가 `isInvalidated` 를 켜면 `Infinity` 는 stale 로 판정돼 리마운트 때 다시 부른다; `'static'` 만 그 검사보다 먼저 끊는다), ④ 카운트다운은 서버 `expires_at` 과 폰 시계를 비교하지 않고 `dataUpdatedAt + TTL`(한 시계) 로 센다 — 시계가 10분 이상 틀린 폰에서 영원히 '만료' 로 보이던 문제, ⑤ 8자리 코드는 `text-5xl tracking-[0.2em]` 로는 `max-w-sm` 에 한 줄로 안 들어가(≈346px 필요) `text-4xl tracking-[0.1em] whitespace-nowrap` 으로, ⑥ 하루 넘게 방치돼 정리된 익명 계정(`not_authenticated`)에는 처음으로 돌아가라는 강한 안내. `useCountdown` 은 epoch ms 를 받는다. 아래 Task 9 스니펫은 리뷰 전 버전이다.
 - **Task 8** (시작·가입 화면): 품질 리뷰로 가입 유형 토글을 **공용 `SegmentedControl`**(`src/components/SegmentedControl.tsx`, 숨긴 네이티브 라디오 + peer 스타일)로 바꿨다 — 손으로 만든 `role="radio"` 버튼은 방향키·단일 탭 정지가 없고 선택 안 된 라벨(`text-gray-500` on `bg-gray-100`, 14px bold)이 4.39:1 로 AA 미달이었다. 네이티브 라디오라 `getByRole('radio', { name })`·`toBeChecked()` 테스트가 그대로 산다. Task 12 의 `JoinFamilyPanel` 도 같은 컴포넌트를 쓴다(스니펫 반영). 아이 계정 버튼에 진행 안내(role=status) 추가, iPhone Safari bfcache 복원(`pageshow` persisted)으로 `pending` 이 되살아나 두 버튼이 영구 잠기던 2단계 버그 수정, `/pair` 링크에 `active:` 피드백. 아이 계정 시작 실패 테스트는 supabase-js 의 `AuthApiError` 모양(`code: 'anonymous_provider_disabled'`)으로 바꿔 전용 문구('아이 계정 시작이 꺼져 있어요…')를 단언한다(Task 5 리뷰 반영의 결과).
@@ -115,6 +116,7 @@
 - **조회 화면은 `status` 가 아니라 `data` 로 분기한다.** 패턴: `data ? <본문 + (error 면 작은 안내)> : status === 'error' ? <alert + 다시 시도> : <Spinner inline />`.
 - **가드(`Gate`·`RequireSession`·`RequirePerson`)도 `data` 로 먼저 분기한다** — `data !== undefined`(성공한 `null` 포함)이면 그대로 가고, `status === 'error'` 는 한 번도 성공한 적이 없을 때만 본다. 폴링 한 번 실패로 연결 코드 화면이 내려가면 코드가 재발급돼 보호자가 적던 코드가 죽는다 (Task 7 리뷰).
 - **가드가 보내는 경로는 같은 커밋 안에 라우트가 있어야 한다.** 라우트 없는 경로로 보내면 `*` → `/` → 가드 → … 무한 리다이렉트가 된다. `/pair` 는 Task 7 에서 자리만 잡고 Task 9 가 화면을 넣는다 (Task 7 리뷰).
+- **화면의 뮤테이션 오류는 다음 동작이 시작될 때 `reset()` 한다** (패널 열기·다른 뮤테이션 호출·성공 처리) — 안 그러면 실패한 동작의 빨간 문구가 뒤이은 성공의 초록 알림 옆에 남는다(Task 11 리뷰; `AdminMealsPage` 와 같은 규율). 테스트에서 알림은 `getByText(...)` 로 찾는다 — `role="status"` 는 Spinner·ConfirmButton 프롬프트·갱신 실패 안내와 공존해 `getByRole('status')` 가 여럿을 찾는다.
 - **뮤테이션의 `onSuccess`/`onSettled` 는 무효화 promise 를 반드시 return** 한다(끝나기 전에 버튼이 열리면 묵은 데이터로 또 누른다). 무효화를 검증하는 테스트는 훅마다 새 QueryClient 를 쓰고 **키 목록 전체를 정확히**(`invalidate.mock.calls.map(c => c[0].queryKey)` 가 기대 목록과 같다) 단언한다 — 스파이를 여러 훅이 공유하면 한 훅의 `onSuccess` 가 빠져도 통과한다 (Task 10 리뷰).
 - `PersonShell` 아래 화면은 `<main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4 p-4">`. `PersonShell` 밖(시작·가입·`/pair`)은 `min-h-dvh` 를 스스로 갖는다.
 - 커밋 메시지는 `<type>: <설명>` 형식, 끝에 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
@@ -3737,8 +3739,36 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/features/family/JoinFamilyPanel.tsx`, `src/features/family/JoinFamilyPanel.test.tsx`
 - Create: `src/features/family/ProfileSection.tsx`, `src/features/family/ProfileSection.test.tsx`
 - Modify: `src/pages/FamilyPage.tsx`, `src/pages/FamilyPage.test.tsx`
+- Modify: `src/features/auth/usePerson.test.tsx` (같은 키의 두 관찰자 테스트 — Task 11 리뷰)
 
 - [ ] **Step 1: 실패하는 테스트**
+
+`src/features/auth/usePerson.test.tsx` 에 추가 (가드는 폴링 없이, 가족 화면은 3초로 같은 키를 본다 — 타이머는 관찰자별이라 요청은 한 번만 늘어야 한다):
+
+```tsx
+  it('같은 키를 보는 두 관찰자 중 하나만 주기를 주면 그 주기로 한 번만 다시 읽고 둘 다 같은 값을 본다', async () => {
+    vi.useFakeTimers()
+    try {
+      maybeSingle.mockResolvedValue({ data: null, error: null })
+      const wrapper = makeWrapper()
+      const guard = renderHook(() => usePerson('u1'), { wrapper })
+      const page = renderHook(() => usePerson('u1', { refetchInterval: 3_000 }), { wrapper })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(maybeSingle).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000)
+      })
+      // 관찰자별 타이머: 가드 쪽(false)은 타이머가 없고, 화면 쪽 타이머 한 번 → 요청 +1 (3이 아니라 2)
+      expect(maybeSingle).toHaveBeenCalledTimes(2)
+      expect(guard.result.current.data).toBeNull()
+      expect(page.result.current.data).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+```
 
 `src/features/family/JoinFamilyPanel.test.tsx`:
 
@@ -3913,7 +3943,7 @@ vi.mock('../features/family/ProfileSection', () => ({ ProfileSection: () => <p>�
     expect(screen.getByText('가족 연결 패널')).toBeInTheDocument()
     expect(usePerson).toHaveBeenLastCalledWith('u1', { refetchInterval: PAIR_POLL_MS })
     await userEvent.click(screen.getByRole('button', { name: '연결성공' }))
-    expect(screen.getByRole('status')).toHaveTextContent('이영희 님이 우리 가족이 되었어요')
+    expect(screen.getByText('이영희 님이 우리 가족이 되었어요')).toBeInTheDocument()
     expect(usePerson).toHaveBeenLastCalledWith('u1', { refetchInterval: false })
   })
 
@@ -3924,11 +3954,11 @@ vi.mock('../features/family/ProfileSection', () => ({ ProfileSection: () => <p>�
     // 폴링으로 내 사람 행의 family_id 가 바뀌어 다시 그려진 상황
     useCurrentPerson.mockReturnValue({ ...me, family_id: 'f2' })
     utils.rerender(<MemoryRouter><FamilyPage /></MemoryRouter>)
-    expect(screen.getByRole('status')).toHaveTextContent('가족이 연결되었어요')
+    expect(screen.getByText('가족이 연결되었어요')).toBeInTheDocument()
     expect(screen.queryByText('가족 연결 패널')).not.toBeInTheDocument()
     expect(useFamilyMembers).toHaveBeenLastCalledWith('f2')
     await userEvent.click(screen.getByRole('button', { name: '닫기' }))
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText('가족이 연결되었어요')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '+ 자녀 추가' })).toBeInTheDocument()
   })
 
@@ -3938,7 +3968,7 @@ vi.mock('../features/family/ProfileSection', () => ({ ProfileSection: () => <p>�
   })
 ```
 
-(`renderPage` 가 `render(...)` 의 결과를 돌려주도록 두었으므로 `utils.rerender` 를 그대로 쓸 수 있다.)
+(`renderPage` 가 `render(...)` 의 결과를 돌려주도록 두었으므로 `utils.rerender` 를 그대로 쓸 수 있다.) Task 11 이 임시 구역의 '닫기' 로 검증하던 "가족 연결 패널 폴링 켜짐·꺼짐" 테스트는 위 첫 테스트가 대신하므로 지운다. Task 11 의 `Mutation` 픽스처에는 이미 `reset` 이 있다 — `useJoinFamily` 는 패널 안에서만 쓰므로 FamilyPage 테스트에서 목으로 만들 필요 없다.
 
 - [ ] **Step 2: 실패 확인**
 
@@ -4093,7 +4123,7 @@ export function ProfileSection({ me }: { me: Person }) {
 }
 ```
 
-`src/pages/FamilyPage.tsx` — Task 11 의 임시 `join` 구역을 실제 패널로 바꾸고, 합류 감지와 내 정보 구역을 붙인다. 바뀌는 부분만:
+`src/pages/FamilyPage.tsx` — Task 11 의 임시 `join` 구역을 실제 패널로 바꾸고, 합류 감지와 내 정보 구역을 붙인다. 바뀌는 부분만 (Task 11 리뷰 뒤 함수 이름은 `openPanel`, `resetActions()` 가 이미 있다 — 그대로 둔다):
 
 ```tsx
 import { JoinFamilyPanel } from '../features/family/JoinFamilyPanel'
@@ -4104,8 +4134,9 @@ import { ProfileSection } from '../features/family/ProfileSection'
   const [familyAtOpen, setFamilyAtOpen] = useState<string | null>(null)
   const joined = panel === 'join' && familyAtOpen !== null && familyAtOpen !== me.family_id
   // …
-  function open(next: Panel) {
+  function openPanel(next: Panel) {
     setNotice(null)
+    resetActions()
     setFamilyAtOpen(next === 'join' ? me.family_id : null)
     setPanel(next)
   }
@@ -4471,3 +4502,6 @@ PR 은 사용자가 merge 한다. merge 전에 사용자에게 **Supabase 콘솔
 - 연결 코드 무차별 대입 완화: 코드는 이미 8자리다(2단계 리뷰 반영). 더 필요해지면 `add_family_member` 가 실패를 예외 대신 "실패 행 반환" 으로 바꿔 실패 횟수를 기록한다.
 - 탈퇴한 카카오 계정의 `auth.users` 정리(사람 행이 없는 비익명 계정 N일 뒤 삭제) — 5단계 운영 문서에서 결정. `cleanup_orphan_anonymous_users` 를 넓히면 된다.
 - PWA(5단계) 때 `#/pair` 와 시작 화면에 `pt-[env(safe-area-inset-top)]`.
+- (Task 11 리뷰) `ConfirmButton` 트리거(`py-2 text-xs` ≈ 32px)·확인 쌍(≈ 40px)이 44px 권장 터치 영역보다 작다 — 가족 탭에서 처음으로 두 개가 인접 행에 놓였다. 홈 바닥글·내 정보에도 쓰이므로 한 번에 키운다.
+- (Task 11 리뷰) 패널·폼을 열고 닫을 때 포커스가 `<body>` 로 떨어진다(`FamilyPage` 의 `+ 자녀 추가`, `AdminMealsPage` 의 식사 추가 폼 — 같은 패턴). 열 때 첫 칸, 닫을 때 트리거로 되돌리는 공통 처리를 두 화면에 함께 넣는다.
+- (Task 11 리뷰) 이름 칸의 `maxLength={20}` 은 UTF-16 단위로 세어 iOS 의 조합형(NFD) 한글을 중간에서 자른다 — `nameSchema` 가 NFC 로 맞춘 뒤 세는 이유와 어긋난다. 가입·발급·자녀 추가 세 곳 모두 `maxLength` 를 빼거나 60 정도로 느슨하게 둔다.
