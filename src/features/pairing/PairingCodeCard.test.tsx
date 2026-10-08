@@ -1,13 +1,23 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PairingCodeCard } from './PairingCodeCard'
 
-type Query = { status: 'pending' | 'error' | 'success'; data?: { code: string; expires_at: string }; error?: Error; isFetching: boolean; refetch: () => Promise<unknown> }
+type Query = {
+  status: 'pending' | 'error' | 'success'
+  data?: { code: string; expires_at: string }
+  dataUpdatedAt?: number
+  error?: Error
+  isFetching: boolean
+  refetch: () => Promise<unknown>
+}
 const { usePairingCode, useCountdown } = vi.hoisted(() => ({
   usePairingCode: vi.fn<() => Query>(),
   useCountdown: vi.fn<() => number>(),
 }))
-vi.mock('./usePairingCode', () => ({ usePairingCode }))
+vi.mock('./usePairingCode', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./usePairingCode')>()),
+  usePairingCode,
+}))
 vi.mock('./useCountdown', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./useCountdown')>()),
   useCountdown,
@@ -33,6 +43,8 @@ describe('PairingCodeCard', () => {
     render(<PairingCodeCard kind="child" hint="" />)
     expect(screen.getByRole('status')).toHaveTextContent('코드가 만료되었어요')
     expect(screen.getByTestId('pairing-code')).toHaveClass('line-through')
+    // 눈에 보이는 안내 옆에, 스크린 리더에게만 한 번 알리는 알림이 따로 있다 (role=status 와는 별개).
+    expect(screen.getByRole('alert')).toHaveTextContent('연결 코드가 만료되었어요')
   })
 
   it('"새 코드 받기" 는 refetch 를 부르고, 받는 중에는 잠근다', async () => {
@@ -44,7 +56,7 @@ describe('PairingCodeCard', () => {
     expect(refetch).toHaveBeenCalledOnce()
     usePairingCode.mockReturnValue({ status: 'success', data, isFetching: true, refetch })
     rerender(<PairingCodeCard kind="adult" hint="" />)
-    expect(screen.getByRole('button', { name: '새 코드 받기' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /새 코드 받기|받는 중/ })).toBeDisabled()
   })
 
   it('받는 중이면 스피너, 실패하면 문구', () => {
@@ -55,5 +67,21 @@ describe('PairingCodeCard', () => {
     usePairingCode.mockReturnValue({ status: 'error', error: new Error('already_registered'), isFetching: false, refetch: vi.fn<() => Promise<unknown>>() })
     rerender(<PairingCodeCard kind="child" hint="" />)
     expect(screen.getByRole('alert')).toHaveTextContent('이미 가입된 계정이에요.')
+  })
+
+  it('재발급 실패해도 이전 코드는 그대로 두고, 작은 안내만 보여 준다', () => {
+    usePairingCode.mockReturnValue({
+      status: 'error',
+      data,
+      dataUpdatedAt: Date.parse('2026-10-12T03:30:00Z'),
+      error: new Error('network'),
+      isFetching: false,
+      refetch: vi.fn<() => Promise<unknown>>(),
+    })
+    useCountdown.mockReturnValue(300)
+    render(<PairingCodeCard kind="child" hint="" />)
+    expect(screen.getByTestId('pairing-code')).toHaveTextContent('4829 1357')
+    const alert = screen.getByRole('alert')
+    expect(within(alert).getByText('새 코드를 받지 못했어요. 다시 눌러 주세요.')).toBeInTheDocument()
   })
 })

@@ -11,7 +11,7 @@ describe('useCountdown', () => {
   })
 
   it('만료까지 남은 초를 1초마다 줄이고 0 에서 멈춘다', () => {
-    const { result } = renderHook(() => useCountdown('2026-10-12T03:30:03Z'))
+    const { result } = renderHook(() => useCountdown(Date.parse('2026-10-12T03:30:03Z')))
     expect(result.current).toBe(3)
     act(() => vi.advanceTimersByTime(1000))
     expect(result.current).toBe(2)
@@ -26,14 +26,16 @@ describe('useCountdown', () => {
   })
 
   it('새 코드(만료 시각 변경)가 오면 다음 틱부터 새 값으로 센다', () => {
-    const { result, rerender } = renderHook(({ at }) => useCountdown(at), { initialProps: { at: '2026-10-12T03:30:03Z' } })
-    rerender({ at: '2026-10-12T03:40:00Z' })
+    const { result, rerender } = renderHook(({ at }) => useCountdown(at), {
+      initialProps: { at: Date.parse('2026-10-12T03:30:03Z') },
+    })
+    rerender({ at: Date.parse('2026-10-12T03:40:00Z') })
     act(() => vi.advanceTimersByTime(1000))
     expect(result.current).toBe(599)
   })
 
   it('언마운트되면 인터벌을 치운다', () => {
-    const { unmount } = renderHook(() => useCountdown('2026-10-12T03:40:00Z'))
+    const { unmount } = renderHook(() => useCountdown(Date.parse('2026-10-12T03:40:00Z')))
     unmount()
     expect(vi.getTimerCount()).toBe(0)
   })
