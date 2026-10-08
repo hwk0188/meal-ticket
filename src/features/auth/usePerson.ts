@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useOutletContext } from 'react-router'
 import type { Database } from '../../lib/database.types'
 import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
@@ -25,4 +26,9 @@ export function usePerson(userId: string | undefined) {
       return unwrap(result)
     },
   })
+}
+
+/** RequirePerson 레이아웃 아래 화면에서 현재 사람을 받는다 (Outlet context). */
+export function useCurrentPerson(): Person {
+  return useOutletContext<Person>()
 }
