@@ -54,7 +54,7 @@ export function messageOf(err: unknown): string | undefined {
 }
 
 /** 오류 객체에서 code 를 꺼낸다. 빈 문자열은 없는 것으로 본다. */
-function codeOf(err: unknown): string | undefined {
+export function codeOf(err: unknown): string | undefined {
   const code = fieldOf(err, 'code')
   return code === '' ? undefined : code
 }
