@@ -19,10 +19,16 @@ export const pairingCodeQueryKey = (kind: PairingKind) => ['pairing-code', kind]
  *
  * gcTime 은 0 이 아니라 PAIR_CODE_TTL_MS 다 — 서버는 부를 때마다 이전 코드를 지우므로, 리마운트(개발 모드의
  * StrictMode 이중 마운트, Task 12 의 세그먼트 컨트롤이 카드를 넣다 뺐다 하는 경우)가 조용히 새 코드를 또
- * 발급받게 두면 안 되고 아직 살아 있는 같은 코드를 다시 보여 줘야 한다. staleTime: Infinity 와 함께라면
- * TTL 안의 리마운트는 캐시된 코드를 그대로 쓰고, 이미 만료된 코드는 만료된 채로 보여 주다가 사용자가
- * "새 코드 받기" 를 눌러야 비로소 새로 받는다. 계정 간 캐시가 섞이는 문제는 AuthProvider 가 로그아웃 때
- * queryClient 를 비우는 것으로 막는다.
+ * 발급받게 두면 안 되고 아직 살아 있는 같은 코드를 다시 보여 줘야 한다. TTL 안의 리마운트는 캐시된 코드를
+ * 그대로 쓰고, 이미 만료된 코드는 만료된 채로 보여 주다가 사용자가 "새 코드 받기" 를 눌러야 비로소 새로
+ * 받는다. 계정 간 캐시가 섞이는 문제는 AuthProvider 가 로그아웃 때 queryClient 를 비우는 것으로 막는다.
+ *
+ * staleTime 은 Infinity 가 아니라 'static' 이다 — 재발급(refetch)이 실패하면 쿼리는 data 를 가진 채로
+ * isInvalidated: true 가 되는데, isStaleByTime(Infinity) 는 invalidated 쿼리에 대해 true 를 돌려준다.
+ * 그 상태에서 gcTime(TTL) 안에 리마운트하면 "stale" 로 보여 조용히 create_pairing_code 를 다시 불러
+ * 버리고, 사용자가 받아 적던 코드가 그 순간 무효가 된다. 'static' 은 isInvalidated 를 보기도 전에
+ * stale 판정을 끊어 버린다 — 그래도 명시적 invalidateQueries 는 여전히 재조회를 일으키므로
+ * (invalidateFamily 가 이 키를 건드리지 않는 이유이기도 하다), 자동 재조회를 끄는 효과는 그대로다.
  */
 export function usePairingCode(kind: PairingKind) {
   return useQuery({
@@ -33,7 +39,7 @@ export function usePairingCode(kind: PairingKind) {
       if (!row) throw new Error('usePairingCode: 코드를 받지 못했습니다')
       return row
     },
-    staleTime: Infinity,
+    staleTime: 'static',
     gcTime: PAIR_CODE_TTL_MS,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,

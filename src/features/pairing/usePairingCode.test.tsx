@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { PAIR_POLL_MS, pairingCodeQueryKey, usePairingCode } from './usePairingCode'
+import { PAIR_CODE_TTL_MS, PAIR_POLL_MS, pairingCodeQueryKey, usePairingCode } from './usePairingCode'
 
 type RpcResult = { data: unknown; error: { code: string; message: string } | null }
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn<(fn: string, args: Record<string, unknown>) => Promise<RpcResult>>() }))
@@ -19,6 +19,8 @@ const row = { code: '48291357', expires_at: '2026-10-12T03:40:00Z' }
 describe('usePairingCode', () => {
   it('상수와 키', () => {
     expect(PAIR_POLL_MS).toBe(3_000)
+    // 마이그레이션의 interval '10 minutes' (supabase/migrations/20261009000001_pairing_codes.sql) 와 같아야 한다.
+    expect(PAIR_CODE_TTL_MS).toBe(10 * 60_000)
     expect(pairingCodeQueryKey('child')).toEqual(['pairing-code', 'child'])
   })
 

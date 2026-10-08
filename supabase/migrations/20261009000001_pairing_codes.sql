@@ -54,7 +54,7 @@ declare
   v_uid uuid := auth.uid();
   v_person public.people;
   v_code text;
-  v_expires timestamptz := now() + interval '10 minutes';
+  v_expires timestamptz := now() + interval '10 minutes'; -- 프런트 PAIR_CODE_TTL_MS(src/features/pairing/usePairingCode.ts) 와 같아야 한다
 begin
   if v_uid is null then
     raise exception 'not_authenticated';
