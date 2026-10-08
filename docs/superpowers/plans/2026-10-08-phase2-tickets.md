@@ -43,7 +43,7 @@
 | `migrations/20261008000002_ledger.sql` | `issuances` · `usages` 테이블·인덱스·RLS(가족 또는 관리자 조회만), `ticket_balances` 뷰 |
 | `migrations/20261008000003_issue_tickets.sql` | `issue_tickets`, `create_next_sunday_lunch` |
 | `migrations/20261008000004_use_ticket.sql` | `use_ticket`(멱등·당일·advisory lock) |
-| `seeds/010_e2e_admin.sql` | 로컬·CI 전용 관리자 계정(`admin@test.local`) — E2E 가 쓴다 |
+| `seeds/010_e2e_admin.sql` | 로컬·CI 전용 관리자 계정(`e2e-admin@test.local`) — E2E 가 쓴다 |
 | `tests/database/060_meals.sql` · `070_ledger.sql` · `080_issue_tickets.sql` · `090_use_ticket.sql` | pgTAP |
 
 **프론트 (`src/`)** — 기능별 폴더. 한 파일 하나의 책임, 테스트는 옆에 둔다.
@@ -136,7 +136,7 @@ select is((select count(*) from information_schema.role_table_grants where table
 
 -- 사용자: 교인 A, 관리자
 select tests.create_user('meal-a@test.local') as a_uid \gset
-select tests.create_user('meal-admin@test.local') as admin_uid \gset
+select tests.create_user('meal-e2e-admin@test.local') as admin_uid \gset
 insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
 values ('김철수', '01033330001', :'a_uid', now(), '2026-10-07'),
        ('권사',   '01033330009', :'admin_uid', now(), '2026-10-07');
@@ -285,7 +285,7 @@ select is((select array_agg(distinct privilege_type::text order by privilege_typ
 -- 준비: 가족 A(김철수), 가족 B(이영희), 관리자. 식사 하나.
 select tests.create_user('ledger-a@test.local') as a_uid \gset
 select tests.create_user('ledger-b@test.local') as b_uid \gset
-select tests.create_user('ledger-admin@test.local') as admin_uid \gset
+select tests.create_user('ledger-e2e-admin@test.local') as admin_uid \gset
 insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
 values ('김철수', '01044440001', :'a_uid', now(), '2026-10-07'),
        ('이영희', '01044440002', :'b_uid', now(), '2026-10-07'),
@@ -484,7 +484,7 @@ select is(has_function_privilege('anon', 'public.issue_tickets(uuid,uuid,integer
 select is(has_function_privilege('anon', 'public.create_next_sunday_lunch(date)', 'EXECUTE'), false, 'anon 은 create_next_sunday_lunch 를 실행할 수 없다');
 
 select tests.create_user('issue-a@test.local') as a_uid \gset
-select tests.create_user('issue-admin@test.local') as admin_uid \gset
+select tests.create_user('issue-e2e-admin@test.local') as admin_uid \gset
 select tests.create_user('issue-noperson@test.local') as ghost_uid \gset
 insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
 values ('김철수', '01055550001', :'a_uid', now(), '2026-10-07'),
@@ -694,7 +694,7 @@ select is(has_function_privilege('anon', 'public.use_ticket(uuid,uuid)', 'EXECUT
 select tests.create_user('use-a@test.local') as a_uid \gset
 select tests.create_user() as kid_uid \gset
 select tests.create_user('use-b@test.local') as b_uid \gset
-select tests.create_user('use-admin@test.local') as admin_uid \gset
+select tests.create_user('use-e2e-admin@test.local') as admin_uid \gset
 select tests.create_user('use-ghost@test.local') as ghost_uid \gset
 insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
 values ('김철수', '01066660001', :'a_uid', now(), '2026-10-07'),
@@ -4699,12 +4699,12 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ```sql
 -- 로컬·CI 전용 관리자 계정. E2E(e2e/tickets.spec.ts)와 수동 확인에 쓴다.
---   이메일 admin@test.local / 비밀번호 password123 (개발 로그인 폼)
+--   이메일 e2e-admin@test.local / 비밀번호 password123 (개발 로그인 폼)
 -- 운영 DB 에는 들어가지 않는다 (seeds 는 db reset/start 에서만 적용).
 do $$
 declare
   v_uid uuid := '00000000-0000-4000-8000-000000000001';
-  v_email text := 'admin@test.local';
+  v_email text := 'e2e-admin@test.local';
 begin
   if not exists (select 1 from auth.users where id = v_uid) then
     insert into auth.users (
@@ -4731,7 +4731,7 @@ $$;
 - [ ] **Step 2: 시드 적용 확인**
 
 Run: `npm run db:reset && npm run db:test`
-Expected: 시드 오류 없이 reset 완료, pgTAP 전부 통과(테스트들은 자기 트랜잭션의 행만 세므로 시드 행에 영향받지 않는다). `npm run dev` 후 개발 로그인 폼에 `admin@test.local / password123` 을 넣으면 "권사 님" 홈과 하단 "관리" 탭이 보인다.
+Expected: 시드 오류 없이 reset 완료, pgTAP 전부 통과(테스트들은 자기 트랜잭션의 행만 세므로 시드 행에 영향받지 않는다). `npm run dev` 후 개발 로그인 폼에 `e2e-admin@test.local / password123` 을 넣으면 "권사 님" 홈과 하단 "관리" 탭이 보인다.
 
 - [ ] **Step 3: E2E 작성 — `e2e/tickets.spec.ts`**
 
@@ -4740,7 +4740,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { formatMealDate, todaySeoul } from '../src/lib/dates.ts'
 
 // supabase/seeds/010_e2e_admin.sql
-const ADMIN = { email: 'admin@test.local', password: 'password123' }
+const ADMIN = { email: 'e2e-admin@test.local', password: 'password123' }
 
 test.beforeEach(({ page }) => {
   page.on('pageerror', (e) => {
@@ -4875,7 +4875,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 "로컬 개발" 절에 추가:
 
 ```markdown
-- 로컬 관리자 계정: `admin@test.local / password123` (`supabase/seeds/010_e2e_admin.sql`, 운영에는 없음). 개발 로그인 폼에 넣으면 하단 "관리" 탭이 보인다.
+- 로컬 관리자 계정: `e2e-admin@test.local / password123` (`supabase/seeds/010_e2e_admin.sql`, 운영에는 없음). 개발 로그인 폼에 넣으면 하단 "관리" 탭이 보인다.
 - 마이그레이션을 추가하면 `npm run db:reset && npm run db:types` 로 타입을 다시 만들어 커밋한다.
 ```
 
