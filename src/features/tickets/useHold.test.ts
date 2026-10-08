@@ -77,6 +77,28 @@ describe('useHold', () => {
     expect(onComplete).not.toHaveBeenCalled()
   })
 
+  it('누르는 중 onComplete 가 바뀌면 최신 콜백을 부른다', () => {
+    const first = vi.fn<() => void>()
+    const second = vi.fn<() => void>()
+    const { result, rerender } = renderHook(({ onComplete }) => useHold({ onComplete }), { initialProps: { onComplete: first } })
+    act(() => result.current.handlers.onPointerDown(down()))
+    rerender({ onComplete: second })
+    act(() => vi.advanceTimersByTime(600))
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledOnce()
+  })
+
+  it('누르는 중 다시 누르면 무시된다 (타이머가 다시 시작되지 않는다)', () => {
+    const onComplete = vi.fn<() => void>()
+    const { result } = renderHook(() => useHold({ onComplete }))
+    act(() => result.current.handlers.onPointerDown(down()))
+    act(() => result.current.handlers.onPointerDown(down())) // 두 번째 down — 이미 진행 중이라 무시된다
+    act(() => vi.advanceTimersByTime(599))
+    expect(onComplete).not.toHaveBeenCalled()
+    act(() => vi.advanceTimersByTime(1))
+    expect(onComplete).toHaveBeenCalledOnce()
+  })
+
   it('마우스 오른쪽 버튼은 무시한다', () => {
     const onComplete = vi.fn<() => void>()
     const { result } = renderHook(() => useHold({ onComplete }))

@@ -16,4 +16,10 @@ describe('Clock', () => {
     act(() => vi.advanceTimersByTime(1000))
     expect(screen.getByText('12:31:08')).toBeInTheDocument()
   })
+
+  it('언마운트되면 인터벌을 치운다', () => {
+    const { unmount } = render(<Clock />)
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
+  })
 })

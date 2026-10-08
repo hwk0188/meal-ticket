@@ -58,6 +58,8 @@ export function useHold({ onComplete, disabled = false, duration = HOLD_MS }: Op
     handlers: {
       onPointerDown: start,
       onPointerUp: cancel,
+      // 벗어나면(leave) 취소 — 마우스에 해당. 터치는 암묵적 캡처라 손가락이 벗어나도 유지되고, 어디서 떼든
+      // pointerup 이 와서 취소된다.
       onPointerLeave: cancel,
       onPointerCancel: cancel,
       // 길게 누르면 모바일 브라우저가 컨텍스트 메뉴·텍스트 선택을 띄운다. 막는다.
