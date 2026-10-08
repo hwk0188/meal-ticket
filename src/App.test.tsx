@@ -24,6 +24,12 @@ vi.mock('./lib/supabase', () => ({
         }),
       }),
     }),
+    // PairPage 가 부르는 연결 코드 발급. 익명 세션 테스트에서만 쓰인다.
+    rpc: () =>
+      Promise.resolve({
+        data: [{ code: '48291357', expires_at: new Date(Date.now() + 10 * 60_000).toISOString() }],
+        error: null,
+      }),
   },
 }))
 
@@ -66,7 +72,7 @@ describe('App', () => {
     // (해시만 보면 그 틈에 통과해 버리고, findByRole 만 보면 Gate 의 로딩 스피너에서 통과해 버린다).
     await waitFor(() => {
       expect(window.location.hash).toBe('#/pair')
-      expect(screen.getByRole('status')).toHaveTextContent('연결 코드 화면을 준비하고 있어요')
+      expect(screen.getByRole('heading', { name: '보호자에게 이 코드를 보여 주세요' })).toBeInTheDocument()
     })
   })
 })

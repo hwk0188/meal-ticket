@@ -2261,7 +2261,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/pages/PairPage.tsx`, `src/pages/PairPage.test.tsx`
 - Modify: `src/App.tsx` (`/pair` 라우트)
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/pairing/usePairingCode.test.tsx`:
 
@@ -2481,12 +2481,12 @@ describe('PairPage', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/pairing src/pages/PairPage`
 Expected: 모듈 없음으로 실패.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/pairing/usePairingCode.ts`:
 
@@ -2643,7 +2643,7 @@ import { PairPage } from './pages/PairPage'
 ```
 (`Spinner` import 가 더 이상 쓰이지 않으면 지운다. `App.test.tsx` 의 익명 세션 테스트는 `#/pair` 로 가는 것과 제목 '보호자에게 이 코드를 보여 주세요' 가 보이는 것으로 바꾼다 — 해시 단언만으로는 리다이렉트 루프 안에서도 잠깐 통과하므로, 화면에 무언가 그려졌다는 두 번째 단언이 루프 방지의 실제 검증이다. 그 테스트는 `supabase.from` 체인 목으로 사람 행 null 을 돌려준다; PairPage 가 부르는 `rpc('create_pairing_code')` 도 목으로 `{ data: [{ code: '48291357', expires_at: … }], error: null }` 을 돌려주게 한다.)
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과. `rpc('create_pairing_code', …)` 의 반환 타입은 Task 4 에서 재생성한 `database.types.ts` 가 `{ code: string; expires_at: string }[]` 로 준다.
@@ -2652,7 +2652,7 @@ Expected: 전부 통과. `rpc('create_pairing_code', …)` 의 반환 타입은 
 
 Run: `npm run dev` → 시작 화면 → "아이 계정으로 시작하기" → `#/pair` 에 8자리 코드와 남은 시간이 보인다. "새 코드 받기" 로 코드가 바뀐다. (연결은 Task 11 이후.)
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add src/features/pairing src/pages/PairPage.tsx src/pages/PairPage.test.tsx src/App.tsx
