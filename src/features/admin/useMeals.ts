@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toUserMessage } from '../../lib/errors'
 import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
 import type { MealValues } from './mealSchema'
@@ -51,4 +52,11 @@ export function useDeleteMeal() {
         queryClient.invalidateQueries({ queryKey: adminBalancesQueryKey }),
       ]),
   })
+}
+
+/** 식사 추가 오류 문구. 23505(unique 위반)는 (served_on, title) 중복이라는 뜻이라 더 구체적으로 안내한다. */
+export function addMealErrorMessage(err: unknown): string {
+  const code = err && typeof err === 'object' && 'code' in err ? (err as { code?: unknown }).code : undefined
+  if (code === '23505') return '같은 날짜·이름의 식사가 이미 있어요.'
+  return toUserMessage(err)
 }

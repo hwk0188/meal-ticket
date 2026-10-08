@@ -3,7 +3,7 @@ import { Button, Spinner } from '../../components/ui'
 import { MealForm } from '../../features/admin/MealForm'
 import { nextSundayLunchDate } from '../../features/admin/nextSundayLunch'
 import { summarizeByMeal, type MealSummary } from '../../features/admin/summarizeByMeal'
-import { useAddMeal, useAdminBalances, useCreateNextSundayLunch, useDeleteMeal, useMeals } from '../../features/admin/useMeals'
+import { addMealErrorMessage, useAddMeal, useAdminBalances, useCreateNextSundayLunch, useDeleteMeal, useMeals } from '../../features/admin/useMeals'
 import type { Meal } from '../../features/tickets/groupTickets'
 import { formatMealDate, formatShortDate, todaySeoul } from '../../lib/dates'
 import { toUserMessage } from '../../lib/errors'
@@ -18,12 +18,15 @@ export function AdminMealsPage() {
   const deleteMeal = useDeleteMeal()
   const [adding, setAdding] = useState(false)
 
+  const loaded = meals.data && balances.data
+  const failed = meals.status === 'error' || balances.status === 'error'
   const list = meals.data ?? []
   const summary = summarizeByMeal(balances.data ?? [])
   const upcoming = list.filter((m) => m.served_on >= today).toSorted((a, b) => a.served_on.localeCompare(b.served_on) || a.title.localeCompare(b.title, 'ko'))
-  const past = list.filter((m) => m.served_on < today)
+  const past = list.filter((m) => m.served_on < today).toSorted((a, b) => b.served_on.localeCompare(a.served_on) || a.title.localeCompare(b.title, 'ko'))
 
   function onDelete(meal: Meal) {
+    deleteMeal.reset()
     if (window.confirm(`${formatMealDate(meal.served_on)} ${meal.title} 식사를 지울까요?`)) deleteMeal.mutate(meal.id)
   }
 
@@ -34,24 +37,24 @@ export function AdminMealsPage() {
         <span className="rounded bg-blue-600 px-2 py-0.5 text-xs font-bold text-white">관리자</span>
       </header>
 
-      <Button onClick={() => createNext.mutate()} disabled={createNext.isPending || !meals.data}>
+      <Button onClick={() => { createNext.reset(); createNext.mutate() }} disabled={createNext.isPending || !loaded}>
         + 다음 주일 점심 만들기 ({formatShortDate(nextSundayLunchDate(list, today))})
       </Button>
       {createNext.isError && <p role="alert" className="text-sm text-red-600">{toUserMessage(createNext.error)}</p>}
 
       {adding ? (
-        <MealForm today={today} pending={addMeal.isPending} onCancel={() => setAdding(false)}
+        <MealForm today={today} pending={addMeal.isPending} onCancel={() => { addMeal.reset(); setAdding(false) }}
           onSubmit={(values) => addMeal.mutate(values, { onSuccess: () => setAdding(false) })} />
       ) : (
         <Button variant="ghost" onClick={() => { addMeal.reset(); setAdding(true) }}>+ 식사 직접 추가</Button>
       )}
-      {addMeal.isError && <p role="alert" className="text-sm text-red-600">{toUserMessage(addMeal.error)}</p>}
+      {addMeal.isError && <p role="alert" className="text-sm text-red-600">{addMealErrorMessage(addMeal.error)}</p>}
       {deleteMeal.isError && <p role="alert" className="text-sm text-red-600">{toUserMessage(deleteMeal.error)}</p>}
 
-      {/* status 가 아니라 data 로 분기한다 (공통 규약): 재조회 실패에도 보던 목록은 남긴다 */}
-      {meals.data ? (
+      {/* status 가 아니라 data 로 분기한다 (공통 규약): 재조회 실패에도 보던 목록은 남긴다. 식사·잔량 두 조회가 모두 있어야 카드를 그린다 — 잔량이 없으면 모든 카드가 "발급 0" 으로 보이고 지울 수 있게 돼 버린다. */}
+      {loaded ? (
         <>
-          {meals.status === 'error' && <p role="status" className="text-center text-xs text-gray-500">최신 목록을 받지 못했어요</p>}
+          {failed && <p role="status" className="text-center text-xs text-gray-500">최신 목록을 받지 못했어요</p>}
           <section aria-label="다가오는 식사" className="flex flex-col gap-2">
             <h2 className="text-xs font-bold text-gray-500">다가오는 식사</h2>
             {upcoming.length === 0 && <p className="text-sm text-gray-500">예정된 식사가 없어요</p>}
@@ -66,10 +69,10 @@ export function AdminMealsPage() {
             </details>
           )}
         </>
-      ) : meals.status === 'error' ? (
+      ) : failed ? (
         <div role="alert" className="rounded-2xl border border-red-200 bg-white p-4 text-center text-sm text-red-600">
           식사를 불러오지 못했어요
-          <button type="button" onClick={() => void meals.refetch()} className="ml-2 underline">다시 시도</button>
+          <button type="button" onClick={() => { void meals.refetch(); void balances.refetch() }} className="ml-2 underline">다시 시도</button>
         </div>
       ) : (
         <Spinner inline />
@@ -92,7 +95,7 @@ function MealCard({ meal, summary, onDelete, deleting }: { meal: Meal; summary?:
         </div>
         {/* 발급이 있으면 FK 가 막으므로 버튼 자체를 감춘다 */}
         {s.issued === 0 && (
-          <button type="button" onClick={() => onDelete(meal)} disabled={deleting} className="text-xs text-red-600 underline">삭제</button>
+          <button type="button" onClick={() => onDelete(meal)} disabled={deleting} aria-label={`${label} 삭제`} className="text-xs text-red-600 underline">삭제</button>
         )}
       </div>
       <p className="mt-2 text-sm">발급 {s.issued}장 · 가족 {s.families} · {formatWon(s.amount)}</p>
