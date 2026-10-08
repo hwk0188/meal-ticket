@@ -1,9 +1,10 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { Person } from '../features/auth/usePerson'
 import type { FamilyMember } from '../features/family/useFamilyMembers'
-import { PAIR_POLL_MS } from '../features/pairing/usePairingCode'
+import { PAIR_POLL_MS, pairingCodeQueryKey } from '../features/pairing/usePairingCode'
 import { FamilyPage } from './FamilyPage'
 
 type Query = { status: 'pending' | 'error' | 'success'; data?: FamilyMember[]; refetch: () => void }
@@ -65,8 +66,20 @@ const rows: FamilyMember[] = [
 ]
 const idle = (): Mutation => ({ isPending: false, isError: false, mutate: vi.fn<Mutation['mutate']>(), reset: vi.fn<() => void>() })
 
+// 테스트마다 새 QueryClient 를 쓴다 — 가족 연결로 생긴 pairing-code 캐시가 테스트 사이에 새지 않도록.
+let queryClient: QueryClient
+
+function page() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter><FamilyPage /></MemoryRouter>
+    </QueryClientProvider>
+  )
+}
+
 function renderPage() {
-  return render(<MemoryRouter><FamilyPage /></MemoryRouter>)
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(page())
 }
 
 beforeEach(() => {
@@ -140,7 +153,7 @@ describe('FamilyPage', () => {
     expect(screen.getByRole('status')).toHaveTextContent('불러오는 중')
     const refetch = vi.fn<() => void>()
     useFamilyMembers.mockReturnValue({ status: 'error', refetch })
-    rerender(<MemoryRouter><FamilyPage /></MemoryRouter>)
+    rerender(page())
     await userEvent.click(screen.getByRole('button', { name: '다시 시도' }))
     expect(refetch).toHaveBeenCalled()
   })
@@ -181,11 +194,12 @@ describe('FamilyPage', () => {
 
   it('내 코드를 보여 주는 동안 가족이 바뀌면(상대가 나를 합침) 패널을 닫고 알린다', async () => {
     const utils = renderPage()
+    const removeQueries = vi.spyOn(queryClient, 'removeQueries')
     await userEvent.click(screen.getByRole('button', { name: /가족 연결/ }))
     expect(screen.getByText('가족 연결 패널')).toBeInTheDocument()
     // 폴링으로 내 사람 행의 family_id 가 바뀌어 다시 그려진 상황
     useCurrentPerson.mockReturnValue({ ...me, family_id: 'f2' })
-    utils.rerender(<MemoryRouter><FamilyPage /></MemoryRouter>)
+    utils.rerender(page())
     expect(screen.getByText('가족이 연결되었어요')).toBeInTheDocument()
     expect(screen.queryByText('가족 연결 패널')).not.toBeInTheDocument()
     expect(useFamilyMembers).toHaveBeenLastCalledWith('f2')
@@ -194,6 +208,9 @@ describe('FamilyPage', () => {
     await userEvent.click(screen.getByRole('button', { name: '닫기' }))
     expect(screen.queryByText('가족이 연결되었어요')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '+ 자녀 추가' })).toBeInTheDocument()
+    // 보여 주고 있던 어른 코드는 이미 상대가 써 버렸다 — 남은 gcTime 동안 캐시에 남아 있으면
+    // 다음에 코드를 다시 보여 줄 때 죽은 코드의 카운트다운을 보여 주게 된다.
+    expect(removeQueries).toHaveBeenCalledWith({ queryKey: pairingCodeQueryKey('adult') })
   })
 
   it('가족 나가기 중에는(아직 응답 전) 합류로 오인하지 않는다', async () => {
@@ -212,7 +229,7 @@ describe('FamilyPage', () => {
     await userEvent.click(screen.getByRole('button', { name: '나가기' }))
     // leave_family 는 아직 응답하지 않았지만, 실제로는 이 무렵 family_id 가 이미 바뀌어 있을 수 있다
     useCurrentPerson.mockReturnValue({ ...me, family_id: 'f2' })
-    utils.rerender(<MemoryRouter><FamilyPage /></MemoryRouter>)
+    utils.rerender(page())
     expect(screen.queryByText('가족이 연결되었어요')).not.toBeInTheDocument()
     expect(screen.queryByText('가족 연결 패널')).not.toBeInTheDocument()
   })
@@ -221,7 +238,7 @@ describe('FamilyPage', () => {
     const utils = renderPage()
     await userEvent.click(screen.getByRole('button', { name: /가족 연결/ }))
     useCurrentPerson.mockReturnValue({ ...me, family_id: 'f2' })
-    utils.rerender(<MemoryRouter><FamilyPage /></MemoryRouter>)
+    utils.rerender(page())
     expect(screen.getByText('가족이 연결되었어요')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: '닫기' }))
     // 아직 family_id 는 f2 그대로다 (useCurrentPerson mock 유지) — 다시 열면 f2 를 새 기준으로 잡아야 한다

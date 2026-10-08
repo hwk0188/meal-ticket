@@ -34,6 +34,8 @@ const MESSAGES = {
   code_generation_failed: '코드를 만들지 못했어요. 다시 시도해 주세요.',
   last_admin: '마지막 관리자는 탈퇴할 수 없어요. 다른 관리자를 먼저 지정해 주세요.',
   anonymous_provider_disabled: '아이 계정 시작이 꺼져 있어요. 권사님께 문의해 주세요.',
+  // 익명 로그인은 기본 30회/시간/IP 로 제한된다 — 교회 와이파이는 IP 를 같이 쓴다.
+  over_request_rate_limit: '지금은 요청이 많아요. 잠시 뒤 다시 시도해 주세요.',
 } as const satisfies Record<string, string>
 
 /** MESSAGES 에 문구가 있는 오류 코드. 호출하는 쪽에서 오타를 막는 데 쓴다. */

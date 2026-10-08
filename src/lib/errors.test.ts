@@ -109,4 +109,10 @@ describe('2단계 오류 문구', () => {
       '아이 계정 시작이 꺼져 있어요. 권사님께 문의해 주세요.',
     )
   })
+
+  it('요청 한도 초과(같은 IP 의 익명 로그인 30회/시) 는 안내 문구로 바꾼다', () => {
+    expect(toUserMessage(Object.assign(new Error('rate limit'), { code: 'over_request_rate_limit' }))).toBe(
+      '지금은 요청이 많아요. 잠시 뒤 다시 시도해 주세요.',
+    )
+  })
 })

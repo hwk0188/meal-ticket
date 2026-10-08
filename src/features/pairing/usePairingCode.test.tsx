@@ -57,4 +57,35 @@ describe('usePairingCode', () => {
     await waitFor(() => expect(result.current.status).toBe('error'))
     expect(result.current.error?.message).toMatch(/코드를 받지 못했습니다/)
   })
+
+  it('재조회가 실패한 뒤 다시 마운트해도 코드를 다시 발급하지 않는다 (staleTime static)', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    const freshRow = { code: '12345678', expires_at: '2026-10-12T04:00:00Z' }
+
+    rpc.mockResolvedValueOnce({ data: [freshRow], error: null })
+    const first = renderHook(() => usePairingCode('child'), { wrapper })
+    // status 를 먼저 추적해 둬야(tracked properties) refetch 실패로 status 가 바뀔 때도 리렌더를 받는다.
+    await waitFor(() => expect(first.result.current.status).toBe('success'))
+    expect(first.result.current.data?.code).toBe('12345678')
+
+    rpc.mockResolvedValueOnce({ data: null, error: { code: 'P0001', message: 'network_error' } })
+    await act(async () => {
+      await first.result.current.refetch()
+    })
+    await waitFor(() => expect(first.result.current.isError).toBe(true))
+    expect(first.result.current.data?.code).toBe('12345678')
+
+    const callCountAfterFailedRefetch = rpc.mock.calls.length
+    first.unmount()
+
+    const second = renderHook(() => usePairingCode('child'), { wrapper })
+    // 실패한 재조회 뒤라 캐시의 status 는 'error' 지만(그래도 data 는 남아 있다), 'static' 덕에 리마운트가
+    // 조용히 새 코드를 또 부르지는 않는다 — 공통 규약대로 status 가 아니라 data 로 판단한다.
+    await waitFor(() => expect(second.result.current.data?.code).toBeDefined())
+    expect(rpc).toHaveBeenCalledTimes(callCountAfterFailedRefetch)
+    expect(second.result.current.data?.code).toBe('12345678')
+  })
 })

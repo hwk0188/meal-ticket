@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Button, Spinner } from '../components/ui'
 import { useAuth } from '../features/auth/AuthProvider'
@@ -8,7 +9,7 @@ import { MemberList } from '../features/family/MemberList'
 import { ProfileSection } from '../features/family/ProfileSection'
 import { useLeaveFamily, useRemoveChild } from '../features/family/useFamilyActions'
 import { useFamilyMembers } from '../features/family/useFamilyMembers'
-import { PAIR_POLL_MS } from '../features/pairing/usePairingCode'
+import { PAIR_POLL_MS, pairingCodeQueryKey } from '../features/pairing/usePairingCode'
 import { toUserMessage } from '../lib/errors'
 
 type Panel = 'none' | 'child' | 'join'
@@ -17,6 +18,7 @@ type Panel = 'none' | 'child' | 'join'
 export function FamilyPage() {
   const me = useCurrentPerson()
   const auth = useAuth()
+  const queryClient = useQueryClient()
   const userId = auth.status === 'ready' ? auth.session?.user.id : undefined
   const members = useFamilyMembers(me.family_id)
   const [panel, setPanel] = useState<Panel>('none')
@@ -58,7 +60,19 @@ export function FamilyPage() {
       {joined && (
         <p role="status" className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-700">
           가족이 연결되었어요
-          <button type="button" onClick={() => setPanel('none')} className="ml-2 underline">닫기</button>
+          <button
+            type="button"
+            onClick={() => {
+              setPanel('none')
+              // 내가 보여 주고 있던 어른 코드는 상대가 이미 써서 죽었다 — 그대로 두면 'static' staleTime 탓에
+              // gcTime(10분) 동안 리페치 없이 캐시에 남아, 다음에 코드를 다시 보여 줄 때 죽은 코드의
+              // 카운트다운을 보여 주게 된다. 지워 두면 다음에 열 때 새 코드를 받는다.
+              queryClient.removeQueries({ queryKey: pairingCodeQueryKey('adult') })
+            }}
+            className="ml-2 underline"
+          >
+            닫기
+          </button>
         </p>
       )}
 
