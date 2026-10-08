@@ -116,11 +116,12 @@ describe('signIn', () => {
   it('아이 계정 시작은 익명 로그인을 부른다', async () => {
     signInAnonymously.mockResolvedValue({ error: null })
     await signInAsChild()
-    expect(signInAnonymously).toHaveBeenCalledOnce()
+    expect(signInAnonymously).toHaveBeenCalledWith()
   })
 
   it('익명 로그인 오류는 그대로 던진다', async () => {
-    signInAnonymously.mockResolvedValue({ error: new Error('anonymous_provider_disabled') })
-    await expect(signInAsChild()).rejects.toThrow('anonymous_provider_disabled')
+    const error = Object.assign(new Error('Anonymous sign-ins are disabled'), { code: 'anonymous_provider_disabled' })
+    signInAnonymously.mockResolvedValue({ error })
+    await expect(signInAsChild()).rejects.toMatchObject({ code: 'anonymous_provider_disabled' })
   })
 })

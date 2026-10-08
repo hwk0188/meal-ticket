@@ -101,9 +101,22 @@ describe('usePerson', () => {
   })
 
   it('옵션이 없으면 자동 재조회 주기가 없다', async () => {
-    maybeSingle.mockResolvedValue({ data: null, error: null })
-    const { result } = renderHook(() => usePerson('u1'), { wrapper: makeWrapper() })
-    await waitFor(() => expect(result.current.status).toBe('success'))
-    expect(maybeSingle).toHaveBeenCalledTimes(1)
+    vi.useFakeTimers()
+    try {
+      maybeSingle.mockResolvedValue({ data: null, error: null })
+      const { result } = renderHook(() => usePerson('u1'), { wrapper: makeWrapper() })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result.current.status).toBe('success')
+      expect(maybeSingle).toHaveBeenCalledTimes(1)
+      // refetchInterval 을 안 주면(기본 false) 아무리 시간이 지나도 다시 읽지 않는다.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000)
+      })
+      expect(maybeSingle).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

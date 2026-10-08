@@ -20,4 +20,9 @@ describe('validateWith', () => {
     const r = validateWith(schema, 'not an object' as unknown as { name: string; age: number }, 'name')
     expect(r).toEqual({ ok: false, errors: { name: '입력 내용을 확인해 주세요' } })
   })
+
+  it('한 필드에 오류가 여럿이면 첫 문구만 남긴다', () => {
+    const multi = z.object({ code: z.string().min(8, '8자리').regex(/^\d+$/, '숫자만') })
+    expect(validateWith(multi, { code: 'ab' }, 'code')).toEqual({ ok: false, errors: { code: '8자리' } })
+  })
 })

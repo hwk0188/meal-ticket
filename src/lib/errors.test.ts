@@ -97,4 +97,10 @@ describe('2단계 오류 문구', () => {
     expect(toUserMessage(new Error('last_admin'))).toBe('마지막 관리자는 탈퇴할 수 없어요. 다른 관리자를 먼저 지정해 주세요.')
     expect(rpcCodeOf(new Error('invalid_code'))).toBe('invalid_code')
   })
+
+  it('supabase-js 인증 오류는 code 필드로도 문구를 찾는다 (message 는 영문)', () => {
+    expect(toUserMessage({ code: 'anonymous_provider_disabled', message: 'Anonymous sign-ins are disabled' })).toBe(
+      '아이 계정 시작이 꺼져 있어요. 권사님께 문의해 주세요.',
+    )
+  })
 })

@@ -39,6 +39,7 @@ export class FakeQuery<T> {
   then<R>(resolve: (value: Response<T>) => R, _reject?: (reason: unknown) => unknown): Promise<R> {
     return Promise.resolve(this.response).then(resolve)
   }
+  // 인자는 JSON.stringify 로 비교한다 — 객체 인자는 키 순서가 다르면 다른 값으로 본다.
   has(method: string, ...args: unknown[]): boolean {
     return this.filters.some((f) => f[0] === method && args.every((a, i) => JSON.stringify(f[i + 1]) === JSON.stringify(a)))
   }

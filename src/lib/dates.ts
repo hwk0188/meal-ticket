@@ -51,9 +51,14 @@ export function formatTime(iso: string): string {
   return hm.format(new Date(iso))
 }
 
+/** ISO 시각 → 서울 'M/D' (동의 날짜처럼 날짜만 보여 줄 때) */
+export function formatDate(iso: string): string {
+  return formatShortDate(todaySeoul(new Date(iso)))
+}
+
 /** ISO 시각 → 서울 'M/D HH:MM' */
 export function formatDateTime(iso: string): string {
-  return `${formatShortDate(todaySeoul(new Date(iso)))} ${formatTime(iso)}`
+  return `${formatDate(iso)} ${formatTime(iso)}`
 }
 
 /** 초 단위 시계 'HH:MM:SS' (홈 화면 실시간 시계 — 스크린샷 판별용) */
@@ -76,9 +81,4 @@ export function nextSundayAfter(base: string): string {
 export function addDays(ymdText: string, days: number): string {
   const [y, m, d] = parts(ymdText)
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
-}
-
-/** ISO 시각 → 서울 'M/D' (동의 날짜처럼 날짜만 보여 줄 때) */
-export function formatDate(iso: string): string {
-  return formatShortDate(todaySeoul(new Date(iso)))
 }
