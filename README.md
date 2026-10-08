@@ -44,7 +44,7 @@ npm run dev                # http://localhost:5173
 
 ### 2. 카카오 개발자 콘솔
 
-1. https://developers.kakao.com → 내 애플리케이션 → 애플리케이션 추가. 앱 이름 `OO교회 식권`, 회사명 교회명.
+1. https://developers.kakao.com → 내 애플리케이션 → 애플리케이션 추가. 앱 이름은 `src/config/church.ts` 의 appName 과 같게(현재 `새기쁨교회 모바일 식권`), 회사명 교회명. 카카오 동의 화면에는 콘솔의 앱 이름이 보인다.
 2. **앱 › 일반 › 비즈니스 정보**: **개인 개발자 비즈 앱 전환**(무료, 사업자번호 불필요). Supabase 가 카카오에 `account_email` scope 를 항상 요청하기 때문에, 이메일 동의항목을 등록할 수 있는 비즈 앱이어야 로그인이 된다(아니면 KOE205 오류).
 3. Web 플랫폼(사이트 도메인) 등록은 **필요 없다**. 카카오 인증은 Supabase 서버가 REST API 키로 처리하므로 JavaScript 키·SDK 도메인을 쓰지 않는다. (개편된 콘솔에는 "앱 설정/제품 설정" 묶음이 없고, 좌측 메뉴가 **앱**, **카카오 로그인** 등으로 나뉜다.)
 4. **카카오 로그인 › 사용 설정**: 활성화 ON. OpenID Connect 는 OFF.

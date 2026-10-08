@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { StartPage } from './StartPage'
+import { church } from '../config/church'
 
 // env 는 가짜 객체를 그대로 공유해 테스트마다 플래그만 바꾼다 (모듈을 다시 읽지 않아도 된다).
 const { signInWithKakao, devSignIn, env } = vi.hoisted(() => ({
@@ -23,7 +24,7 @@ describe('StartPage', () => {
 
   it('앱 이름과 카카오 버튼, 처리방침 링크를 보여준다', () => {
     renderPage()
-    expect(screen.getByRole('heading', { name: 'OO교회 식권' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: church.appName })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '카카오로 시작하기' })).toBeInTheDocument()
     // 해시 라우팅·하위 경로 배포에 따라 접두사가 달라지므로 경로 조각만 본다.
     expect(screen.getByRole('link', { name: '개인정보 처리방침' })).toHaveAttribute(
