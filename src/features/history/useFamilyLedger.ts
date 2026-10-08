@@ -2,8 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
 import type { Person } from '../auth/usePerson'
-import { mergeLedger, type UsageRow } from './mergeLedger'
+import { mergeLedger } from './mergeLedger'
 
+export const ledgerQueryKey = ['ledger'] as const
+
+// 표마다 최근 100건씩(합치면 최대 200건) — 가족 단위로는 넉넉하다. 전체 이력이 아니라 최근 내역 화면이라는 전제.
 const LIMIT = 100
 
 // FK 가 둘(person_id, issued_by)이라 임베딩에 제약 이름 힌트가 필요하다. 제약 이름은 Postgres 기본 규칙(<표>_<열>_fkey).
@@ -14,7 +17,7 @@ const USAGE_SELECT = 'id, used_at, used_via, voided_at, meal:meals(title, served
 /** 우리 가족의 발급·사용 내역 (최근 100건씩). 관리자도 이 화면에선 자기 가족만 보도록 family_id 로 좁힌다. */
 export function useFamilyLedger(person: Person) {
   return useQuery({
-    queryKey: ['ledger', person.family_id],
+    queryKey: [...ledgerQueryKey, person.family_id],
     queryFn: async () => {
       const [issuances, usages] = await Promise.all([
         supabase
@@ -32,10 +35,8 @@ export function useFamilyLedger(person: Person) {
           .limit(LIMIT)
           .then(unwrap),
       ])
-      // issuances 는 select 문자열만으로 IssuanceRow 와 정확히 일치한다(캐스트 불필요).
-      // usages 는 used_via 가 DB 상 check 제약뿐인 text 라 Database 타입에서 string 으로만 추론돼
-      // 'self' | 'admin' 리터럴과 안 맞는다 — 그 한 필드 때문에 배열 전체를 좁혀야 해서 캐스트를 남긴다.
-      return mergeLedger(issuances, usages as UsageRow[])
+      // 두 select 문자열 모두 IssuanceRow·UsageRow 와 구조적으로 일치한다(캐스트 불필요 — tsc 가 그대로 검증).
+      return mergeLedger(issuances, usages)
     },
   })
 }

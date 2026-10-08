@@ -26,4 +26,14 @@ describe('mergeLedger', () => {
     expect(entries[1]).toMatchObject({ cancelled: true })
     expect(entries[0]).toMatchObject({ voided: true })
   })
+
+  // PostgREST 는 초 단위 정밀도만 다른 두 시각을 '…00+00:00' 과 '…00.5+00:00' 처럼 돌려줄 수 있다.
+  // ICU 의 localeCompare 는 '.' 을 '+' 보다 앞세워, 실제로는 더 늦은 .5 쪽을 문자열상 "더 이름"으로 친다.
+  // Date.parse 기준 실제 시각으로 비교해야 한다.
+  it('초 단위 분수 정밀도가 다른 시각도 실제 시각 순으로 놓는다', () => {
+    const earlier: UsageRow = { ...usage, id: 'u-earlier', used_at: '2026-10-12T03:31:00+00:00' }
+    const later: UsageRow = { ...usage, id: 'u-later', used_at: '2026-10-12T03:31:00.5+00:00' }
+    const entries = mergeLedger([], [earlier, later])
+    expect(entries.map((e) => e.id)).toEqual(['u-later', 'u-earlier'])
+  })
 })

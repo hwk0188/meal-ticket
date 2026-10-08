@@ -4,6 +4,7 @@ import { rpcCodeOf } from '../../lib/errors'
 import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
 import { withTimeout } from '../../lib/timeout'
+import { ledgerQueryKey } from '../history/useFamilyLedger'
 import type { Usage } from './groupTickets'
 import { ticketsQueryKey } from './useFamilyTickets'
 
@@ -49,6 +50,10 @@ export function useUseTicket(mealId: string) {
       if (rpcCodeOf(err)) requestId.current = null
     },
     // 성공이든 실패든 잔량을 다시 읽는다 (no_remaining 이면 다른 폰이 쓴 것이라 목록이 바뀌어 있다)
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ticketsQueryKey }),
+    // 내역 화면도 같이 무효화한다 — 사용 성공은 usages 테이블에 새 행을 만들므로 내역에도 바로 보여야 한다.
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ticketsQueryKey })
+      void queryClient.invalidateQueries({ queryKey: ledgerQueryKey })
+    },
   })
 }

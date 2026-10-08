@@ -33,6 +33,7 @@ describe('useUseTicket', () => {
     expect(rpc).toHaveBeenCalledWith('use_ticket', { p_meal_id: 'm1', p_request_id: 'id-1' })
     expect(USE_TIMEOUT_MS).toBe(5_000)
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tickets'] }))
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['ledger'] })
 
     // 성공했으면 다음 누름은 새 request_id
     await act(() => result.current.mutateAsync())
@@ -65,6 +66,7 @@ describe('useUseTicket', () => {
     })
     // no_remaining 은 다른 폰이 먼저 썼다는 뜻이라, 실패했어도 잔량 목록을 다시 읽어야 한다.
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tickets'] }))
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['ledger'] })
     await act(() => result.current.mutateAsync())
     expect(rpc).toHaveBeenNthCalledWith(2, 'use_ticket', { p_meal_id: 'm1', p_request_id: 'id-2' })
   })

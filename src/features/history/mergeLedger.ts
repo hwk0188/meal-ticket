@@ -16,7 +16,7 @@ export type IssuanceRow = {
 export type UsageRow = {
   id: string
   used_at: string
-  used_via: 'self' | 'admin'
+  used_via: string // DB 는 check 제약뿐인 text — 'self' | 'admin' 리터럴이 아니다
   voided_at: string | null
   meal: MealRef
   person: NameRef
@@ -49,8 +49,10 @@ export function mergeLedger(issuances: readonly IssuanceRow[], usages: readonly 
     })),
     ...usages.map((u): UsageEntry => ({
       kind: 'usage', id: u.id, at: u.used_at, ...mealOf(u.meal),
-      person: u.person?.name ?? '', via: u.used_via, voided: u.voided_at !== null,
+      person: u.person?.name ?? '', via: u.used_via === 'admin' ? 'admin' : 'self', voided: u.voided_at !== null,
     })),
   ]
-  return entries.toSorted((a, b) => b.at.localeCompare(a.at))
+  // localeCompare 는 ICU 규칙상 '.'(분수 초) 를 '+'(시간대 부호) 보다 앞세워, '…00+00:00' 과
+  // '…00.5+00:00' 처럼 분수 정밀도만 다른 두 시각을 실제 순서와 반대로 놓을 수 있다. 실제 시각(ms) 으로 비교한다.
+  return entries.toSorted((a, b) => Date.parse(b.at) - Date.parse(a.at))
 }
