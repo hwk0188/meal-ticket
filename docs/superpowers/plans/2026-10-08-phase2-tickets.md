@@ -90,6 +90,7 @@
 - 테스트 데이터는 다른 테스트·E2E 가 남긴 행과 섞이지 않게 **고정 id 또는 `created_at = now()`** 로 범위를 좁힌다(`now()` 는 트랜잭션 시각).
 - 프론트: `verbatimModuleSyntax` 라 타입은 `import type`. `vi.fn<() => T>()` 처럼 타입 인자를 적는다(`vitest/require-mock-type-parameters`). 컴포넌트 파일에서 컴포넌트가 아닌 것을 export 하지 않는다(`react/only-export-components`). `oxlint --deny-warnings` 가 CI 에서 돈다.
 - 커밋 메시지는 `<type>: <설명>` 형식, 끝에 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
+- **조회 화면은 `status` 가 아니라 `data` 로 분기한다.** TanStack 은 백그라운드 재조회가 실패해도 `data` 를 유지한 채 `status='error'` 가 된다. `status === 'success'` 로 가리면 폴링 한 번 실패에 목록이 통째로 사라진다(Task 9 리뷰). 패턴: `data ? <목록 + (error 면 작은 안내)> : status === 'error' ? <alert + 다시 시도> : <Spinner inline />`.
 - 작업 브랜치 `feat/phase2-tickets` 에서 시작한다. `main` 에 직접 커밋하지 않는다.
 
 ```bash
@@ -2773,7 +2774,7 @@ function OpenRow({ row, total, disabled, onUse }: { row: TicketRow; total: numbe
         disabled={disabled}
         onKeyDown={onKeyDown}
         {...handlers}
-        className="relative flex w-full touch-none select-none items-center gap-3 overflow-hidden rounded-xl border-2 border-blue-600 bg-white px-4 py-4 text-left [-webkit-touch-callout:none] disabled:border-gray-300 disabled:text-gray-400"
+        className="relative flex w-full touch-pan-y select-none items-center gap-3 overflow-hidden rounded-xl border-2 border-blue-600 bg-white px-4 py-4 text-left [-webkit-touch-callout:none] disabled:border-gray-300 disabled:text-gray-400"
       >
         {/* iOS 는 버튼 롱프레스에 contextmenu 를 내지 않고 콜아웃을 띄우므로 touch-callout 도 끈다 (Task 8 리뷰). */}
         {/* 왼쪽에서 차오르는 색. HOLD_MS 동안 꽉 차면 useHold 가 onUse 를 부른다 */}
@@ -2876,7 +2877,7 @@ export function HomePage({ person }: { person: Person }) {
         </div>
       </header>
 
-      {tickets.status === 'pending' && <Spinner label="불러오는 중…" />}
+      {tickets.status === 'pending' && <Spinner inline />}
       {tickets.status === 'error' && (
         <div role="alert" className="rounded-2xl border border-red-200 bg-white p-4 text-center text-sm text-red-600">
           식권을 불러오지 못했어요
@@ -3261,15 +3262,20 @@ export function HistoryPage() {
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4 p-4">
       <h1 className="text-lg font-extrabold">내역</h1>
-      {ledger.status === 'pending' && <Spinner label="불러오는 중…" />}
-      {ledger.status === 'error' && <p role="alert" className="text-center text-sm text-red-600">내역을 불러오지 못했어요</p>}
-      {ledger.status === 'success' && (ledger.data.length === 0 ? (
-        <p className="py-10 text-center text-sm text-gray-500">아직 내역이 없어요</p>
+      {/* status 가 아니라 data 로 분기한다 — 포커스 복귀 재조회가 실패해도 보던 목록이 사라지지 않게 (공통 규약) */}
+      {ledger.data ? (
+        ledger.data.length === 0 ? (
+          <p className="py-10 text-center text-sm text-gray-500">아직 내역이 없어요</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {ledger.data.map((entry) => <Entry key={`${entry.kind}-${entry.id}`} entry={entry} />)}
+          </ul>
+        )
+      ) : ledger.status === 'error' ? (
+        <p role="alert" className="text-center text-sm text-red-600">내역을 불러오지 못했어요</p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {ledger.data.map((entry) => <Entry key={`${entry.kind}-${entry.id}`} entry={entry} />)}
-        </ul>
-      ))}
+        <Spinner inline />
+      )}
     </main>
   )
 }
@@ -3890,7 +3896,7 @@ export function AdminMealsPage() {
       {addMeal.isError && <p role="alert" className="text-sm text-red-600">{toUserMessage(addMeal.error)}</p>}
       {deleteMeal.isError && <p role="alert" className="text-sm text-red-600">{toUserMessage(deleteMeal.error)}</p>}
 
-      {meals.status === 'pending' && <Spinner label="불러오는 중…" />}
+      {meals.status === 'pending' && <Spinner inline />}
       {meals.status === 'error' && <p role="alert" className="text-sm text-red-600">식사를 불러오지 못했어요</p>}
 
       <section aria-label="다가오는 식사" className="flex flex-col gap-2">
