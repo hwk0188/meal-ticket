@@ -61,9 +61,12 @@ describe('App', () => {
   it('익명(아이) 계정으로 가입 전이면 /pair 로 보내고, 무한 리다이렉트 없이 화면이 뜬다', async () => {
     getSession.mockResolvedValue({ data: { session: { user: { id: 'k1', is_anonymous: true } } } })
     render(<App />)
-    await waitFor(() => expect(window.location.hash).toBe('#/pair'))
-    // 해시만 보면 리다이렉트 루프 안에서도 순간적으로 '#/pair' 를 지나칠 수 있다. 플레이스홀더
-    // 문구까지 확인해야 루프 없이 그 화면에 실제로 멈춰 있다는 것을 증명한다.
-    expect(screen.getByRole('status')).toHaveTextContent('연결 코드 화면을 준비하고 있어요')
+    // HashRouter 는 해시를 동기로 바꾸지만 새 라우트는 startTransition 안에서 그리므로, 해시와 렌더가
+    // 서로 다른 프레임에 떨어지는 순간이 있다. 한 waitFor 안에서 같이 재시도해야 그 틈을 피한다
+    // (해시만 보면 그 틈에 통과해 버리고, findByRole 만 보면 Gate 의 로딩 스피너에서 통과해 버린다).
+    await waitFor(() => {
+      expect(window.location.hash).toBe('#/pair')
+      expect(screen.getByRole('status')).toHaveTextContent('연결 코드 화면을 준비하고 있어요')
+    })
   })
 })
