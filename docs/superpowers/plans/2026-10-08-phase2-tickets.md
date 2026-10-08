@@ -4918,6 +4918,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - `pairing_codes` 테이블·`create_pairing_code`·`add_family_member`·`relink_child`·`leave_family`·`remove_child`·`delete_my_account`, 시작 화면 "아이 계정으로 시작하기", 가입 화면 14세 미만 토글, `#/pair`, `#/family` 탭, pg_cron 3건.
 - 홈 머리말 "우리 가족 식권 · N명" 은 이미 `members.length` 로 동작한다. 가족이 생기면 자동으로 바뀐다.
 - `use_ticket` 은 자녀(익명 계정)도 통과하도록 이미 테스트되어 있다(`090_use_ticket.sql`).
+- **가족 이동과 장부 `family_id` (Task 2 리뷰에서 드러난 설계 긴장 — 3단계 계획에 반영할 결정).** 장부의 `family_id` 는 발급·사용 시점의 가족이고 FK 는 NO ACTION 이라, 장부가 있는 가족은 지울 수 없다. 설계 §7.3 의 "빈 가족 삭제" 와 §5.1 의 "식권을 산 뒤 배우자 가족에 합류" 가 그대로는 양립하지 않는다(옛 가족의 잔량이 새 가족에서 보이지 않고 `use_ticket` 도 못 쓴다). **결정: 가족 "합치기"(`add_family_member` adult 경로)는 옮겨 가는 쪽 가족이 비게 되므로, 그 가족의 장부 전체(issuances·usages)를 새 가족 `family_id` 로 옮긴 뒤 빈 가족을 지운다(잔량 풀 병합 — 수학이 그대로 맞는다). "가족 나가기"(`leave_family`)는 장부를 옛 가족에 두고 간다(산 사람이 아니라 함께 쓰던 풀의 것).** pg_cron 의 빈 가족 정리도 `not exists (issuances|usages)` 조건을 붙인다. 이 결정은 2단계 스키마를 바꾸지 않는다.
 
 ## 4단계로 넘기는 것
 
