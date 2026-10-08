@@ -37,7 +37,7 @@ const CODE_MESSAGES: Record<string, string> = {
 // 세션 만료·비로그인. 42501 은 Postgres 권한/RLS, PGRST301·302 는 PostgREST 의 JWT 오류다.
 const AUTH_CODES = new Set(['42501', 'PGRST301', 'PGRST302'])
 const PERMISSION_DENIED = /permission denied/i
-const NETWORK_FAILURE = /failed to fetch|networkerror|load failed|timed out|aborted/i
+const NETWORK_FAILURE = /failed to fetch|networkerror|load failed|timed out|aborted|^(?:AbortError|TimeoutError):/i
 
 const FALLBACK = '잠시 후 다시 시도해 주세요.'
 const NETWORK = '통신이 불안정해요. 잠시 후 다시 시도해 주세요.'

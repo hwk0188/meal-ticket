@@ -19,6 +19,9 @@ describe('formatMealDate', () => {
   it('짧은 형식', () => {
     expect(formatShortDate('2026-10-12')).toBe('10/12')
   })
+  it('형식이 아니면 던진다', () => {
+    expect(() => formatShortDate('2026-1-2')).toThrow(/YYYY-MM-DD/)
+  })
 })
 
 describe('formatTime / formatDateTime / formatClock', () => {

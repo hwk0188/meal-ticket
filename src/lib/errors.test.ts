@@ -71,6 +71,16 @@ describe('2단계 오류 문구', () => {
     expect(toUserMessage(new DOMException('The operation was aborted.', 'AbortError'))).toBe('통신이 불안정해요. 잠시 후 다시 시도해 주세요.')
   })
 
+  it('supabase-js 가 직렬화한 통신 오류(코드 없음)는 통신 문구이고 rpc 코드가 아니다', () => {
+    const timedOut = { message: 'TimeoutError: signal timed out', code: '', details: '', hint: '' }
+    const aborted = { message: 'AbortError: The operation was aborted.', code: '', details: '', hint: '' }
+    const failed = { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' }
+    for (const err of [timedOut, aborted, failed]) {
+      expect(toUserMessage(err)).toBe('통신이 불안정해요. 잠시 후 다시 시도해 주세요.')
+      expect(rpcCodeOf(err)).toBeUndefined()
+    }
+  })
+
   it('rpcCodeOf 는 알려진 코드만 돌려준다', () => {
     expect(rpcCodeOf({ message: 'no_remaining' })).toBe('no_remaining')
     expect(rpcCodeOf({ message: 'something else' })).toBeUndefined()
