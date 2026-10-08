@@ -47,6 +47,7 @@
 - **Task 3** (계획 단계에서 미리 반영): 위 잠금 규칙에 맞춰 `leave_family` 는 내 행 → 옮길 자녀 행(id 순) → `lock_family`, `remove_child` 는 (잠금 없이 자녀를 읽어) 자녀 계정의 코드 행 삭제 → 자녀 행 `for update` → `lock_family`, `delete_my_account` 는 내 코드 행 삭제 → 내 행 → `lock_family` 순으로 잠근다(코드 행이 ① 클래스라 사람 행보다 먼저). 나가기는 내 가족 범위의 자녀만 옮긴다(다른 가족에 사는 자녀 테스트 추가). `120` 은 리뷰 반영 뒤 46건. 아래 Task 3 스니펫은 반영된 버전이며 2026-10-09 에 다시 롤백 검증했다. **품질 리뷰 뒤**: `delete_my_account` 에 마지막 관리자 보호(`last_admin` — 관리자 지정이 SQL 로만 가능해 마지막 관리자가 탈퇴하면 운영이 멈춘다) 추가, 헤더에 "어른 행을 자녀 행보다 먼저 잠근다" 불변식과 식사 잠금 생략 이유 주석, 테스트 보강(`not_registered`·본인 코드 삭제·`pg_locks`·익명 구성원 no-op·마지막 관리자). 가족 나가기 확인 문구는 발급·사용 내역도 남는다는 말을 넣었다(Task 11).
 - **Task 5** (프론트 공통): 품질 리뷰로 `toUserMessage` 가 `code` 필드의 값도 MESSAGES 에서 찾도록 바꿨다 — supabase-js 인증 오류(`AuthApiError.code = 'anonymous_provider_disabled'`, 익명 로그인이 꺼져 있을 때)는 코드가 `message` 가 아니라 `code` 에 온다. 문구 `anonymous_provider_disabled` 추가(총 8개). `usePerson` 의 "옵션 없음" 테스트와 `validateWith` 의 "한 필드 여러 오류" 분기 테스트를 실제로 검증하도록 보강, `formatDateTime` 이 `formatDate` 를 재사용, `UsePersonOptions` 타입 export, `mealSchema` 도 `validateWith` 로 통일(경로 없는 오류가 `"undefined"` 키로 가던 버그 수정). TanStack 은 관찰자마다 타이머를 따로 가지며 가드는 공유 Query 의 갱신만 받는다(계획의 "가장 짧은 주기" 설명은 틀렸고 결론만 맞다).
 - **Task 7** (가드·가족 탭): 품질 리뷰로 세 가드를 **data 기준**으로 바꿨다(위 공통 규약) — 백그라운드 재조회가 실패해도 `data` 가 있으면 화면을 유지한다. `/pair` 라우트를 Task 7 에서 Spinner 자리표시자로 미리 두었다(가드가 보내는 경로에 라우트가 없으면 무한 리다이렉트; `App.test.tsx` 에 익명 세션 → `#/pair` 테스트). `ConfirmButton` 의 포커스 복귀는 ref 를 effect 안에서만 만지고 `disabled` 를 의존성에 넣어, 처리 중 비활성이었다가 다시 활성화될 때 원래 버튼으로 돌아간다(Task 11·12 의 자녀 삭제·가족 나가기·탈퇴가 이 모양이다).
+- **Task 13** (E2E): 품질 리뷰로 ① `browser.newContext(testInfo.project.use)` → `browser.newContext()` (프로젝트 use 는 Playwright 가 자동 주입 — 리뷰어가 1.63 소스·프로브로 확인; 수동 컨텍스트에도 trace·screenshot 이 남는다), ② 코드는 `test.step` 반환값으로 받고 읽기 전에 `toHaveText(/^\d{4} \d{4}$/)` 로 재시도 단언, ③ `'식권'` 링크 `exact: true`, `'서연 님'` 머리말 `level: 1`(오늘 식사마다 h2 가 있다), ④ `logout()` 은 관리자 전용임을 JSDoc 으로. 위 스니펫은 리뷰 반영본이다. 리뷰어 확인 사실: `page.on('pageerror')` 안의 throw 는 테스트를 실패시키고 워커는 살아남는다(기존 규약 유효); `uniqueDigits()` 충돌은 조용히 섞이지 않고 `people_phone_unique` 로 드러난다; CI 는 매 실행 새 Supabase 라 `db reset` 불필요.
 - **Task 12** (가족 화면 ②): 품질 리뷰로 ① 가족 연결 패널이 열린 채 **가족 나가기**를 누르면 `family_id` 가 바뀌어 `joined` 가 참이 되는 창(훅의 무효화 재조회가 mutate 콜백보다 먼저 돈다)이 있어 "가족이 연결되었어요" 가 잘못 뜬다 → `onLeave` 가 먼저 패널을 닫고 `familyAtOpen` 을 비운다, 합류를 감지하면 폴링도 끈다(`panel === 'join' && !joined`), ② `JoinFamilyPanel` 모드 전환 때 `setError(undefined)`·`join.reset()`(AddChildForm 과 같은 규율), ③ `ProfileSection` 은 수정을 열 때 `del.reset()`, 탈퇴 확인 때 `update.reset()`; 이름·번호 칸에 `autoComplete`/`placeholder`; 번호가 없으면 " · " 를 남기지 않는다, ④ **`useDeleteAccount` 의 로그아웃 실패 분기에서 `['person']` 무효화를 뺐다** — 재조회가 성공하면 가드가 곧바로 가입 화면으로 보내 "앱을 닫고 다시 열어 주세요" 가 보이기도 전에 사라진다(Task 10 리뷰 지적의 재평가). 다음 자연 재조회(포커스·재진입) 때 가드가 보낸다, ⑤ 안내 문구: 합류하면 **자녀도 함께** 옮겨 가고, 장부는 옛 가족에 산 사람이 없을 때 옮겨 간다("나뿐이면" → "나와 내 자녀만 있으면"), ⑥ 두 관찰자 `usePerson` 테스트 주석을 실제로 증명하는 것(3초당 요청 1회·같은 데이터)으로 정정. 아래 Task 12 스니펫은 리뷰 전 버전이다.
 - **Task 11** (가족 화면 ①): 품질 리뷰로 ① `FamilyPage` 가 패널을 열거나 동작이 끝날 때 `leave.reset()`·`remove.reset()` 을 불러 이전 동작의 오류가 새 성공 알림 옆에 남지 않게 했다(`AdminMealsPage` 의 reset 규율과 같게), ② `AddChildForm` 의 `relinking` 은 상태가 아니라 `existing.some(c => c.id === childId)` 로 계산한다(재조회로 고른 자녀가 사라지면 새 자녀 모드로 돌아간다), 자녀를 고르면 두 뮤테이션의 오류도 지운다, 잠긴 연결하기 버튼 밑에 가입 화면과 같은 "동의에 체크하면 연결할 수 있어요" 안내(`aria-describedby`), "폰을 바꾼 자녀는 위에서…" 안내는 고를 자녀가 있을 때만, `FormErrors` 에서 쓰이지 않는 `childId` 제거, ③ `ConfirmButton` 에 `context?: string`(스크린 리더용 sr-only 접두사) 을 추가해 자녀가 둘일 때 "자녀 삭제" 버튼이 "서연 자녀 삭제" 로 구분되게 했다(접근성 이름이 바뀌므로 테스트는 `/자녀 삭제$/` 정규식), ④ 문구: `○○ 을(를) 삭제했어요` → `○○ 님을 삭제했어요`, `○○ 의 이름을` → `○○ 님의 이름을`, 태그 `text-[10px]` → `text-xs`, `open()` → `openPanel()`, 임시 가족 연결 구역 문구 해요체, ⑤ 테스트: 공허한 `PAIR_POLL_MS` 상수 테스트를 "가족 연결 패널을 열면 폴링 켜짐·닫으면 꺼짐" 으로 교체, 가족 나가기 흐름·`existingChildren` 전달·reset 호출 테스트 추가. 아래 Task 11 스니펫은 리뷰 전 버전이다. 리뷰어가 확인한 사실: 같은 `['person', uid]` 키를 보는 두 관찰자(가드 `refetchInterval: false` + 가족 화면 3초)는 query-core 5.104 에서 관찰자별 타이머라 서로 싸우지 않는다(Task 12 에서 테스트로 고정).
 - **Task 10** (가족 데이터): 품질 리뷰로 ① **DB** `add_family_member` 가 코드 종류와 호출 의도를 대조한다 — 자녀 추가 폼(이름 있음)에 어른 코드가 들어오면 `expected_child_code`, 가족 연결(이름 없음)에 자녀 코드가 들어오면 `expected_adult_code`(둘 다 8자리라 잘못 붙여 넣기 쉬운데, 이전에는 자녀 추가 폼이 가족 전체를 조용히 합쳐 버렸다; pgTAP 110 +2), ② `useDeleteAccount` 는 익명화 뒤 로그아웃이 실패해도 오류가 아니라 `{ signedOut: false }` 로 끝내고 `['person']` 만 무효화한다(오류로 올리면 '다시 시도' 가 뜨고 두 번째 시도는 `not_registered`), Task 12 `ProfileSection` 이 그 경우 "앱을 닫고 다시 열어 주세요" 를 보여 준다, ③ `useUpdateProfile` 도 `invalidateFamily` 로 넓힘(이름이 식권 라벨·내역에도 나온다), ④ `useFamilyMembers` 정렬에 `id` 보조 키, ⑤ `nameSchema`·`phoneSchema` 를 `src/lib/fieldSchemas.ts` 로 모아 가입 스키마와 공유, ⑥ 무효화 테스트를 훅별로 분리하고 키 목록 전체를 단언(위 공통 규약), ⑦ `'static'` 쿼리는 `invalidateQueries` 로도 재조회되지 않는다는 사실로 주석 정정(그래도 명시적 키 목록은 유지). 아래 Task 10 스니펫은 리뷰 전 버전이다.
@@ -4207,6 +4208,7 @@ export async function devLogin(page: Page, email: string, password: string) {
   await page.getByRole('button', { name: '개발용 로그인' }).click()
 }
 
+/** 관리자 화면에서 로그아웃한다 — '내 식권' 탭은 관리자 탭에만 있다. 교인 화면에서는 쓰지 말 것. */
 export async function logout(page: Page) {
   await page.getByRole('link', { name: '내 식권' }).click()
   await page.getByRole('button', { name: '로그아웃' }).click()
@@ -4295,14 +4297,14 @@ import { adminCreateTodayMealAndIssueTwo, hold, signUpAsPrepaid, uniqueDigits } 
 // 두 폰(보호자·아이)을 번갈아 쓰고 폴링(3초·5초)을 기다린다
 test.describe.configure({ timeout: 180_000 })
 
-test('아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰에 가족 잔량 → 아이 폰에서 사용', async ({ browser }, testInfo) => {
+test('아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰에 가족 잔량 → 아이 폰에서 사용', async ({ browser }) => {
   const digits = uniqueDigits()
   const phone = `01${digits}`
   const mealTitle = `E2E 가족 ${digits}`
   const mealLabel = `${formatMealDate(todaySeoul())} · ${mealTitle}`
-  // 프로젝트의 use(Pixel 7·baseURL)를 그대로 물려받는 두 개의 독립 컨텍스트 = 두 대의 폰 (localStorage 분리)
-  const parentContext = await browser.newContext(testInfo.project.use)
-  const childContext = await browser.newContext(testInfo.project.use)
+  // 프로젝트의 use(Pixel 7·baseURL·trace)는 Playwright 가 모든 newContext 에 자동으로 넣어 준다 — 여기서 두 컨텍스트는 localStorage 가 분리된 두 대의 폰이라는 뜻만 남는다.
+  const parentContext = await browser.newContext()
+  const childContext = await browser.newContext()
   const parent = await parentContext.newPage()
   const child = await childContext.newPage()
   for (const page of [parent, child]) {
@@ -4310,7 +4312,6 @@ test('아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰
       throw e
     })
   }
-  let code = ''
 
   try {
     await test.step('관리자: 오늘 식사 + 김철수 2장 발급', async () => {
@@ -4320,16 +4321,17 @@ test('아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰
     await test.step('보호자: 선발급 이름·번호로 가입 → 2장', async () => {
       await signUpAsPrepaid(parent, { email: `e2e-parent-${digits}@test.local`, name: '김철수', phone })
       await expect(parent.getByText('2장 남음')).toBeVisible()
-      await expect(parent.getByText('내 식권')).toBeVisible()
+      await expect(parent.getByText('내 식권')).toBeVisible() // 1인 가족 머리말. 보호자가 관리자가 아니라서 '내 식권' 탭과 겹치지 않는다
     })
 
-    await test.step('아이: 아이 계정으로 시작 → 연결 코드', async () => {
+    const code = await test.step('아이: 아이 계정으로 시작 → 연결 코드', async () => {
       await child.goto('/')
       await child.getByRole('button', { name: /아이 계정으로 시작하기/ }).click()
       await expect(child.getByRole('heading', { name: '보호자에게 이 코드를 보여 주세요' })).toBeVisible()
       await expect(child.getByText(/남음 · 1회용/)).toBeVisible()
-      code = ((await child.getByTestId('pairing-code').textContent()) ?? '').replace(/\D/g, '')
-      expect(code).toMatch(/^\d{8}$/)
+      // 코드 노드에는 코드만 있다("1234 5678"). 남은 시간은 형제 노드라 매초 다시 그려져도 여기엔 안 섞인다.
+      await expect(child.getByTestId('pairing-code')).toHaveText(/^\d{4} \d{4}$/)
+      return ((await child.getByTestId('pairing-code').textContent()) ?? '').replace(/\D/g, '')
     })
 
     await test.step('보호자: 가족 탭 › 자녀 추가', async () => {
@@ -4349,7 +4351,7 @@ test('아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰
     })
 
     await test.step('아이 폰: 저절로 홈 → 우리 가족 식권 2장, 가족 탭 없음', async () => {
-      await expect(child.getByRole('heading', { name: '서연 님' })).toBeVisible({ timeout: 15_000 }) // 3초 폴링
+      await expect(child.getByRole('heading', { name: '서연 님', level: 1 })).toBeVisible({ timeout: 15_000 }) // 3초 폴링. 오늘 식사마다 h2 가 있어 level 로 좁힌다
       await expect(child.getByText('우리 가족 식권 · 2명')).toBeVisible()
       await expect(child.getByRole('heading', { name: mealTitle })).toBeVisible()
       await expect(child.getByText('2장 남음')).toBeVisible()
@@ -4361,7 +4363,7 @@ test('아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰
       await hold(child, '식권 1번 꾹 눌러 사용하기', 900)
       await expect(child.getByText(/사용 처리되었어요/)).toBeVisible()
       await expect(child.getByText('1장 남음')).toBeVisible()
-      await parent.getByRole('link', { name: '식권' }).click()
+      await parent.getByRole('link', { name: '식권', exact: true }).click() // '내 식권' 탭과 부분 일치하지 않게
       await expect(parent.getByText('1장 남음')).toBeVisible({ timeout: 15_000 }) // 5초 폴링
       const items = parent.getByRole('list', { name: '식권 목록' }).getByRole('listitem')
       await expect(items.first()).toContainText('사용 완료')
@@ -4372,7 +4374,7 @@ test('아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰
       await child.getByRole('button', { name: '로그아웃' }).click()
       await expect(child.getByText(/보호자가 새 코드로 다시 연결해야 해요/)).toBeVisible()
       await child.getByRole('button', { name: '취소' }).click()
-      await expect(child.getByRole('heading', { name: '서연 님' })).toBeVisible()
+      await expect(child.getByRole('heading', { name: '서연 님', level: 1 })).toBeVisible()
     })
   } finally {
     await parentContext.close()
@@ -4410,6 +4412,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ```markdown
 - 아이 계정(익명 로그인)은 로컬 `config.toml` 에서 이미 켜져 있다(`enable_anonymous_sign_ins = true`). E2E `family.spec.ts` 가 쓴다.
+- E2E 는 실행마다 오늘 식사·사람·가족·아이 계정을 남긴다(정리 작업은 연결된 자녀와 장부 있는 가족을 지우지 않는다). 홈이 식사 카드로 붐비면 `npm run db:reset`. 로컬 Auth 속도 제한(5분당 가입·로그인 30회, 시간당 익명 30회 — `config.toml` `[auth.rate_limit]`)에 걸리면 429 가 테스트 실패처럼 보이니 연속 실행은 5분에 세 번 안쪽으로.
 - pg_cron 정리 작업 3건(`cleanup_pairing_codes` 매시간, `cleanup_orphan_anonymous_users`·`cleanup_empty_families` 매일 03:15/03:30 KST)은 마이그레이션이 확장을 켜고 `cron.schedule` 로 등록한다. 로컬에서도 돈다. 상태는 `select jobname, schedule, active from cron.job;` 과 `select * from cron.job_run_details order by start_time desc limit 20;`. **Supabase 공식 문서의 `grant usage on schema cron to postgres; grant all privileges on all tables in schema cron to postgres;` 스니펫은 실행하지 말 것** — supautils 가 이미 권한을 주며, 그 grant 가 남아 있으면 이후 `create extension pg_cron` 이 2BP01 로 실패한다(마이그레이션이 그런 grant 를 먼저 거둔다).
 ```
 
@@ -4512,4 +4515,5 @@ PR 은 사용자가 merge 한다. merge 전에 사용자에게 **Supabase 콘솔
 - (Task 12 리뷰) 탈퇴가 커밋됐는데 로그아웃만 실패한 상태(`del.data.signedOut === false`)에서도 수정·탈퇴 버튼이 살아 있다 — 익명화된 행에 저장하면 PGRST116 → 일반 오류. `{!del.data && …}` 로 그 블록을 숨기고, 문구도 실제 동작대로 "잠시 뒤 가입 화면으로 돌아가요" 쪽으로 다듬는다.
 - (Task 12 리뷰) `FamilyPage` 의 두 초록 알림(`notice`·`joined`)은 마크업이 같다 — 하나의 알림 노드로 합친다(`joined ? '가족이 연결되었어요' : notice`). 합류 감지 중 `useFamilyMembers` 키가 바뀌어 목록이 잠시 스피너가 되는 것은 알림이 설명하므로 그대로 둔다.
 - (Task 11 리뷰) 패널·폼을 열고 닫을 때 포커스가 `<body>` 로 떨어진다(`FamilyPage` 의 `+ 자녀 추가`·가족 연결 패널·내 정보 수정 폼, `AdminMealsPage` 의 식사 추가 폼 — 같은 패턴). 열 때 첫 칸, 닫을 때 트리거로 되돌리는 공통 처리를 두 화면에 함께 넣는다.
+- (Task 13 리뷰) E2E 헬퍼 `adminCreateTodayMealAndIssueTwo` 는 로그인·식사 생성·5,000원×2 발급·로그아웃을 한데 묶었다 — 다른 단가·장수·연속 발급이 필요한 첫 4단계 테스트에서 `adminLogin`/`adminCreateTodayMeal`/`adminIssue({…})` 로 쪼갠다(미리 쪼개지 않는다). `tickets.spec` 의 관리자 두 step 이 하나로 합쳐져 실패 위치가 거칠어졌다 — 헬퍼 안에 `test.step` 을 두면 된다. `hold()` 는 `누르는 중…` 단언을 넣지 않는다(짧게 탭 테스트가 100ms 라 왕복이 뜻을 뒤집는다) — 긴 누름 전용 `holdToUse()` 가 필요하면 그때. `pageerror` 로 테스트가 끝나면 `finally` 의 컨텍스트 close 가 실패해 두 컨텍스트가 워커에 남는다 — 문제가 되면 커스텀 픽스처로 올린다.
 - (Task 11 리뷰) 이름 칸의 `maxLength={20}` 은 UTF-16 단위로 세어 iOS 의 조합형(NFD) 한글을 중간에서 자른다 — `nameSchema` 가 NFC 로 맞춘 뒤 세는 이유와 어긋난다. 가입·발급·자녀 추가 세 곳 모두 `maxLength` 를 빼거나 60 정도로 느슨하게 둔다.
