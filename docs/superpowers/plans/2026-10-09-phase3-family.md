@@ -4083,10 +4083,15 @@ export function ProfileSection({ me }: { me: Person }) {
     setErrors({})
     update.mutate(result.values, { onSuccess: () => setEditing(false) })
   }
-  function cancel() {
-    setEditing(false)
+  function startEditing() {
+    // 다른 기기에서 바꾼 뒤 열 수도 있다 — 열 때마다 현재 값으로 채운다 (초기 useState 값은 첫 렌더용)
     setName(me.name)
     setPhone(formatPhone(me.phone ?? ''))
+    setErrors({})
+    setEditing(true)
+  }
+  function cancel() {
+    setEditing(false)
     setErrors({})
     update.reset()
   }
@@ -4107,7 +4112,7 @@ export function ProfileSection({ me }: { me: Person }) {
       ) : (
         <div className="flex items-center justify-between text-sm">
           <span>{me.name} · {maskPhone(me.phone)}</span>
-          <button type="button" onClick={() => setEditing(true)} className="px-3 py-2 text-xs text-blue-600 underline">수정</button>
+          <button type="button" onClick={startEditing} className="px-3 py-2 text-xs text-blue-600 underline">수정</button>
         </div>
       )}
       <div className="flex flex-col items-end gap-1">
@@ -4153,7 +4158,7 @@ import { ProfileSection } from '../features/family/ProfileSection'
       <ProfileSection me={me} />
 ```
 
-(`joined` 가 true 인 동안은 패널을 그리지 않는다. 닫기를 누르면 `panel` 이 `none` 이 되어 `joined` 도 false 로 돌아간다 — `useEffect` 로 상태를 맞추지 않고 렌더에서 계산한다.)
+(`joined` 가 true 인 동안은 패널을 그리지 않는다. 닫기를 누르면 `panel` 이 `none` 이 되어 `joined` 도 false 로 돌아간다 — `useEffect` 로 상태를 맞추지 않고 렌더에서 계산한다. `resetActions()` 는 가족 나가기·자녀 삭제 두 뮤테이션만 다룬다 — 패널·내 정보 구역의 뮤테이션은 각자 안에서 관리한다.) Task 11 리뷰의 한 줄짜리 잔여 2건도 여기서 정리한다: `FamilyPage.test.tsx` 의 자녀 추가 성공 알림 단언을 `getByText('서연 님을 연결했어요')` 로, `FamilyPage.tsx` 의 `resetActions` 주석 "both 를 지운다" 를 "둘 다 지운다" 로.
 
 - [ ] **Step 4: 통과 확인**
 
@@ -4167,7 +4172,7 @@ Expected: 전부 통과.
 - [ ] **Step 6: 커밋**
 
 ```bash
-git add src/features/family/JoinFamilyPanel.tsx src/features/family/JoinFamilyPanel.test.tsx src/features/family/ProfileSection.tsx src/features/family/ProfileSection.test.tsx src/pages/FamilyPage.tsx src/pages/FamilyPage.test.tsx
+git add src/features/family/JoinFamilyPanel.tsx src/features/family/JoinFamilyPanel.test.tsx src/features/family/ProfileSection.tsx src/features/family/ProfileSection.test.tsx src/pages/FamilyPage.tsx src/pages/FamilyPage.test.tsx src/features/auth/usePerson.test.tsx
 git commit -m "feat: 가족 연결(코드 입력·내 코드), 합류 감지, 내 정보 수정·탈퇴
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
