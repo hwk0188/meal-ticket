@@ -1044,7 +1044,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Test: `supabase/tests/database/130_cleanup_jobs.sql`
 - Modify: `src/lib/database.types.ts` (재생성)
 
-- [ ] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/130_cleanup_jobs.sql`**
+- [x] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/130_cleanup_jobs.sql`**
 
 ```sql
 begin;
@@ -1116,12 +1116,12 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 130 에서 `has_extension('pg_cron')` 실패. 나머지 통과.
 
-- [ ] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261009000004_cleanup_jobs.sql`**
+- [x] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261009000004_cleanup_jobs.sql`**
 
 ```sql
 -- =========================================================
@@ -1202,17 +1202,17 @@ select cron.schedule('cleanup_orphan_anonymous_users', '15 18 * * *', $$select p
 select cron.schedule('cleanup_empty_families', '30 18 * * *', $$select public.cleanup_empty_families()$$);
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 010~130 전부 통과 (총 189 + 29 + 62 + 46 + 18 = **344**).
 
-- [ ] **Step 5: DB 타입 재생성 + 타입 검사**
+- [x] **Step 5: DB 타입 재생성 + 타입 검사**
 
 Run: `npm run db:types && npx tsc -b`
 Expected: `src/lib/database.types.ts` 에 `pairing_codes` 테이블과 함수 `add_family_member` · `create_pairing_code`(Returns `{ code: string; expires_at: string }[]`) · `relink_child` · `leave_family` · `remove_child` · `delete_my_account` · `lock_family_meal` · `cleanup_*` 가 생긴다. `tsc -b` 오류 없음(아직 호출하는 코드가 없다).
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add supabase/migrations/20261009000004_cleanup_jobs.sql supabase/tests/database/130_cleanup_jobs.sql src/lib/database.types.ts
