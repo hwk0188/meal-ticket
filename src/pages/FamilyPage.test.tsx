@@ -7,14 +7,21 @@ import { PAIR_POLL_MS } from '../features/pairing/usePairingCode'
 import { FamilyPage } from './FamilyPage'
 
 type Query = { status: 'pending' | 'error' | 'success'; data?: FamilyMember[]; refetch: () => void }
-type Mutation = { isPending: boolean; isError: boolean; error?: Error; mutate: (vars: unknown, opts?: { onSuccess?: () => void }) => void }
-const { useCurrentPerson, useAuth, usePerson, useFamilyMembers, useLeaveFamily, useRemoveChild } = vi.hoisted(() => ({
+type Mutation = {
+  isPending: boolean
+  isError: boolean
+  error?: Error
+  mutate: (vars: unknown, opts?: { onSuccess?: () => void }) => void
+  reset: () => void
+}
+const { useCurrentPerson, useAuth, usePerson, useFamilyMembers, useLeaveFamily, useRemoveChild, addChildProps } = vi.hoisted(() => ({
   useCurrentPerson: vi.fn<() => Person>(),
   useAuth: vi.fn<() => { status: 'ready'; session: { user: { id: string } } }>(),
   usePerson: vi.fn<(userId: string | undefined, options?: { refetchInterval?: number | false }) => unknown>(),
   useFamilyMembers: vi.fn<() => Query>(),
   useLeaveFamily: vi.fn<() => Mutation>(),
   useRemoveChild: vi.fn<() => Mutation>(),
+  addChildProps: vi.fn<(p: { existingChildren: readonly FamilyMember[] }) => void>(),
 }))
 vi.mock('../features/auth/usePerson', () => ({ useCurrentPerson, usePerson }))
 vi.mock('../features/auth/AuthProvider', () => ({ useAuth }))
@@ -24,13 +31,16 @@ vi.mock('../features/family/useFamilyMembers', async (importOriginal) => ({
 }))
 vi.mock('../features/family/useFamilyActions', () => ({ useLeaveFamily, useRemoveChild }))
 vi.mock('../features/family/AddChildForm', () => ({
-  AddChildForm: ({ onDone, onCancel }: { onDone: (m: string) => void; onCancel: () => void }) => (
-    <div>
-      <p>자녀 추가 폼</p>
-      <button type="button" onClick={() => onDone('서연 님을 연결했어요')}>폼성공</button>
-      <button type="button" onClick={onCancel}>폼취소</button>
-    </div>
-  ),
+  AddChildForm: (props: { existingChildren: readonly FamilyMember[]; onDone: (m: string) => void; onCancel: () => void }) => {
+    addChildProps(props)
+    return (
+      <div>
+        <p>자녀 추가 폼</p>
+        <button type="button" onClick={() => props.onDone('서연 님을 연결했어요')}>폼성공</button>
+        <button type="button" onClick={props.onCancel}>폼취소</button>
+      </div>
+    )
+  },
 }))
 
 const me = {
@@ -43,7 +53,7 @@ const rows: FamilyMember[] = [
   { id: 'p1', name: '김철수', phone: '01012345678', is_minor: false, guardian_id: null, auth_user_id: 'u1', consented_at: '2026-10-07T00:00:00Z', guardian_consented_at: null, created_at: '2026-10-07T00:00:00Z' },
   { id: 'p2', name: '서연', phone: null, is_minor: true, guardian_id: 'p1', auth_user_id: 'k1', consented_at: null, guardian_consented_at: '2026-10-05T00:00:00Z', created_at: '2026-10-08T00:00:00Z' },
 ]
-const idle = (): Mutation => ({ isPending: false, isError: false, mutate: vi.fn<Mutation['mutate']>() })
+const idle = (): Mutation => ({ isPending: false, isError: false, mutate: vi.fn<Mutation['mutate']>(), reset: vi.fn<() => void>() })
 
 function renderPage() {
   return render(<MemoryRouter><FamilyPage /></MemoryRouter>)
@@ -86,10 +96,26 @@ describe('FamilyPage', () => {
     remove.mutate = vi.fn<Mutation['mutate']>((_vars, opts) => opts?.onSuccess?.())
     useRemoveChild.mockReturnValue(remove)
     renderPage()
-    await userEvent.click(screen.getByRole('button', { name: '자녀 삭제' }))
+    await userEvent.click(screen.getByRole('button', { name: /자녀 삭제$/ }))
     await userEvent.click(screen.getByRole('button', { name: '삭제' }))
     expect(remove.mutate).toHaveBeenCalledWith('p2', expect.anything())
-    expect(screen.getByRole('status')).toHaveTextContent('서연 을(를) 삭제했어요')
+    expect(screen.getByText('서연 님을 삭제했어요')).toBeInTheDocument()
+  })
+
+  it('가족 나가기 확인 → leave_family 뮤테이션, 성공하면 "새 가족이 되었어요"', async () => {
+    const spouse: FamilyMember = {
+      id: 'p3', name: '이영희', phone: '01098765432', is_minor: false, guardian_id: null,
+      auth_user_id: 'u3', consented_at: '2026-10-07T00:00:00Z', guardian_consented_at: null, created_at: '2026-10-07T00:00:00Z',
+    }
+    useFamilyMembers.mockReturnValue({ status: 'success', data: [...rows, spouse], refetch: () => {} })
+    const leave = idle()
+    leave.mutate = vi.fn<Mutation['mutate']>((_vars, opts) => opts?.onSuccess?.())
+    useLeaveFamily.mockReturnValue(leave)
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: '가족 나가기' }))
+    await userEvent.click(screen.getByRole('button', { name: '나가기' }))
+    expect(leave.mutate).toHaveBeenCalledWith(undefined, expect.anything())
+    expect(screen.getByText('새 가족이 되었어요')).toBeInTheDocument()
   })
 
   it('뮤테이션 오류 문구', () => {
@@ -109,7 +135,35 @@ describe('FamilyPage', () => {
     expect(refetch).toHaveBeenCalled()
   })
 
-  it('PAIR_POLL_MS 는 연결 코드 화면과 같은 값', () => {
-    expect(PAIR_POLL_MS).toBe(3_000)
+  it('"+ 자녀 추가" 를 열면 이전 동작의 오류 상태를 지운다', async () => {
+    const leave = idle()
+    const remove = idle()
+    useLeaveFamily.mockReturnValue(leave)
+    useRemoveChild.mockReturnValue(remove)
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: '+ 자녀 추가' }))
+    expect(leave.reset).toHaveBeenCalled()
+    expect(remove.reset).toHaveBeenCalled()
+  })
+
+  it('AddChildForm 에 내 자녀만 existingChildren 으로 넘긴다', async () => {
+    const othersChild: FamilyMember = {
+      id: 'p4', name: '민준', phone: null, is_minor: true, guardian_id: 'p3',
+      auth_user_id: 'k2', consented_at: null, guardian_consented_at: '2026-10-05T00:00:00Z', created_at: '2026-10-08T00:00:00Z',
+    }
+    useFamilyMembers.mockReturnValue({ status: 'success', data: [...rows, othersChild], refetch: () => {} })
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: '+ 자녀 추가' }))
+    expect(addChildProps).toHaveBeenCalled()
+    const lastCall = addChildProps.mock.calls.at(-1)
+    expect(lastCall?.[0].existingChildren).toEqual([rows[1]])
+  })
+
+  it('"+ 가족 연결" 패널이 열리면 내 사람 행을 PAIR_POLL_MS 로 폴링하고, 닫으면 끈다', async () => {
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /가족 연결/ }))
+    expect(usePerson).toHaveBeenLastCalledWith('u1', { refetchInterval: PAIR_POLL_MS })
+    await userEvent.click(screen.getByRole('button', { name: '닫기' }))
+    expect(usePerson).toHaveBeenLastCalledWith('u1', { refetchInterval: false })
   })
 })

@@ -41,8 +41,9 @@ export function MemberList({ members, me, pending, onLeave, onRemoveChild }: Pro
           {m.is_minor && m.guardian_id === me.id && (
             <ConfirmButton
               label={pending ? '처리 중…' : '자녀 삭제'}
-              message={`${m.name} 의 이름을 지우고 연결을 끊어요. 되돌릴 수 없어요.`}
+              message={`${m.name} 님의 이름을 지우고 연결을 끊어요. 되돌릴 수 없어요.`}
               confirmLabel="삭제"
+              context={m.name}
               onConfirm={() => onRemoveChild(m)}
               disabled={pending}
             />
@@ -60,5 +61,5 @@ function detailOf(m: FamilyMember): string {
 }
 
 function Tag({ children }: { children: ReactNode }) {
-  return <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-600">{children}</span>
+  return <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-bold text-gray-600">{children}</span>
 }

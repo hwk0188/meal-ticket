@@ -8,6 +8,7 @@ type Mutation = {
   isError: boolean
   error?: Error
   mutate: (vars: unknown, opts?: { onSuccess?: (row: { name: string }) => void }) => void
+  reset: () => void
 }
 const { useAddChild, useRelinkChild } = vi.hoisted(() => ({
   useAddChild: vi.fn<() => Mutation>(),
@@ -15,7 +16,7 @@ const { useAddChild, useRelinkChild } = vi.hoisted(() => ({
 }))
 vi.mock('./useFamilyActions', () => ({ useAddChild, useRelinkChild }))
 
-const idle = (): Mutation => ({ isPending: false, isError: false, mutate: vi.fn<Mutation['mutate']>() })
+const idle = (): Mutation => ({ isPending: false, isError: false, mutate: vi.fn<Mutation['mutate']>(), reset: vi.fn<() => void>() })
 const existing: FamilyMember[] = [{
   id: 'p2', name: '서연', phone: null, is_minor: true, guardian_id: 'p1', auth_user_id: 'k1',
   consented_at: null, guardian_consented_at: '2026-10-05T00:00:00Z', created_at: '2026-10-05T00:00:00Z',
@@ -24,8 +25,8 @@ const existing: FamilyMember[] = [{
 function renderForm(existingChildren: FamilyMember[] = []) {
   const onDone = vi.fn<(m: string) => void>()
   const onCancel = vi.fn<() => void>()
-  render(<AddChildForm existingChildren={existingChildren} onDone={onDone} onCancel={onCancel} />)
-  return { onDone, onCancel }
+  const result = render(<AddChildForm existingChildren={existingChildren} onDone={onDone} onCancel={onCancel} />)
+  return { onDone, onCancel, rerender: result.rerender }
 }
 
 describe('AddChildForm · 새 자녀', () => {
@@ -33,8 +34,11 @@ describe('AddChildForm · 새 자녀', () => {
     useAddChild.mockReturnValue(idle())
     useRelinkChild.mockReturnValue(idle())
     renderForm()
-    expect(screen.getByRole('button', { name: '연결하기' })).toBeDisabled()
+    const button = screen.getByRole('button', { name: '연결하기' })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('aria-describedby', 'add-child-submit-hint')
     expect(screen.getByText(/보호자로서 동의합니다/)).toBeInTheDocument()
+    expect(screen.getByText('동의에 체크하면 연결할 수 있어요')).toBeInTheDocument()
   })
 
   it('이름·코드·동의로 add 를 부르고, 성공하면 onDone', async () => {
@@ -101,5 +105,29 @@ describe('AddChildForm · 기존 자녀 재연결', () => {
     useRelinkChild.mockReturnValue(idle())
     renderForm([])
     expect(screen.queryByLabelText('자녀')).not.toBeInTheDocument()
+    expect(screen.queryByText(/폰을 바꾼 자녀는/)).not.toBeInTheDocument()
+  })
+
+  it('자녀를 고르면 두 뮤테이션의 오류 상태를 지운다', async () => {
+    const add = idle()
+    const relink = idle()
+    useAddChild.mockReturnValue(add)
+    useRelinkChild.mockReturnValue(relink)
+    renderForm(existing)
+    await userEvent.selectOptions(screen.getByLabelText('자녀'), 'p2')
+    expect(add.reset).toHaveBeenCalled()
+    expect(relink.reset).toHaveBeenCalled()
+  })
+
+  it('고른 자녀가 목록에서 사라지면 새 자녀 모드로 돌아간다', async () => {
+    useAddChild.mockReturnValue(idle())
+    useRelinkChild.mockReturnValue(idle())
+    const { rerender } = renderForm(existing)
+    await userEvent.selectOptions(screen.getByLabelText('자녀'), 'p2')
+    expect(screen.getByRole('button', { name: '다시 연결하기' })).toBeInTheDocument()
+
+    rerender(<AddChildForm existingChildren={[]} onDone={vi.fn<(m: string) => void>()} onCancel={vi.fn<() => void>()} />)
+    expect(screen.getByLabelText('자녀 이름')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '연결하기' })).toBeInTheDocument()
   })
 })

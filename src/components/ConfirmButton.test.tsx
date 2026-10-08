@@ -88,6 +88,15 @@ describe('ConfirmButton', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '탈퇴' }))
   })
 
+  it('context 를 주면 접근성 이름 앞에 붙지만 눈에 보이는 글자는 그대로다', async () => {
+    const onConfirm = vi.fn<() => void>()
+    render(<ConfirmButton label="자녀 삭제" message="되돌릴 수 없어요" confirmLabel="삭제" context="서연" onConfirm={onConfirm} />)
+    const trigger = screen.getByRole('button', { name: '서연 자녀 삭제' })
+    expect(trigger).toHaveTextContent('자녀 삭제')
+    await userEvent.click(trigger)
+    expect(screen.getByRole('group', { name: '서연 자녀 삭제' })).toBeInTheDocument()
+  })
+
   it('확인이 트리거를 비활성화하는 처리라면, 처리가 끝나 다시 활성화될 때 포커스를 되돌린다', async () => {
     render(<DisablingDuringConfirm />)
     await userEvent.click(screen.getByRole('button', { name: '탈퇴' }))

@@ -50,8 +50,8 @@ describe('MemberList', () => {
 
   it('내 자녀 행에만 "자녀 삭제" — 확인을 거쳐 onRemoveChild(자녀)', async () => {
     const { onRemoveChild } = renderList([me, myChild, spouseChild])
-    expect(screen.getAllByRole('button', { name: '자녀 삭제' })).toHaveLength(1)
-    await userEvent.click(screen.getByRole('button', { name: '자녀 삭제' }))
+    expect(screen.getAllByRole('button', { name: /자녀 삭제$/ })).toHaveLength(1)
+    await userEvent.click(screen.getByRole('button', { name: /자녀 삭제$/ }))
     await userEvent.click(screen.getByRole('button', { name: '삭제' }))
     expect(onRemoveChild).toHaveBeenCalledWith(myChild)
   })
@@ -59,9 +59,14 @@ describe('MemberList', () => {
   it('처리 중에는 버튼을 잠그고 라벨을 "처리 중…" 으로 바꾼다', () => {
     renderList([me, spouse, myChild], { pending: true })
     // 가족 나가기·자녀 삭제 두 버튼 모두 (ConfirmButton 계약 — Task 6 리뷰)
-    const busy = screen.getAllByRole('button', { name: '처리 중…' })
+    const busy = screen.getAllByRole('button', { name: /처리 중…$/ })
     expect(busy).toHaveLength(2)
     for (const b of busy) expect(b).toBeDisabled()
     expect(screen.queryByRole('button', { name: '가족 나가기' })).not.toBeInTheDocument()
+  })
+
+  it('자녀 삭제 버튼의 접근성 이름 앞에 자녀 이름이 붙는다', () => {
+    renderList([me, myChild, spouseChild])
+    expect(screen.getByRole('button', { name: '서연 자녀 삭제' })).toBeInTheDocument()
   })
 })

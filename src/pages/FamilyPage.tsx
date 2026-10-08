@@ -26,11 +26,18 @@ export function FamilyPage() {
   const actionError = leave.isError ? toUserMessage(leave.error) : remove.isError ? toUserMessage(remove.error) : null
   const myChildren = (members.data ?? []).filter((m) => m.is_minor && m.guardian_id === me.id)
 
+  // 한쪽 동작(가족 나가기·자녀 삭제)의 오류가 다른 동작의 성공 뒤에도 화면에 남지 않도록 both 를 지운다.
+  function resetActions() {
+    leave.reset()
+    remove.reset()
+  }
   function done(message: string) {
+    resetActions()
     setNotice(message)
     setPanel('none')
   }
-  function open(next: Panel) {
+  function openPanel(next: Panel) {
+    resetActions()
     setNotice(null)
     setPanel(next)
   }
@@ -51,20 +58,26 @@ export function FamilyPage() {
             members={members.data}
             me={me}
             pending={leave.isPending || remove.isPending}
-            onLeave={() => leave.mutate(undefined, { onSuccess: () => done('새 가족이 되었어요') })}
-            onRemoveChild={(c) => remove.mutate(c.id, { onSuccess: () => done(`${c.name} 을(를) 삭제했어요`) })}
+            onLeave={() => {
+              resetActions()
+              leave.mutate(undefined, { onSuccess: () => done('새 가족이 되었어요') })
+            }}
+            onRemoveChild={(c) => {
+              resetActions()
+              remove.mutate(c.id, { onSuccess: () => done(`${c.name} 님을 삭제했어요`) })
+            }}
           />
           {actionError && <p role="alert" className="text-sm text-red-600">{actionError}</p>}
           {panel === 'none' && (
             <div className="flex flex-col gap-2">
-              <Button variant="ghost" onClick={() => open('child')}>+ 자녀 추가</Button>
-              <Button variant="ghost" onClick={() => open('join')}>+ 가족 연결 (배우자 등)</Button>
+              <Button variant="ghost" onClick={() => openPanel('child')}>+ 자녀 추가</Button>
+              <Button variant="ghost" onClick={() => openPanel('join')}>+ 가족 연결 (배우자 등)</Button>
             </div>
           )}
           {panel === 'child' && <AddChildForm existingChildren={myChildren} onDone={done} onCancel={() => setPanel('none')} />}
           {panel === 'join' && (
             <section className="rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-500">
-              가족 연결은 다음 작업에서 붙는다
+              가족 연결은 곧 열려요
               <Button variant="ghost" className="mt-2" onClick={() => setPanel('none')}>닫기</Button>
             </section>
           )}

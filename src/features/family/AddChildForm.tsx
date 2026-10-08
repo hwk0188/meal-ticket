@@ -11,7 +11,7 @@ type Props = {
   onDone: (message: string) => void
   onCancel: () => void
 }
-type FormErrors = Partial<Record<'name' | 'code' | 'consent' | 'childId', string>>
+type FormErrors = Partial<Record<'name' | 'code' | 'consent', string>>
 
 const GUARDIAN_CONSENT_TEXT = '만 14세 미만 자녀의 이름을 식권 사용 확인 목적으로 처리하는 데 보호자로서 동의합니다. 자녀 삭제 시 즉시 파기됩니다.'
 
@@ -24,7 +24,7 @@ export function AddChildForm({ existingChildren: existing, onDone, onCancel }: P
   const [code, setCode] = useState('')
   const [consent, setConsent] = useState(false)
   const [errors, setErrors] = useState<FormErrors>({})
-  const relinking = childId !== ''
+  const relinking = existing.some((c) => c.id === childId)
   const pending = addChild.isPending || relink.isPending
   const serverError = addChild.isError ? toUserMessage(addChild.error) : relink.isError ? toUserMessage(relink.error) : null
 
@@ -54,6 +54,8 @@ export function AddChildForm({ existingChildren: existing, onDone, onCancel }: P
             onChange={(e) => {
               setChildId(e.target.value)
               setErrors({})
+              addChild.reset()
+              relink.reset()
             }}
             className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base"
           >
@@ -84,17 +86,28 @@ export function AddChildForm({ existingChildren: existing, onDone, onCancel }: P
             <strong>[필수] 법정대리인 동의</strong>
           </Checkbox>
           <p className="mt-1 pl-6 text-gray-600">{GUARDIAN_CONSENT_TEXT}</p>
+          {/* 지금은 화면에서 닿지 않는다 (동의 전에는 제출 버튼이 잠겨 consent 오류가 생기지 않는다).
+              규칙은 스키마가 갖고 있으니, 잠금 방식이 바뀌어도 문구가 비지 않도록 남겨 둔다. */}
           {errors.consent && <p role="alert" className="mt-1 pl-6 text-red-600">{errors.consent}</p>}
         </section>
       )}
       {serverError && <p role="alert" className="text-sm text-red-600">{serverError}</p>}
       <div className="flex gap-2">
         <Button variant="ghost" onClick={onCancel} disabled={pending}>취소</Button>
-        <Button type="submit" disabled={pending || (!relinking && !consent)}>
+        <Button
+          type="submit"
+          disabled={pending || (!relinking && !consent)}
+          aria-describedby={!relinking && !consent ? 'add-child-submit-hint' : undefined}
+        >
           {pending ? '연결 중…' : relinking ? '다시 연결하기' : '연결하기'}
         </Button>
       </div>
-      <p className="text-center text-xs text-gray-500">폰을 바꾼 자녀는 위에서 이름을 고르면 다시 연결돼요</p>
+      {!relinking && !consent && (
+        <p id="add-child-submit-hint" className="text-center text-xs text-gray-600">동의에 체크하면 연결할 수 있어요</p>
+      )}
+      {existing.length > 0 && (
+        <p className="text-center text-xs text-gray-500">폰을 바꾼 자녀는 위에서 이름을 고르면 다시 연결돼요</p>
+      )}
     </form>
   )
 }
