@@ -30,5 +30,7 @@ export function usePerson(userId: string | undefined) {
 
 /** RequirePerson 레이아웃 아래 화면에서 현재 사람을 받는다 (Outlet context). */
 export function useCurrentPerson(): Person {
-  return useOutletContext<Person>()
+  const person = useOutletContext<Person | null>()
+  if (!person) throw new Error('useCurrentPerson은 RequirePerson 아래에서만 쓸 수 있습니다')
+  return person
 }

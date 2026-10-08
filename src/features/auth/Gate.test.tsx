@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { Gate, RequireAdmin, RequirePerson, RequireSession } from './Gate'
+import { useCurrentPerson } from './usePerson'
 
 // 훅을 통째로 가짜로 바꾸므로 실제 타입(Session, UseQueryResult) 전체를 만들 필요가 없다.
 // Gate 가 읽는 필드만 담은 느슨한 타입으로 둔다.
@@ -10,15 +11,22 @@ type FakePerson = {
   data?: { id: string; name: string; role?: string; family_id?: string } | null
 }
 
-const { useAuth, usePerson, useCurrentPerson } = vi.hoisted(() => ({
+const { useAuth, usePerson } = vi.hoisted(() => ({
   useAuth: vi.fn<() => FakeAuth>(),
   usePerson: vi.fn<() => FakePerson>(),
-  useCurrentPerson: vi.fn<() => { role: string }>(),
 }))
 vi.mock('./AuthProvider', () => ({ useAuth }))
-vi.mock('./usePerson', () => ({ usePerson, useCurrentPerson }))
+// useCurrentPerson 은 실제 구현을 그대로 쓴다 (Outlet context 를 실제로 주고받는지 확인하기 위해).
+vi.mock('./usePerson', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./usePerson')>()),
+  usePerson,
+}))
 vi.mock('../../pages/StartPage', () => ({ StartPage: () => <p>start</p> }))
 vi.mock('../../pages/HomePage', () => ({ HomePage: () => <p>home</p> }))
+
+function ShowName() {
+  return <p>{useCurrentPerson().name}</p>
+}
 
 function renderAt(path: string) {
   return render(
@@ -28,6 +36,7 @@ function renderAt(path: string) {
         <Route path="/onboarding" element={<RequireSession><p>onboarding</p></RequireSession>} />
         <Route element={<RequirePerson />}>
           <Route path="/history" element={<p>history</p>} />
+          <Route path="/show-name" element={<ShowName />} />
           <Route path="/admin/meals" element={<RequireAdmin><p>admin</p></RequireAdmin>} />
         </Route>
       </Routes>
@@ -141,13 +150,19 @@ describe('RequirePerson', () => {
     expect(screen.getByText('history')).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: '주요 메뉴' })).toBeInTheDocument()
   })
+
+  it('자식 화면은 useCurrentPerson() 으로 Outlet context 에 담긴 사람을 받는다', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'success', data: { id: 'p1', name: '김철수', role: 'member', family_id: 'f1' } })
+    renderAt('/show-name')
+    expect(screen.getByText('김철수')).toBeInTheDocument()
+  })
 })
 
 describe('RequireAdmin', () => {
   it('교인은 홈으로 돌려보낸다', () => {
     useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
     usePerson.mockReturnValue({ status: 'success', data: { id: 'p1', name: '김철수', role: 'member', family_id: 'f1' } })
-    useCurrentPerson.mockReturnValue({ role: 'member' })
     renderAt('/admin/meals')
     expect(screen.getByText('home')).toBeInTheDocument()
   })
@@ -155,7 +170,6 @@ describe('RequireAdmin', () => {
   it('관리자는 통과', () => {
     useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u9' } } })
     usePerson.mockReturnValue({ status: 'success', data: { id: 'p9', name: '권사', role: 'admin', family_id: 'f9' } })
-    useCurrentPerson.mockReturnValue({ role: 'admin' })
     renderAt('/admin/meals')
     expect(screen.getByText('admin')).toBeInTheDocument()
   })

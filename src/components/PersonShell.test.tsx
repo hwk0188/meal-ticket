@@ -35,4 +35,9 @@ describe('PersonShell', () => {
     renderShell(admin, '/admin/issue')
     expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(['🍚식사', '🎟️발급', '🎫내 식권'])
   })
+
+  it('교인이 관리자 주소로 바로 들어와도 교인 탭 그대로 (RequireAdmin 이 곧 돌려보낸다)', () => {
+    renderShell(member, '/admin/meals')
+    expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(['🎫식권', '🧾내역'])
+  })
 })

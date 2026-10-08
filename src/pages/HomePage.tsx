@@ -26,7 +26,7 @@ export function HomePage({ person }: { person: Person }) {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col gap-4 p-4">
+    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4 p-4">
       <header className="flex items-baseline justify-between">
         <h1 className="text-lg font-extrabold">{person.name} 님</h1>
         <span className="text-xs text-gray-600">{maskPhone(person.phone)}</span>
