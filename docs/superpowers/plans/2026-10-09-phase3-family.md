@@ -3191,10 +3191,13 @@ describe('MemberList', () => {
     expect(onRemoveChild).toHaveBeenCalledWith(myChild)
   })
 
-  it('처리 중에는 버튼을 잠근다', () => {
+  it('처리 중에는 버튼을 잠그고 라벨을 "처리 중…" 으로 바꾼다', () => {
     renderList([me, spouse, myChild], { pending: true })
-    expect(screen.getByRole('button', { name: '가족 나가기' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '자녀 삭제' })).toBeDisabled()
+    // 가족 나가기·자녀 삭제 두 버튼 모두 (ConfirmButton 계약 — Task 6 리뷰)
+    const busy = screen.getAllByRole('button', { name: '처리 중…' })
+    expect(busy).toHaveLength(2)
+    for (const b of busy) expect(b).toBeDisabled()
+    expect(screen.queryByRole('button', { name: '가족 나가기' })).not.toBeInTheDocument()
   })
 })
 ```
