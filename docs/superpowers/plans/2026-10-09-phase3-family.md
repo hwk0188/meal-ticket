@@ -4503,12 +4503,13 @@ PR 은 사용자가 merge 한다. merge 전에 사용자에게 **Supabase 콘솔
 - **`use_ticket` 을 `public.lock_family_meal(uuid, uuid)` 로 바꾼다** — 헬퍼는 이번 단계가 만들었고 `100_pairing_codes.sql` 이 키가 같음을 `pg_locks` 로 고정한다. 4단계 함수(`cancel_issuance` 등)도 같은 헬퍼로 잠근다.
 - 사람 탭의 "가족 수" 태그와 발급 검색 결과의 가족 수 — 이제 의미가 생겼다(`people` 을 `family_id` 로 묶어 세면 된다).
 - `admin_reset_person` 이 생기면 README 의 "관리자 대신 처리 SQL" 임시 절차를 지운다.
-- **`merge_people(from, into)` 는 자녀의 `guardian_id` 를 바꾸므로 대상 보호자(`into`)의 사람 행을 `for update` 로 잠가야 한다** (Task 3 리뷰). `delete_my_account` 의 `has_children` 검사는 "내 행을 잠그지 않고는 내 밑에 자녀를 만들 수 없다" 는 불변식에 기대고 있어, 이를 어기면 익명화된 보호자 밑에 살아 있는 자녀가 남을 수 있다. 같은 이유로 4단계 함수도 "어른(보호자) 행 → 자녀 행" 잠금 순서를 지킨다.
+- **`merge_people(from, into)` 는 자녀의 `guardian_id` 를 바꾸므로 대상 보호자(`into`)의 사람 행을 `for update` 로 잠가야 한다** (Task 3 리뷰). (Task 12 리뷰) 내 `family_id` 를 바꾸는 새 동작(`merge_people`·`admin_reset_person` 등)은 화면에서 `onLeave` 처럼 **가족 연결 패널을 먼저 닫고 `familyAtOpen` 을 비워야** 한다 — 안 그러면 `joined` 가 "가족이 연결되었어요" 를 잘못 띄운다. `delete_my_account` 의 `has_children` 검사는 "내 행을 잠그지 않고는 내 밑에 자녀를 만들 수 없다" 는 불변식에 기대고 있어, 이를 어기면 익명화된 보호자 밑에 살아 있는 자녀가 남을 수 있다. 같은 이유로 4단계 함수도 "어른(보호자) 행 → 자녀 행" 잠금 순서를 지킨다.
 - 같은 가족에서 두 어른이 각자 다른 가족으로 합류하면, 나중에 커밋된 쪽이 옛 가족의 장부 풀을 통째로 가져간다(순서 의존 — 손상은 없고 설계상 그렇다). 설계 §15 에 한 줄로 적는다(Task 14).
 - 연결 코드 무차별 대입 완화: 코드는 이미 8자리다(2단계 리뷰 반영). 더 필요해지면 `add_family_member` 가 실패를 예외 대신 "실패 행 반환" 으로 바꿔 실패 횟수를 기록한다.
 - 탈퇴한 카카오 계정의 `auth.users` 정리(사람 행이 없는 비익명 계정 N일 뒤 삭제) — 5단계 운영 문서에서 결정. `cleanup_orphan_anonymous_users` 를 넓히면 된다.
 - PWA(5단계) 때 `#/pair` 와 시작 화면에 `pt-[env(safe-area-inset-top)]`.
 - (Task 11 리뷰) `ConfirmButton` 트리거(`py-2 text-xs` ≈ 32px)·확인 쌍(≈ 40px)이 44px 권장 터치 영역보다 작다 — 가족 탭에서 처음으로 두 개가 인접 행에 놓였다. 홈 바닥글·내 정보에도 쓰이므로 한 번에 키운다. (Task 12 리뷰) "가족이 연결되었어요" 알림 안의 닫기(`ml-2 underline`, ≈ 20px)와 내 정보의 수정 버튼도 같은 묶음. 알림 안 닫기는 `aria-label="연결 안내 닫기"` 가 낫다.
+- (Task 12 리뷰) 탈퇴가 커밋됐는데 로그아웃만 실패한 상태(`del.data.signedOut === false`)에서도 수정·탈퇴 버튼이 살아 있다 — 익명화된 행에 저장하면 PGRST116 → 일반 오류. `{!del.data && …}` 로 그 블록을 숨기고, 문구도 실제 동작대로 "잠시 뒤 가입 화면으로 돌아가요" 쪽으로 다듬는다.
 - (Task 12 리뷰) `FamilyPage` 의 두 초록 알림(`notice`·`joined`)은 마크업이 같다 — 하나의 알림 노드로 합친다(`joined ? '가족이 연결되었어요' : notice`). 합류 감지 중 `useFamilyMembers` 키가 바뀌어 목록이 잠시 스피너가 되는 것은 알림이 설명하므로 그대로 둔다.
 - (Task 11 리뷰) 패널·폼을 열고 닫을 때 포커스가 `<body>` 로 떨어진다(`FamilyPage` 의 `+ 자녀 추가`·가족 연결 패널·내 정보 수정 폼, `AdminMealsPage` 의 식사 추가 폼 — 같은 패턴). 열 때 첫 칸, 닫을 때 트리거로 되돌리는 공통 처리를 두 화면에 함께 넣는다.
 - (Task 11 리뷰) 이름 칸의 `maxLength={20}` 은 UTF-16 단위로 세어 iOS 의 조합형(NFD) 한글을 중간에서 자른다 — `nameSchema` 가 NFC 로 맞춘 뒤 세는 이유와 어긋난다. 가입·발급·자녀 추가 세 곳 모두 `maxLength` 를 빼거나 60 정도로 느슨하게 둔다.
