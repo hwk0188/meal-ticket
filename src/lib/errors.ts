@@ -27,6 +27,8 @@ const MESSAGES = {
   invalid_kind: '잘못된 요청이에요.',
   not_adult: '어른 계정만 할 수 있어요.',
   invalid_code: '코드가 맞지 않거나 만료되었어요. 새 코드를 받아 다시 입력해 주세요.',
+  expected_child_code: '어른 코드예요. 가족 연결에서 입력해 주세요.',
+  expected_adult_code: '아이 폰의 코드예요. 자녀 추가에서 입력해 주세요.',
   child_not_found: '자녀를 찾을 수 없어요. 목록을 새로고침해 주세요.',
   has_children: '연결된 자녀가 있어요. 자녀를 먼저 삭제해 주세요.',
   code_generation_failed: '코드를 만들지 못했어요. 다시 시도해 주세요.',

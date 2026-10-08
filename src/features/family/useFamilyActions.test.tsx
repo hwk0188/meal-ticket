@@ -24,12 +24,13 @@ function makeWrapper() {
 const child = { id: 'p2', name: '서연', family_id: 'f1' }
 const FAMILY_KEYS = [['family-members'], ['tickets'], ['ledger'], ['person']]
 
-function expectFamilyInvalidated(invalidate: ReturnType<typeof vi.spyOn>) {
-  for (const queryKey of FAMILY_KEYS) expect(invalidate).toHaveBeenCalledWith({ queryKey })
+// 호출 순서까지 정확한 키 목록과 같은지 본다 — 이것으로 ['pairing-code', …] 가 끼어들지 않는다는 것도 함께 지킨다.
+function expectExactInvalidation(invalidate: ReturnType<typeof makeWrapper>['invalidate']) {
+  expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual(FAMILY_KEYS)
 }
 
 describe('useAddChild', () => {
-  it('add_family_member 를 코드·이름으로 부르고 가족 관련 캐시를 전부 무효화한다', async () => {
+  it('add_family_member 를 코드·이름으로 부르고 가족 관련 캐시를 정확히 무효화한다', async () => {
     rpc.mockResolvedValue({ data: child, error: null })
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useAddChild(), { wrapper })
@@ -37,7 +38,7 @@ describe('useAddChild', () => {
       await result.current.mutateAsync({ name: '서연', code: '48291357' })
     })
     expect(rpc).toHaveBeenCalledWith('add_family_member', { p_code: '48291357', p_child_name: '서연', p_consent_version: church.consentVersion })
-    expectFamilyInvalidated(invalidate)
+    expectExactInvalidation(invalidate)
   })
 
   it('서버 코드는 Error 로 (문구는 화면이 toUserMessage 로)', async () => {
@@ -51,34 +52,48 @@ describe('useAddChild', () => {
 })
 
 describe('useRelinkChild · useJoinFamily · useLeaveFamily · useRemoveChild', () => {
-  it('각각 알맞은 RPC 를 부른다', async () => {
+  it('useRelinkChild: relink_child 를 부르고 가족 캐시를 정확히 무효화한다', async () => {
     rpc.mockResolvedValue({ data: child, error: null })
     const { wrapper, invalidate } = makeWrapper()
-    const relink = renderHook(() => useRelinkChild(), { wrapper })
+    const { result } = renderHook(() => useRelinkChild(), { wrapper })
     await act(async () => {
-      await relink.result.current.mutateAsync({ childId: 'p2', code: '11111111' })
+      await result.current.mutateAsync({ childId: 'p2', code: '11111111' })
     })
     expect(rpc).toHaveBeenCalledWith('relink_child', { p_child_id: 'p2', p_code: '11111111' })
+    expectExactInvalidation(invalidate)
+  })
 
-    const join = renderHook(() => useJoinFamily(), { wrapper })
+  it('useJoinFamily: add_family_member 를 이름 없이 부르고 가족 캐시를 정확히 무효화한다', async () => {
+    rpc.mockResolvedValue({ data: child, error: null })
+    const { wrapper, invalidate } = makeWrapper()
+    const { result } = renderHook(() => useJoinFamily(), { wrapper })
     await act(async () => {
-      await join.result.current.mutateAsync({ code: '22222222' })
+      await result.current.mutateAsync({ code: '22222222' })
     })
     expect(rpc).toHaveBeenCalledWith('add_family_member', { p_code: '22222222' })
+    expectExactInvalidation(invalidate)
+  })
 
-    const leave = renderHook(() => useLeaveFamily(), { wrapper })
+  it('useLeaveFamily: leave_family 를 인자 없이 부르고 가족 캐시를 정확히 무효화한다', async () => {
+    rpc.mockResolvedValue({ data: child, error: null })
+    const { wrapper, invalidate } = makeWrapper()
+    const { result } = renderHook(() => useLeaveFamily(), { wrapper })
     await act(async () => {
-      await leave.result.current.mutateAsync()
+      await result.current.mutateAsync()
     })
     expect(rpc).toHaveBeenCalledWith('leave_family')
+    expectExactInvalidation(invalidate)
+  })
 
+  it('useRemoveChild: remove_child 를 부르고 가족 캐시를 정확히 무효화한다', async () => {
     rpc.mockResolvedValue({ data: null, error: null })
-    const remove = renderHook(() => useRemoveChild(), { wrapper })
+    const { wrapper, invalidate } = makeWrapper()
+    const { result } = renderHook(() => useRemoveChild(), { wrapper })
     await act(async () => {
-      await remove.result.current.mutateAsync('p2')
+      await result.current.mutateAsync('p2')
     })
     expect(rpc).toHaveBeenCalledWith('remove_child', { p_child_id: 'p2' })
-    expectFamilyInvalidated(invalidate)
+    expectExactInvalidation(invalidate)
   })
 })
 
@@ -103,6 +118,23 @@ describe('useDeleteAccount', () => {
     await waitFor(() => expect(result.current.status).toBe('error'))
     expect(signOut).not.toHaveBeenCalled()
   })
+
+  it('signOut 이 실패해도 성공으로 끝나고 signedOut=false, [\'person\'] 을 무효화한다', async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+    signOut.mockRejectedValue(new Error('network error'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { wrapper, invalidate } = makeWrapper()
+    const { result } = renderHook(() => useDeleteAccount(), { wrapper })
+    let resolved: unknown
+    await act(async () => {
+      resolved = await result.current.mutateAsync()
+    })
+    expect(resolved).toEqual({ signedOut: false })
+    await waitFor(() => expect(result.current.status).toBe('success'))
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['person'] })
+    expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
 })
 
 describe('useUpdateProfile', () => {
@@ -119,6 +151,7 @@ describe('useUpdateProfile', () => {
     expect(from).toHaveBeenCalledWith('people')
     expect(q.has('update', { name: '김철수A', phone: '01099998888' })).toBe(true)
     expect(q.has('eq', 'id', 'p1')).toBe(true)
+    expect(q.has('select', '*')).toBe(true)
     expect(q.has('single')).toBe(true)
     expect(client.getQueryData(['person', 'u1'])).toEqual(updated)
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['family-members'] })

@@ -1,7 +1,7 @@
 begin;
 -- 두 세션이 겹치는 경합(A·B 가 서로의 어른 코드를 동시에 흡수 / 합치는 중 발급)은 pgTAP(단일 세션)로
 -- 재현할 수 없어 리뷰 때 psql 두 세션으로 수동 검증했다 (2026-10-09: 한 쪽이 기다렸다가 순차 성공, 교착 없음).
-select plan(62);
+select plan(64);
 
 select is(has_function_privilege('anon', 'public.add_family_member(text,text,text)', 'EXECUTE'), false, 'anon 은 add_family_member 를 실행할 수 없다');
 select is(has_function_privilege('anon', 'public.relink_child(uuid,text)', 'EXECUTE'), false, 'anon 은 relink_child 를 실행할 수 없다');
@@ -89,13 +89,22 @@ select tests.authenticate_as(:'k2_uid');
 select (select code from public.create_pairing_code('child')) as k2_code \gset
 select tests.authenticate_as(:'a_uid');
 select throws_ok(format($$ select public.add_family_member(%L, '   ', '2026-10-07') $$, :'k2_code'), 'P0001', 'invalid_name', '자녀 이름이 비면 거부한다');
-select throws_ok(format($$ select public.add_family_member(%L, null, '2026-10-07') $$, :'k2_code'), 'P0001', 'invalid_name', '자녀 코드에 이름이 없으면 거부한다');
+select throws_ok(format($$ select public.add_family_member(%L, null, '2026-10-07') $$, :'k2_code'), 'P0001', 'expected_adult_code', '자녀 코드에 이름이 없으면 (가족 연결 의도로 오인되어) 거부한다');
 select throws_ok(format($$ select public.add_family_member(%L, E'\t', '2026-10-07') $$, :'k2_code'), 'P0001', 'invalid_name', '탭뿐인 이름도 거부한다 (btrim 만으로는 통과한다)');
 select throws_ok(format($$ select public.add_family_member(%L, repeat('가', 21), '2026-10-07') $$, :'k2_code'), 'P0001', 'invalid_name', '21자 이름은 거부한다');
 select throws_ok(format($$ select public.add_family_member(%L, '서연') $$, :'k2_code'), 'P0001', 'consent_required', '법정대리인 동의 버전이 없으면 거부한다');
 select throws_ok(format($$ select public.add_family_member(%L, '서연', '동의함') $$, :'k2_code'), 'P0001', 'consent_required', '날짜(YYYY-MM-DD)가 아닌 동의 버전은 거부한다');
 select tests.clear_auth();
 select is((select used_at from public.pairing_codes where code = :'k2_code'), null, '거부된 시도는 코드를 소모하지 않는다');
+
+-- 코드 종류와 호출 의도가 어긋나면 거부한다 (자녀 추가 폼에 어른 코드)
+select tests.authenticate_as(:'e_uid');
+select (select code from public.create_pairing_code('adult')) as e_code_wrong_kind \gset
+select tests.authenticate_as(:'a_uid');
+select throws_ok(format($$ select public.add_family_member(%L, '서연', '2026-10-07') $$, :'e_code_wrong_kind'), 'P0001', 'expected_child_code',
+  '자녀 추가 폼(이름 있음)에 어른 코드를 넣으면 거부한다 (코드 종류가 어긋난다)');
+select tests.clear_auth();
+select is((select used_at from public.pairing_codes where code = :'e_code_wrong_kind'), null, '코드 종류가 어긋나 거부된 시도는 코드를 소모하지 않는다');
 
 -- 카카오톡에서 붙여 넣은 코드(앞뒤 공백·줄바꿈)도 받는다
 select tests.create_user() as k5_uid \gset

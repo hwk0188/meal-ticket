@@ -8,12 +8,12 @@ const COLUMNS = 'id, name, phone, is_minor, guardian_id, auth_user_id, consented
 
 export type FamilyMember = Pick<Person, 'id' | 'name' | 'phone' | 'is_minor' | 'guardian_id' | 'auth_user_id' | 'consented_at' | 'guardian_consented_at' | 'created_at'>
 
-/** 내 가족의 살아 있는 구성원 (RLS 가 같은 가족만 연다). 가입 순. */
+/** 내 가족의 살아 있는 구성원 (RLS 가 같은 가족만 연다). 가입 순 (같은 시각이면 id 순 — 동률을 결정적으로 가른다). */
 export function useFamilyMembers(familyId: string) {
   return useQuery({
     queryKey: [...familyMembersQueryKey, familyId],
     queryFn: async (): Promise<FamilyMember[]> =>
-      supabase.from('people').select(COLUMNS).eq('family_id', familyId).is('deleted_at', null).order('created_at').then(unwrap),
+      supabase.from('people').select(COLUMNS).eq('family_id', familyId).is('deleted_at', null).order('created_at').order('id').then(unwrap),
   })
 }
 

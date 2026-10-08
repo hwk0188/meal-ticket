@@ -9,7 +9,8 @@ vi.mock('../../lib/supabase', () => ({ supabase: { from } }))
 
 function makeWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return { client, wrapper }
 }
 
 const member = (over: Partial<FamilyMember>): FamilyMember => ({
@@ -22,13 +23,15 @@ describe('useFamilyMembers', () => {
     const rows = [member({}), member({ id: 'p2', name: '서연', is_minor: true, guardian_id: 'p1' })]
     const q = ok(rows)
     from.mockReturnValue(q)
-    const { result } = renderHook(() => useFamilyMembers('f1'), { wrapper: makeWrapper() })
+    const { client, wrapper } = makeWrapper()
+    const { result } = renderHook(() => useFamilyMembers('f1'), { wrapper })
     await waitFor(() => expect(result.current.data).toEqual(rows))
     expect(from).toHaveBeenCalledWith('people')
     expect(q.has('eq', 'family_id', 'f1')).toBe(true)
     expect(q.has('is', 'deleted_at', null)).toBe(true)
     expect(q.has('order', 'created_at')).toBe(true)
     expect(familyMembersQueryKey).toEqual(['family-members'])
+    expect(client.getQueryData(['family-members', 'f1'])).toEqual(rows)
   })
 })
 

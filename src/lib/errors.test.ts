@@ -93,6 +93,8 @@ describe('2단계 오류 문구', () => {
 
   it('3단계(가족·아이) 오류 코드를 문구로 바꾼다', () => {
     expect(toUserMessage(new Error('invalid_code'))).toBe('코드가 맞지 않거나 만료되었어요. 새 코드를 받아 다시 입력해 주세요.')
+    expect(toUserMessage(new Error('expected_child_code'))).toBe('어른 코드예요. 가족 연결에서 입력해 주세요.')
+    expect(toUserMessage(new Error('expected_adult_code'))).toBe('아이 폰의 코드예요. 자녀 추가에서 입력해 주세요.')
     expect(toUserMessage(new Error('not_adult'))).toBe('어른 계정만 할 수 있어요.')
     expect(toUserMessage(new Error('has_children'))).toBe('연결된 자녀가 있어요. 자녀를 먼저 삭제해 주세요.')
     expect(toUserMessage(new Error('child_not_found'))).toBe('자녀를 찾을 수 없어요. 목록을 새로고침해 주세요.')

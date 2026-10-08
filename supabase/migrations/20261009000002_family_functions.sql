@@ -33,7 +33,7 @@ revoke execute on function public.lock_family(uuid) from public, anon, authentic
 --   잠금 순서: 파일 머리의 규칙 그대로 — ① 코드 행 → ② 호출자·대상(한 문장, id 순) 과 함께 옮길 자녀 →
 --     ③ 두 가족(가족 id 순) → ④ 옛 가족의 "오늘 이후" 식사(meal_id 순).
 --     사람 행보다 가족을 먼저 잠그면 A·B 가 서로의 어른 코드를 동시에 흡수할 때 교착한다.
--- 코드: not_authenticated | not_registered | not_adult | invalid_code | invalid_name | consent_required | already_registered
+-- 코드: not_authenticated | not_registered | not_adult | invalid_code | expected_child_code | expected_adult_code | invalid_name | consent_required | already_registered
 -- =========================================================
 -- 2단계(자녀 동의 버전) 전 2인자 시그니처는 남겨 두지 않는다 — 기본값이 겹쳐 호출이 모호해진다.
 drop function if exists public.add_family_member(text, text);
@@ -81,6 +81,15 @@ begin
   -- pairing_codes.auth_user_id 는 on delete cascade 라 보통 코드 행이 먼저 사라진다 (방어선으로 남긴다).
   if not exists (select 1 from auth.users u where u.id = v_code.auth_user_id) then
     raise exception 'invalid_code';
+  end if;
+
+  -- 코드 종류와 호출 의도가 어긋나면 거부한다 (두 코드 모두 8자리라 잘못 붙여 넣기 쉽다):
+  --   자녀 추가 폼(이름 있음)에 어른 코드 → expected_child_code / 가족 연결(이름 없음)에 자녀 코드 → expected_adult_code
+  if v_code.kind = 'adult' and p_child_name is not null then
+    raise exception 'expected_child_code';
+  end if;
+  if v_code.kind = 'child' and p_child_name is null then
+    raise exception 'expected_adult_code';
   end if;
 
   -- 멱등 재시도: 느린 네트워크에서 같은 코드로 두 번 보낸 경우. 아무것도 바꾸지 않고 그때 만든 행을 돌려준다.

@@ -1,18 +1,14 @@
 import { z } from 'zod'
-import { isValidMobile, normalizePhone } from '../../lib/phone'
+import { nameSchema, phoneSchema } from '../../lib/fieldSchemas'
 import { validateWith, type Validation } from '../../lib/validate'
 
-// 가입 화면과 같은 이름 규칙 (NFC 로 맞춘 뒤 길이를 센다)
-export const nameSchema = z
-  .string()
-  .transform((s) => s.normalize('NFC'))
-  .pipe(z.string().trim().min(1, '이름을 입력해 주세요').max(20, '이름은 20자 이내로 입력해 주세요'))
+// 가입 화면과 같은 이름 규칙. 공용 정의는 lib/fieldSchemas 에 있다 (여기서도 쓰는 코드가 있어 다시 내보낸다).
+export { nameSchema }
 // 코드는 "4829 1357" 처럼 띄워 보여 주므로 숫자만 남긴 뒤 8자리인지 본다 (DB 와 같은 길이 — 2단계 리뷰에서 6→8 로 늘렸다)
 export const codeSchema = z
   .string()
   .transform((s) => s.replace(/\D/g, ''))
   .pipe(z.string().regex(/^\d{8}$/, '8자리 숫자 코드를 입력해 주세요'))
-const phoneSchema = z.string().transform(normalizePhone).refine(isValidMobile, '휴대폰 번호를 확인해 주세요')
 
 export const addChildSchema = z.object({
   name: nameSchema,
