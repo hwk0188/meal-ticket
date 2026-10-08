@@ -27,25 +27,31 @@ export function ConfirmButton({ label, message, confirmLabel = '확인', onConfi
   const [open, setOpen] = useState(false)
   // disabled 로 바뀌는 순간 열려 있던 프롬프트를 닫는다 (effect 없이 렌더 중 상태를 맞추는 React 의 표준 패턴).
   const [prevDisabled, setPrevDisabled] = useState(disabled)
-  if (disabled !== prevDisabled) {
-    setPrevDisabled(disabled)
-    if (disabled) setOpen(false)
-  }
-
   const triggerRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
-  // 취소를 누르면 true 로 두고, 닫힌 뒤 같은 effect 에서 트리거 버튼으로 포커스를 되돌린다.
-  const pendingFocus = useRef(false)
+  // 프롬프트가 닫히는 모든 경로(취소·확인·강제 닫힘)에서 true 로 두고,
+  // 닫힌 뒤 같은 effect 에서 트리거 버튼으로 포커스를 되돌린다 (비활성 버튼에 focus() 를 걸어도 아무 일도 없다).
+  const [pendingFocus, setPendingFocus] = useState(false)
+
+  if (disabled !== prevDisabled) {
+    setPrevDisabled(disabled)
+    if (disabled) {
+      setPendingFocus(true)
+      setOpen(false)
+    }
+  }
+
   const messageId = useId()
 
   useEffect(() => {
+    // open 이 닫힐 때마다(의존성이 바뀔 때마다) 한 번만 실행된다. pendingFocus 를 다시 false 로
+    // 되돌리지 않아도 된다 — 다음 번 닫힘은 항상 open 의존성 변화를 동반하기 때문이다.
     if (open) {
       cancelRef.current?.focus()
-    } else if (pendingFocus.current) {
-      pendingFocus.current = false
+    } else if (pendingFocus) {
       triggerRef.current?.focus()
     }
-  }, [open])
+  }, [open, pendingFocus])
 
   const base = 'px-3 text-xs underline disabled:cursor-not-allowed disabled:opacity-40'
 
@@ -73,7 +79,7 @@ export function ConfirmButton({ label, message, confirmLabel = '확인', onConfi
           type="button"
           disabled={disabled}
           onClick={() => {
-            pendingFocus.current = true
+            setPendingFocus(true)
             setOpen(false)
           }}
           className={`${base} py-3 text-gray-600`}
@@ -85,6 +91,7 @@ export function ConfirmButton({ label, message, confirmLabel = '확인', onConfi
           disabled={disabled}
           aria-describedby={messageId}
           onClick={() => {
+            setPendingFocus(true)
             setOpen(false)
             onConfirm()
           }}

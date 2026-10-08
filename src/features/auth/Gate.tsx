@@ -1,3 +1,4 @@
+import type { Session } from '@supabase/supabase-js'
 import type { ReactNode } from 'react'
 import { Navigate, Outlet } from 'react-router'
 import { PersonShell } from '../../components/PersonShell'
@@ -9,7 +10,12 @@ import { useCurrentPerson, usePerson } from './usePerson'
 
 const CONNECTION_ERROR = '연결에 문제가 있어요. 새로고침해 주세요'
 
-/** `#/` : 비로그인 → 시작 화면, 로그인·미가입 → 가입, 가입 완료 → 홈 */
+/** 로그인은 했지만 사람 행이 없는 계정이 갈 곳. 익명(아이) 계정은 가입이 아니라 연결 코드 화면이다 (claim_person 이 익명을 거부한다). */
+function unregisteredPath(session: Session): string {
+  return session.user.is_anonymous ? '/pair' : '/onboarding'
+}
+
+/** `#/` : 비로그인 → 시작 화면, 로그인·미가입 → 가입(또는 연결 코드), 가입 완료 → 홈 */
 export function Gate() {
   const auth = useAuth()
   const userId = auth.status === 'ready' ? auth.session?.user.id : undefined
@@ -19,7 +25,7 @@ export function Gate() {
   if (!auth.session) return <StartPage />
   if (person.status === 'pending') return <Spinner />
   if (person.status === 'error') return <Spinner label={CONNECTION_ERROR} />
-  if (!person.data) return <Navigate to="/onboarding" replace />
+  if (!person.data) return <Navigate to={unregisteredPath(auth.session)} replace />
   return (
     <PersonShell person={person.data}>
       <HomePage person={person.data} />
@@ -27,8 +33,14 @@ export function Gate() {
   )
 }
 
-/** 로그인은 했지만 아직 가입 전인 사람만 통과 (가입 화면용) */
-export function RequireSession({ children }: { children: ReactNode }) {
+type RequireSessionProps = {
+  children: ReactNode
+  /** 연결 코드 화면만 true. 그 외(가입 화면)에서 익명 계정은 /pair 로 보낸다. */
+  allowAnonymous?: boolean
+}
+
+/** 로그인은 했지만 아직 가입 전인 사람만 통과 (가입·연결 코드 화면용) */
+export function RequireSession({ children, allowAnonymous = false }: RequireSessionProps) {
   const auth = useAuth()
   const userId = auth.status === 'ready' ? auth.session?.user.id : undefined
   const person = usePerson(userId)
@@ -39,6 +51,7 @@ export function RequireSession({ children }: { children: ReactNode }) {
   // 이미 가입한 사람일 수도 있다. 조회가 실패한 채로 가입을 진행시키지 않는다.
   if (person.status === 'error') return <Spinner label={CONNECTION_ERROR} />
   if (person.data) return <Navigate to="/" replace />
+  if (!allowAnonymous && auth.session.user.is_anonymous) return <Navigate to="/pair" replace />
   return <>{children}</>
 }
 
@@ -52,7 +65,7 @@ export function RequirePerson() {
   if (!auth.session) return <Navigate to="/" replace />
   if (person.status === 'pending') return <Spinner />
   if (person.status === 'error') return <Spinner label={CONNECTION_ERROR} />
-  if (!person.data) return <Navigate to="/onboarding" replace />
+  if (!person.data) return <Navigate to={unregisteredPath(auth.session)} replace />
   return (
     <PersonShell person={person.data}>
       <Outlet context={person.data} />
@@ -64,5 +77,12 @@ export function RequirePerson() {
 export function RequireAdmin({ children }: { children: ReactNode }) {
   const person = useCurrentPerson()
   if (person.role !== 'admin') return <Navigate to="/" replace />
+  return <>{children}</>
+}
+
+/** 어른만 (가족 탭). 자녀 계정이 주소를 직접 치면 홈으로 보낸다 (함수들도 not_adult 로 막는다). */
+export function RequireAdult({ children }: { children: ReactNode }) {
+  const person = useCurrentPerson()
+  if (person.is_minor) return <Navigate to="/" replace />
   return <>{children}</>
 }

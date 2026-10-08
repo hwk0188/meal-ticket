@@ -116,8 +116,8 @@ function Footer() {
     <footer className="flex flex-col items-center gap-2">
       <div className="flex items-center justify-center gap-4">
         <Link to="/privacy" className="px-3 py-2 text-xs text-gray-600 underline">개인정보 처리방침</Link>
-        <SignOutButton message={anonymous ? CHILD_SIGN_OUT_NOTICE : undefined} />
       </div>
+      <SignOutButton message={anonymous ? CHILD_SIGN_OUT_NOTICE : undefined} />
     </footer>
   )
 }

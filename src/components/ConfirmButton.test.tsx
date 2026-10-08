@@ -20,6 +20,8 @@ describe('ConfirmButton', () => {
     expect(onConfirm).toHaveBeenCalledOnce()
     // 실행 뒤에는 처음 모양으로 돌아간다
     expect(screen.getByRole('button', { name: '자녀 삭제' })).toBeInTheDocument()
+    // 확인을 눌러도(onConfirm 이 버튼을 비활성화하지 않는 한) 포커스는 트리거로 돌아간다
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '자녀 삭제' }))
   })
 
   it('취소하면 실행하지 않고 닫힌다', async () => {

@@ -1868,7 +1868,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `src/features/auth/Gate.tsx`, `src/features/auth/Gate.test.tsx`
 - Modify: `src/components/PersonShell.tsx`, `src/components/PersonShell.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/auth/Gate.test.tsx` — 가짜 타입과 라우트를 넓히고 테스트 추가:
 
@@ -1964,12 +1964,12 @@ const child = { ...member, id: 'p2', phone: null, auth_user_id: 'k1', is_minor: 
   // "교인이 관리자 주소로 바로 들어와도…" 테스트의 기대값도 ['🎫식권', '🧾내역', '👪가족'] 으로 바꾼다.
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/auth/Gate src/components/PersonShell`
 Expected: `allowAnonymous`·`RequireAdult` 없음, 익명 분기 없음, 가족 탭 없음으로 실패.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/auth/Gate.tsx`:
 
@@ -2094,12 +2094,12 @@ export function PersonShell({ person, children }: { person: Person; children: Re
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/features/auth/Gate.tsx src/features/auth/Gate.test.tsx src/components/PersonShell.tsx src/components/PersonShell.test.tsx
