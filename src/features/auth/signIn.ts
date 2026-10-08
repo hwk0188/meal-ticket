@@ -36,6 +36,15 @@ export async function devSignIn(email: string, password: string): Promise<void> 
   if (signedUp.error) throw signedUp.error
 }
 
+/**
+ * 카카오 없는 아이: 익명 계정으로 시작한다. 보호자가 코드로 연결하기 전까지는 사람 행이 없어 아무것도 보지 못한다.
+ * 호출할 때마다 새 계정이 생기므로 버튼 쪽에서 성공 뒤에도 잠근 채 둔다. 연결되지 않은 익명 계정은 하루 뒤 DB 정리 작업이 지운다.
+ */
+export async function signInAsChild(): Promise<void> {
+  const { error } = await supabase.auth.signInAnonymously()
+  if (error) throw error
+}
+
 export async function signOut(): Promise<void> {
   const { error } = await supabase.auth.signOut()
   if (error) throw error

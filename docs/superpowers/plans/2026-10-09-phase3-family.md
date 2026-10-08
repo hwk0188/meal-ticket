@@ -1265,7 +1265,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `src/features/auth/usePerson.ts` (옵션), `src/features/auth/usePerson.test.tsx`
 - Modify: `src/test/fakeSupabase.ts` (`update` 체인)
 
-- [ ] **Step 1: 실패하는 테스트 — `src/lib/errors.test.ts` 에 추가**
+- [x] **Step 1: 실패하는 테스트 — `src/lib/errors.test.ts` 에 추가**
 
 ```ts
   it('3단계(가족·아이) 오류 코드를 문구로 바꾼다', () => {
@@ -1372,12 +1372,12 @@ describe('formatDate', () => {
 
 (`act` 를 `@testing-library/react` 에서 import 한다. 첫 조회가 `Promise.resolve()` 한 번으로 끝나지 않으면 `await vi.advanceTimersByTimeAsync(0)` 를 쓴다.)
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/lib src/features/auth`
 Expected: `validate.ts` 없음, `formatDate`·`signInAsChild` 없음, `usePerson` 두 번째 인자 무시로 실패.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/lib/errors.ts` — `MESSAGES` 의 2단계 항목 뒤에:
 
@@ -1490,12 +1490,12 @@ export function usePerson(userId: string | undefined, { refetchInterval = false 
   update = this.chain('update')
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test -- src/lib src/features/auth src/features/onboarding && npm run lint && npx tsc -b`
 Expected: 전부 통과. 가입 화면 테스트(`OnboardingPage.test.tsx`, `onboardingSchema.test.ts`)도 그대로 통과(동작 동일).
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/lib/errors.ts src/lib/errors.test.ts src/lib/validate.ts src/lib/validate.test.ts src/features/onboarding/onboardingSchema.ts src/lib/dates.ts src/lib/dates.test.ts src/features/auth/signIn.ts src/features/auth/signIn.test.ts src/features/auth/usePerson.ts src/features/auth/usePerson.test.tsx src/test/fakeSupabase.ts

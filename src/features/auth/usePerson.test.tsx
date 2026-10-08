@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { personQueryKey, usePerson } from './usePerson'
 
@@ -78,5 +78,32 @@ describe('usePerson', () => {
     expect(result.current.error?.message).toBe('boom')
     // toUserMessage 는 message/code 를 읽으므로 그대로 보존해야 한다.
     expect(result.current.error).toMatchObject({ code: 'PGRST500', cause: raw })
+  })
+
+  it('refetchInterval 옵션을 주면 그 주기로 다시 읽는다', async () => {
+    vi.useFakeTimers()
+    try {
+      maybeSingle.mockResolvedValue({ data: null, error: null })
+      const { result } = renderHook(() => usePerson('u1', { refetchInterval: 3_000 }), { wrapper: makeWrapper() })
+      // 첫 조회는 마운트 직후 (가짜 타이머 아래서는 microtask 가 한 번에 안 풀려 0ms 를 흘려보낸다)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result.current.status).toBe('success')
+      expect(maybeSingle).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000)
+      })
+      expect(maybeSingle).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('옵션이 없으면 자동 재조회 주기가 없다', async () => {
+    maybeSingle.mockResolvedValue({ data: null, error: null })
+    const { result } = renderHook(() => usePerson('u1'), { wrapper: makeWrapper() })
+    await waitFor(() => expect(result.current.status).toBe('success'))
+    expect(maybeSingle).toHaveBeenCalledTimes(1)
   })
 })

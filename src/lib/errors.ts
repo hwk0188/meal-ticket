@@ -23,6 +23,14 @@ const MESSAGES = {
   no_remaining: '방금 다른 폰에서 사용되었어요.',
   duplicate_request: '이미 처리된 요청이에요.',
   invalid_request: '잘못된 요청이에요. 다시 눌러 주세요.',
+  // 3단계 · 가족·아이
+  invalid_kind: '잘못된 요청이에요.',
+  not_adult: '어른 계정만 할 수 있어요.',
+  invalid_code: '코드가 맞지 않거나 만료되었어요. 새 코드를 받아 다시 입력해 주세요.',
+  child_not_found: '자녀를 찾을 수 없어요. 목록을 새로고침해 주세요.',
+  has_children: '연결된 자녀가 있어요. 자녀를 먼저 삭제해 주세요.',
+  code_generation_failed: '코드를 만들지 못했어요. 다시 시도해 주세요.',
+  last_admin: '마지막 관리자는 탈퇴할 수 없어요. 다른 관리자를 먼저 지정해 주세요.',
 } as const satisfies Record<string, string>
 
 /** MESSAGES 에 문구가 있는 오류 코드. 호출하는 쪽에서 오타를 막는 데 쓴다. */

@@ -8,11 +8,17 @@ export type Person = Database['public']['Tables']['people']['Row']
 
 export const personQueryKey = (userId: string | undefined) => ['person', userId] as const
 
-/** 로그인한 계정에 연결된 사람 행. 없으면 null (가입 전). */
-export function usePerson(userId: string | undefined) {
+type Options = {
+  /** 연결 코드 화면·가족 합류 대기처럼 "내 사람 행이 생기거나 바뀌기를" 기다릴 때만 준다. 기본은 없음. */
+  refetchInterval?: number | false
+}
+
+/** 로그인한 계정에 연결된 사람 행. 없으면 null (가입 전). 같은 키의 다른 관찰자(가드)도 이 주기로 함께 갱신된다. */
+export function usePerson(userId: string | undefined, { refetchInterval = false }: Options = {}) {
   return useQuery({
     queryKey: personQueryKey(userId),
     enabled: Boolean(userId),
+    refetchInterval,
     queryFn: async (): Promise<Person | null> => {
       // enabled 가 막아 주지만, 키 없이 호출되면 조용히 null 을 돌려주는 대신 드러낸다.
       if (!userId) throw new Error('usePerson: userId 없이 조회할 수 없습니다')

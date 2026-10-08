@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { isValidMobile, normalizePhone } from '../../lib/phone'
+import { validateWith, type FieldErrors, type Validation } from '../../lib/validate'
 
 // 가입 화면의 입력 규칙. 문구는 사용자에게 그대로 보이므로 DB 오류 코드와 따로 둔다.
 export const onboardingSchema = z.object({
@@ -17,25 +18,9 @@ export const onboardingSchema = z.object({
 
 export type OnboardingInput = z.input<typeof onboardingSchema>
 export type OnboardingValues = z.output<typeof onboardingSchema>
-export type OnboardingErrors = Partial<Record<keyof OnboardingInput, string>>
+export type OnboardingErrors = FieldErrors<OnboardingInput>
 
 /** 폼 입력을 검사해 정규화된 값 또는 필드별 첫 오류 문구를 돌려준다. */
-export function validateOnboarding(
-  input: OnboardingInput,
-): { ok: true; values: OnboardingValues } | { ok: false; errors: OnboardingErrors } {
-  const result = onboardingSchema.safeParse(input)
-  if (result.success) return { ok: true, values: result.data }
-  const errors: OnboardingErrors = {}
-  for (const issue of result.error.issues) {
-    const key = issue.path[0] as keyof OnboardingInput | undefined
-    if (!key) {
-      // 입력이 객체가 아닐 때처럼 어느 필드인지 모르는 오류. 화면이 아무 말도 못 하는 편보다
-      // 첫 칸에 일반 문구라도 띄우는 편이 낫다 (타입이 막아 주므로 사실상 닿지 않는다).
-      errors.name ??= '입력 내용을 확인해 주세요'
-      continue
-    }
-    // 한 필드에 여러 오류가 걸리면 첫 문구만 보여 준다 (화면에 한 줄씩만 둔다).
-    if (!errors[key]) errors[key] = issue.message
-  }
-  return { ok: false, errors }
+export function validateOnboarding(input: OnboardingInput): Validation<OnboardingValues, OnboardingInput> {
+  return validateWith(onboardingSchema, input, 'name')
 }

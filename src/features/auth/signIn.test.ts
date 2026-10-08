@@ -1,4 +1,4 @@
-import { devSignIn, redirectUrl, signInWithKakao, signOut } from './signIn'
+import { devSignIn, redirectUrl, signInAsChild, signInWithKakao, signOut } from './signIn'
 
 // supabase 모듈을 통째로 가짜로 바꾸므로 실제 반환 타입 전체를 만들 필요가 없다.
 // signIn 이 읽는 필드(error)와 넘기는 인자만 담은 느슨한 타입으로 둔다.
@@ -7,16 +7,17 @@ type OAuthArgs = { provider: string; options: { redirectTo: string } }
 type Credentials = { email: string; password: string }
 
 // env 는 가짜 객체를 그대로 공유해 테스트마다 플래그만 바꾼다 (모듈을 다시 읽지 않아도 된다).
-const { signInWithOAuth, signInWithPassword, signUp, authSignOut, env } = vi.hoisted(() => ({
+const { signInWithOAuth, signInWithPassword, signUp, authSignOut, signInAnonymously, env } = vi.hoisted(() => ({
   signInWithOAuth: vi.fn<(args: OAuthArgs) => Promise<AuthResult>>(),
   signInWithPassword: vi.fn<(args: Credentials) => Promise<AuthResult>>(),
   signUp: vi.fn<(args: Credentials) => Promise<AuthResult>>(),
   authSignOut: vi.fn<() => Promise<AuthResult>>(),
+  signInAnonymously: vi.fn<() => Promise<AuthResult>>(),
   env: { enableDevLogin: true },
 }))
 
 vi.mock('../../lib/supabase', () => ({
-  supabase: { auth: { signInWithOAuth, signInWithPassword, signUp, signOut: authSignOut } },
+  supabase: { auth: { signInWithOAuth, signInWithPassword, signUp, signOut: authSignOut, signInAnonymously } },
 }))
 vi.mock('../../lib/env', () => ({ env }))
 
@@ -110,5 +111,16 @@ describe('signIn', () => {
   it('로그아웃 오류는 그대로 던진다', async () => {
     authSignOut.mockResolvedValue({ error: new Error('signout_failed') })
     await expect(signOut()).rejects.toThrow('signout_failed')
+  })
+
+  it('아이 계정 시작은 익명 로그인을 부른다', async () => {
+    signInAnonymously.mockResolvedValue({ error: null })
+    await signInAsChild()
+    expect(signInAnonymously).toHaveBeenCalledOnce()
+  })
+
+  it('익명 로그인 오류는 그대로 던진다', async () => {
+    signInAnonymously.mockResolvedValue({ error: new Error('anonymous_provider_disabled') })
+    await expect(signInAsChild()).rejects.toThrow('anonymous_provider_disabled')
   })
 })

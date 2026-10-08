@@ -32,6 +32,7 @@ export class FakeQuery<T> {
   maybeSingle = this.chain('maybeSingle')
   single = this.chain('single')
   insert = this.chain('insert')
+  update = this.chain('update')
   delete = this.chain('delete')
   ilike = this.chain('ilike')
   abortSignal = this.chain('abortSignal')
