@@ -1019,6 +1019,7 @@ describe('2단계 오류 문구', () => {
     ['not_registered', '가입을 먼저 해 주세요.'],
     ['meal_not_found', '식사를 찾을 수 없어요. 목록을 새로고침해 주세요.'],
     ['person_not_found', '사람을 찾을 수 없어요.'],
+    ['person_is_minor', '자녀 이름으로는 발급할 수 없어요. 보호자 이름으로 발급해 주세요.'],
     ['invalid_quantity', '장수는 1~99 사이로 적어 주세요.'],
     ['invalid_price', '단가는 0~1,000,000원 사이로 적어 주세요.'],
     ['invalid_memo', '메모는 100자까지예요.'],
@@ -1189,6 +1190,7 @@ const MESSAGES = {
   not_registered: '가입을 먼저 해 주세요.',
   meal_not_found: '식사를 찾을 수 없어요. 목록을 새로고침해 주세요.',
   person_not_found: '사람을 찾을 수 없어요.',
+  person_is_minor: '자녀 이름으로는 발급할 수 없어요. 보호자 이름으로 발급해 주세요.',
   invalid_quantity: '장수는 1~99 사이로 적어 주세요.',
   invalid_price: '단가는 0~1,000,000원 사이로 적어 주세요.',
   invalid_memo: '메모는 100자까지예요.',
@@ -3759,6 +3761,7 @@ export function useAdminBalances() {
 export function useCreateNextSundayLunch() {
   const queryClient = useQueryClient()
   return useMutation({
+    // 이 RPC 는 순차 재호출마다 "다음" 일요일을 만든다(동시 클릭만 수렴). 자동 재시도 금지 — App 의 mutations.retry=0 을 바꾸지 말 것.
     mutationFn: () => supabase.rpc('create_next_sunday_lunch').then(unwrap),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: mealsQueryKey }),
   })
@@ -4044,6 +4047,7 @@ describe('usePeopleSearch', () => {
     await waitFor(() => expect(result.current.status).toBe('success'))
     expect(q.has('ilike', 'name', '%김철%')).toBe(true)
     expect(q.has('is', 'deleted_at', null)).toBe(true)
+    expect(q.has('eq', 'is_minor', false)).toBe(true)
     expect(q.has('limit', 20)).toBe(true)
 
     rerender({ query: '5678' })
@@ -4355,7 +4359,8 @@ export function usePeopleSearch(raw: string) {
     enabled: q.length >= SEARCH_MIN,
     staleTime: 10_000,
     queryFn: (): Promise<PersonHit[]> => {
-      const base = supabase.from('people').select(COLUMNS).is('deleted_at', null).order('name').limit(SEARCH_LIMIT)
+      // 자녀는 발급 대상이 아니다 (DB 도 person_is_minor 로 거부). 검색 결과에서 아예 뺀다.
+      const base = supabase.from('people').select(COLUMNS).is('deleted_at', null).eq('is_minor', false).order('name').limit(SEARCH_LIMIT)
       const filtered = digits.length >= SEARCH_MIN ? base.or(`name.ilike.%${q}%,phone.like.%${digits}%`) : base.ilike('name', `%${q}%`)
       return filtered.then(unwrap)
     },
