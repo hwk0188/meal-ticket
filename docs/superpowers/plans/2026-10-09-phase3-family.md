@@ -10,7 +10,7 @@
 
 **설계 문서:** `docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md` §4(연결 코드), §5.1(준비 3·4·5, 예외 2), §7.1(`pairing_codes`), §7.3(함수), §7.4(RLS), §7.5(pg_cron), §8.1(라우트 `#/pair` `#/family`), §8.2(시작·가입·연결 코드·가족), §9(가입·연결), §10(파기·증빙), §12(E2E (b)), §15(장부 이동 결정). 2단계 계획 `docs/superpowers/plans/2026-10-08-phase2-tickets.md` 의 "3단계로 넘기는 것".
 
-**사전 검증(2026-10-09, 계획 작성 중):** 아래 Task 1~4 의 마이그레이션 SQL 과 pgTAP 4개 파일은 로컬 Supabase(Postgres 17, 비슈퍼유저 `postgres`)에서 트랜잭션 롤백 방식으로 미리 실행해 전부 통과(29·41·34·18 — Task 1 리뷰로 +1, Task 4 리뷰 반영으로 +1)를 확인했다. `create extension pg_cron`·`cron.schedule`·`delete from auth.users` 가 로컬의 비슈퍼유저 `postgres` 로 되는 것도 확인했다(운영 Supabase 의 권한 모델과 같다). 그대로 옮겨 적으면 된다 — 바꿀 때만 다시 검증한다.
+**사전 검증(2026-10-09, 계획 작성 중):** 아래 Task 1~4 의 마이그레이션 SQL 과 pgTAP 4개 파일은 로컬 Supabase(Postgres 17, 비슈퍼유저 `postgres`)에서 트랜잭션 롤백 방식으로 미리 실행해 전부 통과(29·60·37·18 — Task 1·2 리뷰로 테스트가 늘었고, Task 3·4 는 리뷰 반영판을 다시 롤백 검증했다)를 확인했다. `create extension pg_cron`·`cron.schedule`·`delete from auth.users` 가 로컬의 비슈퍼유저 `postgres` 로 되는 것도 확인했다(운영 Supabase 의 권한 모델과 같다). 그대로 옮겨 적으면 된다 — 바꿀 때만 다시 검증한다.
 
 ---
 
@@ -23,7 +23,7 @@
 | DB | `pairing_codes`(RLS 켜고 정책 없음), `lock_family_meal` 헬퍼, `create_pairing_code(kind)`, `add_family_member(code, child_name)`(child/adult, 어른 합류 때 빈 가족의 장부 이동), `relink_child(child_id, code)`, `leave_family()`, `remove_child(child_id)`, `delete_my_account()`, pg_cron 3건(코드 정리·고아 익명 계정 정리·빈 가족 정리 — 함수 + `cron.schedule`) |
 | 교인 | 시작 화면 "아이 계정으로 시작하기(카카오 없이 · 보호자 연결 필요)". 가입 화면 "어른이에요 / 만 14세 미만이에요" 토글. `#/pair` 연결 코드(6자리·남은 시간·새 코드·연결되면 자동 홈). `#/family` 가족 탭(어른만): 구성원 목록(이름·가려진 번호·자녀/미가입 태그·동의 날짜), 자녀 추가(이름·코드·법정대리인 동의 / 기존 자녀 고르면 재연결), 가족 연결(코드 입력 또는 내 코드 보여 주기), 가족 나가기, 자녀 삭제, 내 정보 수정(이름·번호), 탈퇴. 아이 폰: 가족 탭 없음, 로그아웃 전 확인. |
 | 공통 | 로그아웃 시 캐시 정리를 `AuthProvider` 의 `SIGNED_OUT` 처리로 이동(설계 §15 — 탈퇴·코드 화면 "처음으로" 라는 두 번째 로그아웃 경로가 생긴다). 오류 코드 문구 추가. |
-| 테스트 | pgTAP 4개 파일(+122), Vitest 단위·컴포넌트, Playwright E2E 1개(아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰 가족 잔량 → 아이 폰에서 사용 → 보호자 폰 반영) |
+| 테스트 | pgTAP 4개 파일(+144), Vitest 단위·컴포넌트, Playwright E2E 1개(아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰 가족 잔량 → 아이 폰에서 사용 → 보호자 폰 반영) |
 | 운영 | README: Supabase **Anonymous sign-ins 켜기**(운영 콘솔, 사용자 작업), pg_cron 안내. 설계 문서 상태 갱신. |
 
 **이번 단계에서 의도적으로 미루는 것**
@@ -43,6 +43,8 @@
 실행하면서 리뷰로 바뀐 것을 Task 별로 여기에 적는다. 긴 코드 스니펫은 고치지 않고, 실제 동작은 각 Task 의 커밋과 코드를 기준으로 본다.
 
 - **Task 1** (`pairing_codes`): 품질 리뷰가 같은 계정의 동시 호출이 살아 있는 코드를 둘 만드는 것을 재현해, `create_pairing_code` 가 삭제 전에 계정 단위 advisory lock(`pg_advisory_xact_lock(hashtext('pairing_code:' || uid))`, 단일 키라 `lock_family_meal` 의 두 키 공간과 겹치지 않음)을 잡도록 바꿨다. 테스트 전화번호 블록을 020 과 겹치지 않는 `0107700…` 으로, "토큰은 유효하지만 계정이 지워진 경우 → not_authenticated" 테스트 추가(`100` 은 29건), 재활용 upsert 테스트는 새 사용자를 쓰고 함수·테스트에 상호 참조 주석, pgcrypto 스키마 확인용 `do $$ perform extensions.gen_random_bytes(1) $$` 추가, `lock_family_meal` 본문 `pg_catalog` 한정, 죽은 `v_try` 선언 제거. 아래 Task 1 스니펫은 리뷰 전 버전이다.
+- **Task 2** (`add_family_member` · `relink_child`): 품질 리뷰(두 세션 재현)로 크게 보강했다. ① **연결 코드를 8자리로**(`^[0-9]{8}$`, `gen_random_bytes(8)`): 어른 코드를 맞히면 상대 가족·장부·전체 번호까지 넘어오는데 속도 제한이 없어 공간을 100배 키웠다 — 프런트(Task 9~13)의 6자리 가정도 모두 8자리로 바꿨다. ② **잠금 순서 규칙**(가족 함수 공통): "쓸 사람 행을 id 순으로 `for update` → `lock_family(uuid)`(새 단일 키 헬퍼) 를 가족 id 순으로 → `lock_family_meal`". 호출자 행을 잠그지 않아 합류 도중 호출자가 다른 가족으로 옮겨지면 엉뚱한 가족에 붙거나 FK 23503 이 나던 것, 자녀 삭제·나가기와 "빈 가족" 판정이 어긋나던 것을 막는다. ③ `issue_tickets` 가 사람 행을 `for update` 로 읽도록 재정의(합류 중 발급이 옛 가족에 떨어지는 경합). ④ 빈 가족 삭제는 `cleanup_empty_families` 와 같은 조건(사람·장부 모두 없음)에서만. ⑤ 사용된 코드로 재시도하면 이미 연결된 그 사람 행을 돌려준다(RPC 멱등 규약). ⑥ 자녀 추가에 `p_consent_version`(YYYY-MM-DD, `consent_required`) 를 받아 자녀 행 `consent_version` 에 남긴다(§10 증빙) — 프런트 `useAddChild` 가 `church.consentVersion` 을 보낸다. ⑦ 이름 유효성은 `normalize_name`, 코드 입력은 공백·개행 제거, `relink_child` 의 `unique_violation` → `already_registered`, 자녀 이동은 옛 가족 범위로만, 잠그는 식사는 오늘 이후만. `110` 은 60건. "코드 계정의 auth.users 행이 없는" 분기는 FK cascade 때문에 닿을 수 없어 테스트하지 않는다(방어 코드는 둔다). 아래 Task 1·2 스니펫은 리뷰 전 버전이다.
+- **Task 3** (계획 단계에서 미리 반영): 위 잠금 규칙에 맞춰 `leave_family` 는 내 행 → 옮길 자녀 행(id 순) → `lock_family`, `remove_child` 는 자녀 행 → `lock_family`, `delete_my_account` 는 내 행 → `lock_family` 순으로 잠근다. 나가기는 내 가족 범위의 자녀만 옮긴다(다른 가족에 사는 자녀 테스트 추가). `120` 은 37건. 아래 Task 3 스니펫은 반영된 버전이며 2026-10-09 에 다시 롤백 검증했다.
 - **Task 4** (정리 작업, 계획 단계에서 미리 반영): Task 1 리뷰 권고에 따라 `cleanup_orphan_anonymous_users` 가 **살아 있는 연결 코드를 가진 익명 계정은 지우지 않도록** 조건을 더했다(하루 전에 로그인해 둔 아이 폰이 지금 코드를 보여 주는 중일 수 있다 — 지우면 cascade 로 코드가 사라지고 그 폰이 로그아웃된다). `130` 은 18건. 아래 Task 4 스니펫은 반영된 버전이며 2026-10-09 에 다시 롤백 검증했다.
 
 ---
@@ -57,7 +59,7 @@
 | `migrations/20261009000002_family_functions.sql` | `add_family_member(text,text)`(child/adult + 장부 이동), `relink_child(uuid,text)` |
 | `migrations/20261009000003_leave_remove_delete.sql` | `leave_family()`, `remove_child(uuid)`, `delete_my_account()` |
 | `migrations/20261009000004_cleanup_jobs.sql` | `pg_cron` 확장, `cleanup_pairing_codes()` · `cleanup_orphan_anonymous_users()` · `cleanup_empty_families()`, `cron.schedule` 3건 |
-| `tests/database/100_pairing_codes.sql` · `110_add_family_member.sql` · `120_leave_remove_delete.sql` · `130_cleanup_jobs.sql` | pgTAP (29 · 41 · 34 · 18) |
+| `tests/database/100_pairing_codes.sql` · `110_add_family_member.sql` · `120_leave_remove_delete.sql` · `130_cleanup_jobs.sql` | pgTAP (29 · 60 · 37 · 18) |
 
 **프론트 (`src/`)** — 기능별 폴더. 한 파일 하나의 책임, 테스트는 옆에 둔다.
 
@@ -77,7 +79,7 @@
 | `features/onboarding/OnboardingPage.tsx` (수정) | "어른이에요 / 만 14세 미만이에요" 토글. 14세 미만 → `/pair` 안내 |
 | `features/pairing/usePairingCode.ts` | `create_pairing_code` 호출(자동 재조회 전부 끔), `PAIR_POLL_MS` |
 | `features/pairing/useCountdown.ts` | 만료까지 남은 초(1초 간격) + `formatRemaining` |
-| `features/pairing/PairingCodeCard.tsx` | 6자리 큰 글씨·남은 시간·새 코드 받기 (아이 화면과 가족 탭 "내 코드" 가 공유) |
+| `features/pairing/PairingCodeCard.tsx` | 8자리 큰 글씨·남은 시간·새 코드 받기 (아이 화면과 가족 탭 "내 코드" 가 공유) |
 | `pages/PairPage.tsx` | `#/pair`: 코드 카드 + 안내 + 3초 폴링 + 처음으로(로그아웃) |
 | `features/family/familySchema.ts` | zod: 자녀 추가·재연결·가족 연결·내 정보 (`nameSchema` `codeSchema` 공유) |
 | `features/family/useFamilyMembers.ts` | 가족 구성원 조회 (`family-members` 키) |
@@ -206,21 +208,21 @@ select tests.clear_auth();
 -- 만료·사용된 남의 코드 자리는 재활용된다: 그 코드와 같은 값을 뽑는 상황은 강제할 수 없으므로 upsert 문장만 직접 검증한다
 select tests.create_user() as old_uid \gset
 insert into public.pairing_codes (code, auth_user_id, kind, expires_at, used_at)
-values ('000000', :'old_uid', 'child', now() - interval '1 minute', now() - interval '2 minutes');
+values ('00000000', :'old_uid', 'child', now() - interval '1 minute', now() - interval '2 minutes');
 insert into public.pairing_codes as pc (code, auth_user_id, kind, expires_at)
-values ('000000', :'k_uid', 'child', now() + interval '10 minutes')
+values ('00000000', :'k_uid', 'child', now() + interval '10 minutes')
 on conflict (code) do update set auth_user_id = excluded.auth_user_id, kind = excluded.kind, created_at = now(), expires_at = excluded.expires_at, used_at = null
   where pc.used_at is not null or pc.expires_at < now();
 select results_eq(
-  $$ select auth_user_id, used_at from public.pairing_codes where code = '000000' $$,
+  $$ select auth_user_id, used_at from public.pairing_codes where code = '00000000' $$,
   format($$ values (%L::uuid, null::timestamptz) $$, :'k_uid'),
   '사용된 코드 자리는 새 계정의 코드로 덮어쓸 수 있다');
 -- 살아 있는 코드는 덮어쓰지 못한다
 insert into public.pairing_codes as pc (code, auth_user_id, kind, expires_at)
-values ('000000', :'old_uid', 'child', now() + interval '10 minutes')
+values ('00000000', :'old_uid', 'child', now() + interval '10 minutes')
 on conflict (code) do update set auth_user_id = excluded.auth_user_id, kind = excluded.kind, created_at = now(), expires_at = excluded.expires_at, used_at = null
   where pc.used_at is not null or pc.expires_at < now();
-select is((select auth_user_id from public.pairing_codes where code = '000000'), :'k_uid'::uuid, '살아 있는 남의 코드는 덮어쓰지 않는다');
+select is((select auth_user_id from public.pairing_codes where code = '00000000'), :'k_uid'::uuid, '살아 있는 남의 코드는 덮어쓰지 않는다');
 
 -- 형식 제약
 select throws_ok(
@@ -462,9 +464,9 @@ select lives_ok(format($$ select public.add_family_member(%L, '민준') $$, :'k3
 select tests.clear_auth();
 select id as minjun_pid from public.people where auth_user_id = :'k3_uid' \gset
 -- 같은 계정이 살아 있는 코드를 또 갖고 있었다면(이론상) 두 번째 어른은 already_registered 를 받는다: 코드 행을 직접 심어 재현
-insert into public.pairing_codes (code, auth_user_id, kind, expires_at) values ('000111', :'k3_uid', 'child', now() + interval '10 minutes');
+insert into public.pairing_codes (code, auth_user_id, kind, expires_at) values ('00001111', :'k3_uid', 'child', now() + interval '10 minutes');
 select tests.authenticate_as(:'a_uid');
-select throws_ok($$ select public.add_family_member('000111', '민준') $$, 'P0001', 'already_registered', '이미 사람 행이 있는 계정의 코드는 거부한다');
+select throws_ok($$ select public.add_family_member('00001111', '민준') $$, 'P0001', 'already_registered', '이미 사람 행이 있는 계정의 코드는 거부한다');
 
 -- 자기 코드는 쓸 수 없다
 select (select code from public.create_pairing_code('adult')) as a_code \gset
@@ -715,7 +717,7 @@ grant execute on function public.relink_child(uuid, text) to authenticated;
 - [x] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
-Expected: 110 의 41건 포함 전부 통과.
+Expected: 110 의 41건 포함 전부 통과 (리뷰 반영 뒤 60건).
 
 - [x] **Step 5: 커밋**
 
@@ -738,11 +740,12 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ```sql
 begin;
-select plan(34);
+select plan(37);
 
 select is(has_function_privilege('anon', 'public.leave_family()', 'EXECUTE'), false, 'anon 은 leave_family 를 실행할 수 없다');
 select is(has_function_privilege('anon', 'public.remove_child(uuid)', 'EXECUTE'), false, 'anon 은 remove_child 를 실행할 수 없다');
 select is(has_function_privilege('anon', 'public.delete_my_account()', 'EXECUTE'), false, 'anon 은 delete_my_account 를 실행할 수 없다');
+select is(has_function_privilege('authenticated', 'public.lock_family(uuid)', 'EXECUTE'), false, 'lock_family 는 API 역할에 열려 있지 않다 (함수 안에서만)');
 
 -- 준비: 가족 A = 김철수(a) + 이영희(b) + 서연(a 의 자녀, 익명) + 민준(b 의 자녀, 익명). 관리자. 가족 A 에 발급 2장.
 select tests.create_user('leave-a@test.local') as a_uid \gset
@@ -765,6 +768,10 @@ values ('서연', :'a_fid', :'s_uid', true, :'a_pid', now()),
        ('민준', :'a_fid', :'m_uid', true, :'b_pid', now());
 select id as s_pid from public.people where auth_user_id = :'s_uid' \gset
 select id as m_pid from public.people where auth_user_id = :'m_uid' \gset
+-- a 의 자녀지만 다른 가족에 사는 아이 (4단계 merge_people 같은 흐름이 만들 수 있는 모양) — 나가기는 내 가족 범위만 옮겨야 한다
+insert into public.families default values returning id as far_fid \gset
+insert into public.people (name, family_id, is_minor, guardian_id, guardian_consented_at)
+values ('먼아이', :'far_fid', true, :'a_pid', now()) returning id as far_pid \gset
 insert into public.meals (title, served_on, created_by) values ('테스트 점심 120', '2026-10-25', :'admin_pid') returning id as meal_id \gset
 insert into public.issuances (person_id, family_id, meal_id, quantity, unit_price, issued_by)
 values (:'a_pid', :'a_fid', :'meal_id', 2, 5000, :'admin_pid') returning id as issuance \gset
@@ -790,6 +797,7 @@ select set_eq(
   '다른 어른과 그 자녀는 옛 가족에 남는다');
 select is((select family_id from public.issuances where id = :'issuance'), :'a_fid'::uuid, '장부는 옛 가족에 남는다 (함께 쓰던 풀의 것)');
 select is((select count(*) from public.ticket_balances where family_id = :'new_fid'), 0::bigint, '새 가족에는 잔량이 없다');
+select is((select family_id from public.people where id = :'far_pid'), :'far_fid'::uuid, '보호자가 나여도 다른 가족에 사는 자녀는 옮기지 않는다 (옛 가족 범위로만)');
 
 -- 나와 내 자녀뿐이면 아무것도 바뀌지 않는다
 select count(*) as families_before from public.families \gset
@@ -800,7 +808,7 @@ select is((select count(*) from public.families), :'families_before'::bigint, '�
 
 -- ---------- remove_child ----------
 -- 민준 계정의 연결 코드가 남아 있어도 함께 지워진다 (사람 행이 있어 함수로는 못 만드니 직접 심는다)
-insert into public.pairing_codes (code, auth_user_id, kind, expires_at) values ('000222', :'m_uid', 'child', now() + interval '10 minutes');
+insert into public.pairing_codes (code, auth_user_id, kind, expires_at) values ('00000222', :'m_uid', 'child', now() + interval '10 minutes');
 select tests.authenticate_as(:'a_uid');
 select throws_ok(format($$ select public.remove_child(%L) $$, :'m_pid'), 'P0001', 'child_not_found', '남의 자녀는 삭제할 수 없다 (보호자만)');
 select throws_ok(format($$ select public.remove_child(%L) $$, :'b_pid'), 'P0001', 'child_not_found', '어른은 자녀 삭제 대상이 아니다');
@@ -813,7 +821,7 @@ select results_eq(
   format($$ select name, phone, auth_user_id, deleted_at is not null, guardian_id from public.people where id = %L $$, :'m_pid'),
   format($$ values ('탈퇴한 사용자'::text, null::text, null::uuid, true, %L::uuid) $$, :'b_pid'),
   '자녀는 익명화된다 (이름 치환, 번호·계정 NULL, deleted_at). 보호자 동의 기록은 남는다');
-select is((select count(*) from public.pairing_codes where code = '000222'), 0::bigint, '자녀 계정의 연결 코드도 지워진다');
+select is((select count(*) from public.pairing_codes where code = '00000222'), 0::bigint, '자녀 계정의 연결 코드도 지워진다');
 select tests.authenticate_as(:'b_uid');
 select throws_ok(format($$ select public.remove_child(%L) $$, :'m_pid'), 'P0001', 'child_not_found', '이미 삭제된 자녀는 다시 찾을 수 없다');
 select tests.authenticate_as(:'m_uid');
@@ -828,6 +836,7 @@ select throws_ok($$ select public.delete_my_account() $$, 'P0001', 'not_register
 select tests.authenticate_as(:'a_uid');
 select throws_ok($$ select public.delete_my_account() $$, 'P0001', 'has_children', '자녀가 있으면 먼저 자녀를 삭제해야 한다');
 select lives_ok(format($$ select public.remove_child(%L) $$, :'s_pid'), '자녀를 삭제한다');
+select lives_ok(format($$ select public.remove_child(%L) $$, :'far_pid'), '다른 가족에 사는 자녀도 보호자가 삭제할 수 있다 (탈퇴 전에 모두 정리)');
 select lives_ok($$ select public.delete_my_account() $$, '자녀가 없으면 탈퇴할 수 있다');
 select tests.clear_auth();
 select results_eq(
@@ -864,6 +873,7 @@ Expected: 120 에서 `leave_family` 가 없어 실패. 나머지 통과.
 -- =========================================================
 -- 가족 나가기: 호출자와 그 자녀를 새 가족으로 옮긴다. 장부는 옛 가족에 남는다(함께 쓰던 풀의 것 — 2단계 계획 인계 결정).
 -- 나와 내 자녀뿐인 가족이면 아무것도 바꾸지 않고 현재 행을 돌려준다 (옮기면 장부만 떨어져 나간다).
+-- 잠금: 내 행(for update) → 옮길 자녀 행(id 순) → lock_family(내 가족). add_family_member 와 같은 순서라 교착하지 않는다.
 -- 코드: not_authenticated | not_registered | not_adult
 -- =========================================================
 create or replace function public.leave_family()
@@ -886,6 +896,12 @@ begin
   if v_me.is_minor then
     raise exception 'not_adult';
   end if;
+  -- 잠금 순서(가족 함수 공통): 쓸 사람 행(id 순) → 가족 잠금 → 쓰기. 옮길 자녀 행을 먼저 잠그고,
+  -- 가족 잠금 뒤에 구성원을 세어야 동시에 진행되는 합류(add_family_member)·자녀 삭제와 판단이 어긋나지 않는다.
+  perform 1 from public.people
+    where guardian_id = v_me.id and is_minor and deleted_at is null and family_id = v_me.family_id
+    order by id for update;
+  perform public.lock_family(v_me.family_id);
   -- 나도 아니고 내 자녀도 아닌 산 구성원이 없으면 그대로
   if not exists (
     select 1 from public.people
@@ -897,7 +913,8 @@ begin
 
   insert into public.families default values returning id into v_new_family;
   update public.people set family_id = v_new_family
-   where deleted_at is null and (id = v_me.id or (guardian_id = v_me.id and is_minor));
+   where deleted_at is null and family_id = v_me.family_id
+     and (id = v_me.id or (guardian_id = v_me.id and is_minor));
   select * into v_me from public.people where id = v_me.id;
   return v_me;
 end
@@ -938,6 +955,8 @@ begin
   if not found then
     raise exception 'child_not_found';
   end if;
+  -- 자녀 행을 잠근 뒤 가족 잠금 (가족 함수 공통 순서). 합류·나가기가 구성원을 세는 동안 자녀가 사라지지 않게 한다.
+  perform public.lock_family(v_child.family_id);
 
   delete from public.pairing_codes where auth_user_id = v_child.auth_user_id;
   update public.people
@@ -974,6 +993,8 @@ begin
   if v_me.is_minor then
     raise exception 'not_adult';
   end if;
+  -- 내 행을 잠근 뒤 가족 잠금 (가족 함수 공통 순서). 자녀 수를 세는 동안 자녀 추가가 끼어들지 않게 한다.
+  perform public.lock_family(v_me.family_id);
   if exists (select 1 from public.people where guardian_id = v_me.id and is_minor and deleted_at is null) then
     raise exception 'has_children';
   end if;
@@ -993,7 +1014,7 @@ grant execute on function public.delete_my_account() to authenticated;
 - [ ] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
-Expected: 120 의 34건 포함 전부 통과.
+Expected: 120 의 37건 포함 전부 통과.
 
 - [ ] **Step 5: 커밋**
 
@@ -1174,7 +1195,7 @@ select cron.schedule('cleanup_empty_families', '30 18 * * *', $$select public.cl
 - [ ] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
-Expected: 010~130 전부 통과 (총 189 + 29 + 41 + 34 + 18 = **311**).
+Expected: 010~130 전부 통과 (총 189 + 29 + 60 + 37 + 18 = **333**).
 
 - [ ] **Step 5: DB 타입 재생성 + 타입 검사**
 
@@ -2211,7 +2232,7 @@ function makeWrapper() {
   }
 }
 
-const row = { code: '482913', expires_at: '2026-10-12T03:40:00Z' }
+const row = { code: '48291357', expires_at: '2026-10-12T03:40:00Z' }
 
 describe('usePairingCode', () => {
   it('상수와 키', () => {
@@ -2326,15 +2347,15 @@ vi.mock('./useCountdown', async (importOriginal) => ({
   useCountdown,
 }))
 
-const data = { code: '482913', expires_at: '2026-10-12T03:40:00Z' }
+const data = { code: '48291357', expires_at: '2026-10-12T03:40:00Z' }
 
 describe('PairingCodeCard', () => {
-  it('코드를 세 자리씩 띄워 크게 보여 주고 남은 시간을 알린다', () => {
+  it('코드를 네 자리씩 띄워 크게 보여 주고 남은 시간을 알린다', () => {
     const refetch = vi.fn<() => Promise<unknown>>()
     usePairingCode.mockReturnValue({ status: 'success', data, isFetching: false, refetch })
     useCountdown.mockReturnValue(581)
     render(<PairingCodeCard kind="child" hint="보호자 앱에서 입력해 주세요" />)
-    expect(screen.getByTestId('pairing-code')).toHaveTextContent('482 913')
+    expect(screen.getByTestId('pairing-code')).toHaveTextContent('4829 1357')
     expect(screen.getByRole('status')).toHaveTextContent('9분 41초 남음 · 1회용')
     expect(screen.getByText('보호자 앱에서 입력해 주세요')).toBeInTheDocument()
     expect(usePairingCode).toHaveBeenCalledWith('child')
@@ -2494,7 +2515,7 @@ type Props = {
   hint: string
 }
 
-/** 6자리 코드를 크게, 남은 시간과 함께. 만료되면 흐리게 하고 "새 코드 받기" 로 다시 받는다. */
+/** 8자리 코드를 크게, 남은 시간과 함께. 만료되면 흐리게 하고 "새 코드 받기" 로 다시 받는다. */
 export function PairingCodeCard({ kind, hint }: Props) {
   const code = usePairingCode(kind)
   const remaining = useCountdown(code.data?.expires_at)
@@ -2508,7 +2529,7 @@ export function PairingCodeCard({ kind, hint }: Props) {
             data-testid="pairing-code"
             className={`font-mono text-5xl font-extrabold tabular-nums tracking-[0.2em] ${expired ? 'text-gray-300 line-through' : ''}`}
           >
-            {code.data.code.slice(0, 3)} {code.data.code.slice(3)}
+            {code.data.code.slice(0, 4)} {code.data.code.slice(4)}
           </p>
           <p role="status" className={`text-sm ${expired ? 'font-bold text-red-600' : 'text-gray-600'}`}>
             {expired ? '코드가 만료되었어요' : `${formatRemaining(remaining)} 남음 · 1회용`}
@@ -2603,31 +2624,31 @@ import { validateAddChild, validateJoin, validateProfile, validateRelink } from 
 
 describe('validateAddChild', () => {
   it('이름 공백 제거·NFC, 코드는 숫자만 남겨 6자리', () => {
-    const r = validateAddChild({ name: ' 서연 ', code: '482 913', consent: true })
-    expect(r).toEqual({ ok: true, values: { name: '서연', code: '482913', consent: true } })
+    const r = validateAddChild({ name: ' 서연 ', code: '4829 1357', consent: true })
+    expect(r).toEqual({ ok: true, values: { name: '서연', code: '48291357', consent: true } })
   })
   it('이름이 비면 오류', () => {
-    expect(validateAddChild({ name: ' ', code: '482913', consent: true })).toEqual({ ok: false, errors: { name: '이름을 입력해 주세요' } })
+    expect(validateAddChild({ name: ' ', code: '48291357', consent: true })).toEqual({ ok: false, errors: { name: '이름을 입력해 주세요' } })
   })
   it('코드가 6자리 숫자가 아니면 오류', () => {
-    expect(validateAddChild({ name: '서연', code: '12345', consent: true })).toEqual({ ok: false, errors: { code: '6자리 숫자 코드를 입력해 주세요' } })
+    expect(validateAddChild({ name: '서연', code: '1234567', consent: true })).toEqual({ ok: false, errors: { code: '8자리 숫자 코드를 입력해 주세요' } })
   })
   it('동의가 없으면 오류', () => {
-    expect(validateAddChild({ name: '서연', code: '482913', consent: false })).toEqual({ ok: false, errors: { consent: '법정대리인 동의가 필요해요' } })
+    expect(validateAddChild({ name: '서연', code: '48291357', consent: false })).toEqual({ ok: false, errors: { consent: '법정대리인 동의가 필요해요' } })
   })
 })
 
 describe('validateRelink', () => {
   it('자녀 id 와 코드', () => {
-    expect(validateRelink({ childId: 'p2', code: '482-913' })).toEqual({ ok: true, values: { childId: 'p2', code: '482913' } })
-    expect(validateRelink({ childId: '', code: '482913' })).toEqual({ ok: false, errors: { childId: '자녀를 선택해 주세요' } })
+    expect(validateRelink({ childId: 'p2', code: '4829-1357' })).toEqual({ ok: true, values: { childId: 'p2', code: '48291357' } })
+    expect(validateRelink({ childId: '', code: '48291357' })).toEqual({ ok: false, errors: { childId: '자녀를 선택해 주세요' } })
   })
 })
 
 describe('validateJoin', () => {
   it('코드만', () => {
-    expect(validateJoin({ code: '000111' })).toEqual({ ok: true, values: { code: '000111' } })
-    expect(validateJoin({ code: 'abc' })).toEqual({ ok: false, errors: { code: '6자리 숫자 코드를 입력해 주세요' } })
+    expect(validateJoin({ code: '00001111' })).toEqual({ ok: true, values: { code: '00001111' } })
+    expect(validateJoin({ code: 'abc' })).toEqual({ ok: false, errors: { code: '8자리 숫자 코드를 입력해 주세요' } })
   })
 })
 
@@ -2696,6 +2717,7 @@ describe('canLeaveFamily', () => {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { church } from '../../config/church'
 import { ok, fail } from '../../test/fakeSupabase'
 import { profileErrorMessage, useAddChild, useDeleteAccount, useJoinFamily, useLeaveFamily, useRelinkChild, useRemoveChild, useUpdateProfile } from './useFamilyActions'
 
@@ -2728,9 +2750,9 @@ describe('useAddChild', () => {
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useAddChild(), { wrapper })
     await act(async () => {
-      await result.current.mutateAsync({ name: '서연', code: '482913' })
+      await result.current.mutateAsync({ name: '서연', code: '48291357' })
     })
-    expect(rpc).toHaveBeenCalledWith('add_family_member', { p_code: '482913', p_child_name: '서연' })
+    expect(rpc).toHaveBeenCalledWith('add_family_member', { p_code: '48291357', p_child_name: '서연', p_consent_version: church.consentVersion })
     expectFamilyInvalidated(invalidate)
   })
 
@@ -2738,7 +2760,7 @@ describe('useAddChild', () => {
     rpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'invalid_code' } })
     const { wrapper } = makeWrapper()
     const { result } = renderHook(() => useAddChild(), { wrapper })
-    act(() => result.current.mutate({ name: '서연', code: '000000' }))
+    act(() => result.current.mutate({ name: '서연', code: '00000000' }))
     await waitFor(() => expect(result.current.status).toBe('error'))
     expect(result.current.error?.message).toBe('invalid_code')
   })
@@ -2750,15 +2772,15 @@ describe('useRelinkChild · useJoinFamily · useLeaveFamily · useRemoveChild', 
     const { wrapper, invalidate } = makeWrapper()
     const relink = renderHook(() => useRelinkChild(), { wrapper })
     await act(async () => {
-      await relink.result.current.mutateAsync({ childId: 'p2', code: '111111' })
+      await relink.result.current.mutateAsync({ childId: 'p2', code: '11111111' })
     })
-    expect(rpc).toHaveBeenCalledWith('relink_child', { p_child_id: 'p2', p_code: '111111' })
+    expect(rpc).toHaveBeenCalledWith('relink_child', { p_child_id: 'p2', p_code: '11111111' })
 
     const join = renderHook(() => useJoinFamily(), { wrapper })
     await act(async () => {
-      await join.result.current.mutateAsync({ code: '222222' })
+      await join.result.current.mutateAsync({ code: '22222222' })
     })
-    expect(rpc).toHaveBeenCalledWith('add_family_member', { p_code: '222222' })
+    expect(rpc).toHaveBeenCalledWith('add_family_member', { p_code: '22222222' })
 
     const leave = renderHook(() => useLeaveFamily(), { wrapper })
     await act(async () => {
@@ -2852,11 +2874,11 @@ export const nameSchema = z
   .string()
   .transform((s) => s.normalize('NFC'))
   .pipe(z.string().trim().min(1, '이름을 입력해 주세요').max(20, '이름은 20자 이내로 입력해 주세요'))
-// 코드는 "482 913" 처럼 띄워 보여 주므로 숫자만 남긴 뒤 6자리인지 본다
+// 코드는 "4829 1357" 처럼 띄워 보여 주므로 숫자만 남긴 뒤 8자리인지 본다 (DB 와 같은 길이 — 2단계 리뷰에서 6→8 로 늘렸다)
 export const codeSchema = z
   .string()
   .transform((s) => s.replace(/\D/g, ''))
-  .pipe(z.string().regex(/^\d{6}$/, '6자리 숫자 코드를 입력해 주세요'))
+  .pipe(z.string().regex(/^\d{8}$/, '8자리 숫자 코드를 입력해 주세요'))
 const phoneSchema = z.string().transform(normalizePhone).refine(isValidMobile, '휴대폰 번호를 확인해 주세요')
 
 export const addChildSchema = z.object({
@@ -2915,6 +2937,7 @@ export function canLeaveFamily(members: readonly FamilyMember[], meId: string): 
 
 ```ts
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { church } from '../../config/church'
 import { codeOf, toUserMessage } from '../../lib/errors'
 import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
@@ -2942,7 +2965,8 @@ export function useAddChild() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (v: { name: string; code: string }) =>
-      unwrap(await supabase.rpc('add_family_member', { p_code: v.code, p_child_name: v.name })),
+      // 동의 버전: 보호자가 체크한 법정대리인 동의 문구의 날짜 (DB 가 YYYY-MM-DD 형식을 검사한다)
+      unwrap(await supabase.rpc('add_family_member', { p_code: v.code, p_child_name: v.name, p_consent_version: church.consentVersion })),
     onSuccess: () => invalidateFamily(queryClient),
   })
 }
@@ -3162,10 +3186,10 @@ describe('AddChildForm · 새 자녀', () => {
     useRelinkChild.mockReturnValue(idle())
     const { onDone } = renderForm()
     await userEvent.type(screen.getByLabelText('자녀 이름'), '서연')
-    await userEvent.type(screen.getByLabelText('자녀 폰에 뜬 코드'), '482 913')
+    await userEvent.type(screen.getByLabelText('자녀 폰에 뜬 코드'), '4829 1357')
     await userEvent.click(screen.getByLabelText(/법정대리인 동의/))
     await userEvent.click(screen.getByRole('button', { name: '연결하기' }))
-    expect(add.mutate).toHaveBeenCalledWith({ name: '서연', code: '482913' }, expect.anything())
+    expect(add.mutate).toHaveBeenCalledWith({ name: '서연', code: '48291357' }, expect.anything())
     expect(onDone).toHaveBeenCalledWith('서연 님을 연결했어요')
   })
 
@@ -3179,7 +3203,7 @@ describe('AddChildForm · 새 자녀', () => {
     await userEvent.click(screen.getByLabelText(/법정대리인 동의/))
     await userEvent.click(screen.getByRole('button', { name: '연결하기' }))
     expect(add.mutate).not.toHaveBeenCalled()
-    expect(screen.getByRole('alert')).toHaveTextContent('6자리 숫자 코드를 입력해 주세요')
+    expect(screen.getByRole('alert')).toHaveTextContent('8자리 숫자 코드를 입력해 주세요')
   })
 
   it('서버 오류 문구를 보여 준다', () => {
@@ -3208,9 +3232,9 @@ describe('AddChildForm · 기존 자녀 재연결', () => {
     await userEvent.selectOptions(screen.getByLabelText('자녀'), 'p2')
     expect(screen.queryByLabelText('자녀 이름')).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/법정대리인 동의/)).not.toBeInTheDocument()
-    await userEvent.type(screen.getByLabelText('자녀 폰에 뜬 코드'), '111111')
+    await userEvent.type(screen.getByLabelText('자녀 폰에 뜬 코드'), '11111111')
     await userEvent.click(screen.getByRole('button', { name: '다시 연결하기' }))
-    expect(relink.mutate).toHaveBeenCalledWith({ childId: 'p2', code: '111111' }, expect.anything())
+    expect(relink.mutate).toHaveBeenCalledWith({ childId: 'p2', code: '11111111' }, expect.anything())
     expect(onDone).toHaveBeenCalledWith('서연 님을 다시 연결했어요')
   })
 
@@ -3496,10 +3520,10 @@ export function AddChildForm({ existingChildren: existing, onDone, onCancel }: P
         name="child-code"
         inputMode="numeric"
         autoComplete="one-time-code"
-        placeholder="6자리 숫자"
+        placeholder="8자리 숫자"
         value={code}
         onChange={(e) => setCode(e.target.value)}
-        maxLength={7}
+        maxLength={9}
         error={errors.code}
       />
       {!relinking && (
@@ -3677,9 +3701,9 @@ describe('JoinFamilyPanel', () => {
     useJoinFamily.mockReturnValue(join)
     const { onDone } = renderPanel()
     expect(screen.getByRole('radio', { name: '상대 코드 입력' })).toBeChecked()
-    await userEvent.type(screen.getByLabelText('상대 폰에 뜬 코드'), '000 111')
+    await userEvent.type(screen.getByLabelText('상대 폰에 뜬 코드'), '0000 1111')
     await userEvent.click(screen.getByRole('button', { name: '우리 가족으로 연결' }))
-    expect(join.mutate).toHaveBeenCalledWith({ code: '000111' }, expect.anything())
+    expect(join.mutate).toHaveBeenCalledWith({ code: '00001111' }, expect.anything())
     expect(onDone).toHaveBeenCalledWith('이영희 님이 우리 가족이 되었어요')
   })
 
@@ -3908,10 +3932,10 @@ export function JoinFamilyPanel({ onDone, onCancel }: Props) {
             name="join-code"
             inputMode="numeric"
             autoComplete="one-time-code"
-            placeholder="6자리 숫자"
+            placeholder="8자리 숫자"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            maxLength={7}
+            maxLength={9}
             error={error}
           />
           {join.isError && <p role="alert" className="text-sm text-red-600">{toUserMessage(join.error)}</p>}
@@ -4197,7 +4221,7 @@ test('아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰
       await expect(child.getByRole('heading', { name: '보호자에게 이 코드를 보여 주세요' })).toBeVisible()
       await expect(child.getByText(/남음 · 1회용/)).toBeVisible()
       code = ((await child.getByTestId('pairing-code').textContent()) ?? '').replace(/\D/g, '')
-      expect(code).toMatch(/^\d{6}$/)
+      expect(code).toMatch(/^\d{8}$/)
     })
 
     await test.step('보호자: 가족 탭 › 자녀 추가', async () => {
@@ -4311,7 +4335,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - [ ] **Step 4: 전체 검증**
 
 ```bash
-npm run db:reset && npm run db:test        # pgTAP 311
+npm run db:reset && npm run db:test        # pgTAP 333
 npm run lint && npx tsc -b
 npm run test:coverage                      # 임계값(80/80/70/80) 통과
 npm run build && VITE_BASE_PATH=/meal-ticket/ npm run build && grep -q '/meal-ticket/assets/' dist/index.html
@@ -4335,7 +4359,7 @@ gh pr create --title "3단계: 가족·아이 — 연결 코드, 익명 아이 �
 
 ```markdown
 ## Summary
-- DB: `pairing_codes`, `lock_family_meal`, `create_pairing_code`, `add_family_member`(자녀 추가·어른 합류, 빈 가족 장부 이동), `relink_child`, `leave_family`, `remove_child`, `delete_my_account`, pg_cron 정리 3건. pgTAP +122 (총 311).
+- DB: `pairing_codes`, `lock_family_meal`, `create_pairing_code`, `add_family_member`(자녀 추가·어른 합류, 빈 가족 장부 이동), `relink_child`, `leave_family`, `remove_child`, `delete_my_account`, pg_cron 정리 3건. pgTAP +144 (총 333).
 - 교인: 시작 화면 "아이 계정으로 시작하기", 가입 "만 14세 미만" 토글, `#/pair` 연결 코드, `#/family` 가족 탭(구성원·자녀 추가·재연결·가족 연결·가족 나가기·자녀 삭제·내 정보·탈퇴), 아이 폰 로그아웃 확인.
 - 공통: 로그아웃 캐시 정리를 AuthProvider SIGNED_OUT 으로 이동. E2E 가족 흐름(두 브라우저 컨텍스트).
 
@@ -4344,7 +4368,7 @@ gh pr create --title "3단계: 가족·아이 — 연결 코드, 익명 아이 �
 - 마이그레이션이 `pg_cron` 을 켜고 작업 3건을 등록한다 (비용 없음).
 
 ## Test Plan
-- [ ] CI 녹색 (pgTAP 311 · vitest · E2E 4)
+- [ ] CI 녹색 (pgTAP 333 · vitest · E2E 4)
 - [ ] merge 후 Deploy 성공, 운영에서 익명 로그인 → `#/pair` 코드 표시 확인
 - [ ] 실제 폰 2대: 아이 계정 → 코드 → 보호자 자녀 추가 → 아이 폰에 가족 식권
 
@@ -4357,7 +4381,7 @@ PR 은 사용자가 merge 한다. merge 전에 사용자에게 **Supabase 콘솔
 
 ## 완료 기준
 
-- pgTAP: 010~130 전부 통과, 총 311 (100=29 · 110=41 · 120=34 · 130=18).
+- pgTAP: 010~130 전부 통과, 총 333 (100=29 · 110=60 · 120=37 · 130=18).
 - Vitest: 전부 통과, 커버리지 임계값(lines 80 · functions 80 · branches 70 · statements 80) 통과.
 - `npm run lint` · `npx tsc -b` · `npm run build` · 하위 경로 빌드 통과.
 - Playwright: 4 passed (onboarding 2 · tickets 1 · family 1).
