@@ -1,5 +1,6 @@
 begin;
-select plan(20);
+-- 두 세션이 겹치는 경합(서로 다른 request_id → 한 쪽만 성공 / 같은 request_id → 같은 행)은 pgTAP(단일 세션)로 재현할 수 없어 리뷰 때 psql 두 세션으로 수동 검증했다 (2026-10-08).
+select plan(22);
 
 select is(has_function_privilege('anon', 'public.use_ticket(uuid,uuid)', 'EXECUTE'), false, 'anon 은 use_ticket 을 실행할 수 없다');
 
@@ -37,6 +38,15 @@ values (:'a_fid', :'a_pid', :'today_meal', 'self', :'a_pid', gen_random_uuid(), 
 select tests.authenticate_as(:'ghost_uid');
 select throws_ok(format($$ select public.use_ticket(%L, %L) $$, :'today_meal', gen_random_uuid()), 'P0001', 'not_registered', '사람 행이 없는 계정은 쓸 수 없다');
 
+-- 탈퇴(익명화)한 계정: auth_user_id 가 끊어진 사람 행만 남는다
+select tests.clear_auth();
+select tests.create_user('use-deleted@test.local') as deleted_uid \gset
+insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
+values ('탈퇴예정', '01066660099', :'deleted_uid', now(), '2026-10-07');
+update public.people set deleted_at = now(), auth_user_id = null, phone = null, name = '탈퇴한 사용자' where auth_user_id = :'deleted_uid';
+select tests.authenticate_as(:'deleted_uid');
+select throws_ok(format($$ select public.use_ticket(%L, %L) $$, :'today_meal', gen_random_uuid()), 'P0001', 'not_registered', '탈퇴(익명화)한 계정은 쓸 수 없다');
+
 -- A: 검증
 select tests.authenticate_as(:'a_uid');
 select throws_ok(format($$ select public.use_ticket(%L, %L) $$, gen_random_uuid(), gen_random_uuid()), 'P0001', 'meal_not_found', '없는 식사');
@@ -54,6 +64,8 @@ select is((select remaining from public.ticket_balances where meal_id = :'today_
 select lives_ok(format($$ select public.use_ticket(%L, %L) $$, :'today_meal', :'req1'), '같은 request_id 재시도는 성공으로 본다');
 select is((select count(*) from public.usages where meal_id = :'today_meal' and voided_at is null), 1::bigint, '재시도는 새 사용을 만들지 않는다');
 select is((select remaining from public.ticket_balances where meal_id = :'today_meal'), 1, '재시도 뒤에도 잔량은 그대로');
+-- next_meal 은 오늘이 아니지만, 멱등 조회가 not_today 판정보다 먼저이므로 duplicate_request 여야 한다 (조회가 당일 검사보다 앞선다는 순서도 함께 고정한다).
+select throws_ok(format($$ select public.use_ticket(%L, %L) $$, :'next_meal', :'req1'), 'P0001', 'duplicate_request', '같은 request_id 를 다른 식사에 다시 쓰면 거부한다');
 
 -- 자녀 계정(같은 가족)이 2장째를 쓴다 → 0장
 select tests.authenticate_as(:'kid_uid');

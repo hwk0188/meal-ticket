@@ -28,10 +28,15 @@ begin
     raise exception 'invalid_request';
   end if;
 
+  -- 잠금을 멱등 조회보다 먼저 건다: 같은 request_id 의 동시 재시도가, 먼저 들어간 요청이 커밋한 행을 보게 된다.
+  -- 두 int4 키: 가족·식사 해시. 트랜잭션이 끝나면 자동 해제된다.
+  perform pg_advisory_xact_lock(hashtext(v_person.family_id::text), hashtext(p_meal_id::text));
+
   -- 멱등 분기. 남의 request_id 로 남의 결과를 받아 가지는 못하게 person 까지 맞춘다.
+  -- 다른 식사로 재사용된 request_id(클라이언트 버그)도 같은 코드로 거부한다.
   select * into v_row from public.usages where request_id = p_request_id;
   if found then
-    if v_row.person_id <> v_person.id then
+    if v_row.person_id <> v_person.id or v_row.meal_id <> p_meal_id then
       raise exception 'duplicate_request';
     end if;
     return v_row;
@@ -44,9 +49,6 @@ begin
   if v_meal.served_on <> (now() at time zone 'Asia/Seoul')::date then
     raise exception 'not_today';
   end if;
-
-  -- 두 int4 키: 가족·식사 해시. 트랜잭션이 끝나면 자동 해제된다.
-  perform pg_advisory_xact_lock(hashtext(v_person.family_id::text), hashtext(p_meal_id::text));
 
   select coalesce(sum(i.quantity), 0)
          - (select coalesce(sum(u.quantity), 0) from public.usages u
@@ -63,7 +65,7 @@ begin
     values (v_person.family_id, v_person.id, p_meal_id, 1, 'self', v_person.id, p_request_id)
     returning * into v_row;
   exception when unique_violation then
-    -- 같은 request_id 의 동시 재시도가 먼저 들어갔다. 잠금은 가족·식사 단위라 이 경우까지 막지는 못한다.
+    -- 가족·식사 잠금이 같은 식사의 재시도는 직렬화하므로, 여기 닿는 것은 다른 사람·다른 식사에서 온 같은 request_id 뿐이다.
     select * into v_row from public.usages where request_id = p_request_id;
     if not found or v_row.person_id <> v_person.id then
       raise exception 'duplicate_request';
