@@ -91,6 +91,7 @@
 - 프론트: `verbatimModuleSyntax` 라 타입은 `import type`. `vi.fn<() => T>()` 처럼 타입 인자를 적는다(`vitest/require-mock-type-parameters`). 컴포넌트 파일에서 컴포넌트가 아닌 것을 export 하지 않는다(`react/only-export-components`). `oxlint --deny-warnings` 가 CI 에서 돈다.
 - 커밋 메시지는 `<type>: <설명>` 형식, 끝에 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 - **조회 화면은 `status` 가 아니라 `data` 로 분기한다.** TanStack 은 백그라운드 재조회가 실패해도 `data` 를 유지한 채 `status='error'` 가 된다. `status === 'success'` 로 가리면 폴링 한 번 실패에 목록이 통째로 사라진다(Task 9 리뷰). 패턴: `data ? <목록 + (error 면 작은 안내)> : status === 'error' ? <alert + 다시 시도> : <Spinner inline />`.
+- **여러 조회를 합쳐 그리는 화면은 모든 조회의 `data` 가 있을 때만 본문을 그린다** (하나라도 없으면 Spinner/alert). 일부만 왔을 때 0 으로 채워 그리면 잘못된 숫자와 버튼이 보인다 (Task 11 리뷰).
 - 작업 브랜치 `feat/phase2-tickets` 에서 시작한다. `main` 에 직접 커밋하지 않는다.
 
 ```bash
@@ -4948,4 +4949,5 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - 발급 화면 검색 결과의 "가족 수" 태그(3단계 뒤 의미가 생긴다).
 - **잔량을 바꾸는 4단계 함수(`cancel_issuance` · `void_usage` · `use_ticket_as_admin`)는 `use_ticket` 과 같은 잠금 키 `pg_advisory_xact_lock(hashtext(family_id::text), hashtext(meal_id::text))` 을 잡아야 한다** (Task 4 리뷰 권고 — 동시 취소+사용이 잔량을 음수로 만들 수 있다). 키가 어긋나지 않게 `public.lock_family_meal(uuid, uuid)` 헬퍼를 4단계 첫 마이그레이션에서 만들고 `use_ticket` 도 그 헬퍼를 쓰도록 바꾼다.
 - `groupTickets` 는 `remaining` 이 음수가 될 수 있다고 가정하지 않는다. 4단계 `cancel_issuance` 는 설계대로 `would_go_negative` 로 거부해야 하며(아니면 홈에 "−1장 남음" 이 뜬다), 홈의 지난 식권·잔량 뷰 조회는 가족 이력 전체를 매 폴링마다 읽으므로(1년 ≈ 52행, URL 한계 ≈ 210개 id) 이력이 쌓이면 `meals` 조회에 `served_on` 기간 창(예: 90일)을 두는 것을 4단계에서 검토한다 (Task 7 리뷰 메모).
+- **취소된 발급과 식사 삭제의 긴장 (Task 11 리뷰 메모).** `ticket_balances` 는 취소된 발급을 빼고 세지만 `issuances.meal_id` FK 는 어떤 행이든 있으면 식사 삭제를 막는다. 4단계에서 `cancel_issuance` 가 생기면 "발급 0장" 인데 삭제가 23503 으로 실패하는 식사가 생긴다. 4단계에서 식사 soft-delete(`deleted_at`) 또는 "발급 이력이 하나라도 있으면 삭제 버튼 숨김" 중 하나로 정한다. 그때까지 삭제 실패 문구는 일반 23503 문구를 쓴다.
 - 2단계 pgTAP 실제 개수: 060=23, 070=31, 080=33, 090=22 (계획 본문의 16/20/22/21 은 리뷰 보강 전 수치). 전체 189.
