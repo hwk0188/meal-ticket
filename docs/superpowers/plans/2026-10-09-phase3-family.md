@@ -737,7 +737,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `supabase/migrations/20261009000003_leave_remove_delete.sql`
 - Test: `supabase/tests/database/120_leave_remove_delete.sql`
 
-- [ ] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/120_leave_remove_delete.sql`**
+- [x] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/120_leave_remove_delete.sql`**
 
 ```sql
 begin;
@@ -863,12 +863,12 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 120 에서 `leave_family` 가 없어 실패. 나머지 통과.
 
-- [ ] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261009000003_leave_remove_delete.sql`**
+- [x] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261009000003_leave_remove_delete.sql`**
 
 ```sql
 -- =========================================================
@@ -1021,12 +1021,12 @@ revoke execute on function public.delete_my_account() from public, anon;
 grant execute on function public.delete_my_account() to authenticated;
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 120 의 37건 포함 전부 통과.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add supabase/migrations/20261009000003_leave_remove_delete.sql supabase/tests/database/120_leave_remove_delete.sql
