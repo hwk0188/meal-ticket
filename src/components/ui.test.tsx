@@ -126,4 +126,12 @@ describe('Spinner', () => {
     expect(status).toHaveTextContent('연결에 문제가 있어요. 새로고침해 주세요')
     expect(status.textContent).not.toContain('…')
   })
+
+  it('기본은 화면 높이를 차지하고, inline 은 차지하지 않는다', () => {
+    const { rerender } = render(<Spinner />)
+    expect(screen.getByRole('status')).toHaveClass('min-h-dvh')
+
+    rerender(<Spinner inline />)
+    expect(screen.getByRole('status')).not.toHaveClass('min-h-dvh')
+  })
 })

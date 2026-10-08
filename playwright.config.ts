@@ -10,6 +10,9 @@ export default defineConfig({
   // test.only 를 실수로 커밋하면 CI 가 나머지를 조용히 건너뛴다. CI 에서는 실패로 본다.
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
+  // E2E 들은 로컬 Supabase 한 DB 를 함께 쓴다. 파일을 병렬로 돌리면 한 테스트가 만든 식사가 다른 테스트의 홈 화면에 보여
+  // 단언이 깨진다. 셋뿐이라 직렬로 돌려도 몇 초 차이다.
+  workers: 1,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   // 가입은 로컬 Supabase 왕복이 섞인다. 기본 5초로는 느린 기계에서 아깝게 깨진다.
   expect: { timeout: 10_000 },

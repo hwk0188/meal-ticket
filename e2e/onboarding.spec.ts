@@ -42,7 +42,10 @@ test('개발 로그인 → 가입 → 홈 → 새로고침 유지 → 로그아�
     await expect(page.getByRole('heading', { name: '김철수 님' })).toBeVisible()
     // 적어 넣은 번호가 claim_person(normalize_phone) 을 거쳐 maskPhone 으로 돌아오는지 본다.
     await expect(page.getByText(`${phone.slice(0, 3)}-****-${phone.slice(-4)}`)).toBeVisible()
-    await expect(page.getByText('오늘은 식사가 없어요')).toBeVisible()
+    // 새 가족은 식권이 없다. 다만 다른 테스트·수동 작업이 오늘 식사를 만들어 두었을 수 있어 둘 중 하나를 받아들인다.
+    await expect(page.getByText(/오늘은 식사가 없어요|이 식사의 식권이 없어요/).first()).toBeVisible()
+    // 어느 쪽이든 새 가족에게 누를 식권은 없어야 한다
+    await expect(page.getByRole('button', { name: /꾹 눌러 사용/ })).toHaveCount(0)
 
     await page.reload()
     await expect(page.getByRole('heading', { name: '김철수 님' })).toBeVisible()

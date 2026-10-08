@@ -1,4 +1,4 @@
-import { messageOf, toUserMessage } from './errors'
+import { messageOf, rpcCodeOf, toUserMessage } from './errors'
 
 describe('toUserMessage', () => {
   it('DB 오류 코드를 사용자 문구로 바꾼다', () => {
@@ -37,5 +37,53 @@ describe('messageOf', () => {
   it('객체의 message 문자열만 꺼낸다', () => {
     expect(messageOf({ message: 'already_registered' })).toBe('already_registered')
     expect(messageOf('str')).toBeUndefined()
+  })
+})
+
+describe('2단계 오류 문구', () => {
+  it.each([
+    ['forbidden', '관리자만 할 수 있어요.'],
+    ['not_registered', '가입을 먼저 해 주세요.'],
+    ['meal_not_found', '식사를 찾을 수 없어요. 목록을 새로고침해 주세요.'],
+    ['person_not_found', '사람을 찾을 수 없어요.'],
+    ['person_is_minor', '자녀 이름으로는 발급할 수 없어요. 보호자 이름으로 발급해 주세요.'],
+    ['invalid_quantity', '장수는 1~99 사이로 적어 주세요.'],
+    ['invalid_price', '단가는 0~1,000,000원 사이로 적어 주세요.'],
+    ['invalid_memo', '메모는 100자까지예요.'],
+    ['invalid_date', '날짜를 확인해 주세요.'],
+    ['not_today', '오늘 식사의 식권만 쓸 수 있어요.'],
+    ['no_remaining', '방금 다른 폰에서 사용되었어요.'],
+    ['duplicate_request', '이미 처리된 요청이에요.'],
+    ['invalid_request', '잘못된 요청이에요. 다시 눌러 주세요.'],
+  ])('%s → 문구', (code, text) => {
+    expect(toUserMessage({ message: code, code: 'P0001' })).toBe(text)
+  })
+
+  it('DB 제약 코드도 문구로 바꾼다 (직접 insert/delete 경로)', () => {
+    expect(toUserMessage({ code: '23503', message: 'update or delete on table "meals" violates foreign key constraint' }))
+      .toBe('연결된 기록이 있어 지울 수 없어요.')
+    expect(toUserMessage({ code: '23505', message: 'duplicate key value violates unique constraint' }))
+      .toBe('같은 값이 이미 있어요.')
+  })
+
+  it('타임아웃·중단은 통신 문구', () => {
+    expect(toUserMessage(new DOMException('signal timed out', 'TimeoutError'))).toBe('통신이 불안정해요. 잠시 후 다시 시도해 주세요.')
+    expect(toUserMessage(new DOMException('The operation was aborted.', 'AbortError'))).toBe('통신이 불안정해요. 잠시 후 다시 시도해 주세요.')
+  })
+
+  it('supabase-js 가 직렬화한 통신 오류(코드 없음)는 통신 문구이고 rpc 코드가 아니다', () => {
+    const timedOut = { message: 'TimeoutError: signal timed out', code: '', details: '', hint: '' }
+    const aborted = { message: 'AbortError: The operation was aborted.', code: '', details: '', hint: '' }
+    const failed = { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' }
+    for (const err of [timedOut, aborted, failed]) {
+      expect(toUserMessage(err)).toBe('통신이 불안정해요. 잠시 후 다시 시도해 주세요.')
+      expect(rpcCodeOf(err)).toBeUndefined()
+    }
+  })
+
+  it('rpcCodeOf 는 알려진 코드만 돌려준다', () => {
+    expect(rpcCodeOf({ message: 'no_remaining' })).toBe('no_remaining')
+    expect(rpcCodeOf({ message: 'something else' })).toBeUndefined()
+    expect(rpcCodeOf(new Error('failed to fetch'))).toBeUndefined()
   })
 })

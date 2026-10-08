@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router'
 import { Button, Checkbox, TextField } from '../../components/ui'
 import { church } from '../../config/church'
 import { messageOf, toUserMessage } from '../../lib/errors'
+import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../auth/AuthProvider'
 import { personQueryKey } from '../auth/usePerson'
@@ -13,15 +14,13 @@ import { validateOnboarding, type OnboardingErrors, type OnboardingValues } from
 const FIELD_ORDER = ['name', 'phone', 'consent'] as const
 
 async function claimPerson(values: OnboardingValues) {
-  const { data, error } = await supabase.rpc('claim_person', {
-    p_name: values.name,
-    p_phone: values.phone,
-    p_consent_version: church.consentVersion,
-  })
-  // PostgREST 오류는 Error 가 아닌 평범한 객체다 (usePerson 과 같은 방식으로 감싼다).
-  // react-query 는 error 를 Error 로 타이핑하므로, 날것을 던지면 타입과 실제가 어긋난다.
-  if (error) throw Object.assign(new Error(error.message), { code: error.code, cause: error })
-  return data
+  return unwrap(
+    await supabase.rpc('claim_person', {
+      p_name: values.name,
+      p_phone: values.phone,
+      p_consent_version: church.consentVersion,
+    }),
+  )
 }
 
 export function OnboardingPage() {

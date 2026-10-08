@@ -37,6 +37,70 @@ export type Database = {
                   Relationships: [
                     
                   ]
+                },"issuances": {
+                  Row: {
+                    "cancel_reason": string | null,"cancelled_at": string | null,"cancelled_by": string | null,"family_id": string,"id": string,"issued_at": string,"issued_by": string,"meal_id": string,"memo": string | null,"person_id": string,"quantity": number,"unit_price": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "cancel_reason"?: string | null,"cancelled_at"?: string | null,"cancelled_by"?: string | null,"family_id": string,"id"?: string,"issued_at"?: string,"issued_by": string,"meal_id": string,"memo"?: string | null,"person_id": string,"quantity": number,"unit_price": number
+                  }
+                  Update: {
+                    "cancel_reason"?: string | null,"cancelled_at"?: string | null,"cancelled_by"?: string | null,"family_id"?: string,"id"?: string,"issued_at"?: string,"issued_by"?: string,"meal_id"?: string,"memo"?: string | null,"person_id"?: string,"quantity"?: number,"unit_price"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "issuances_cancelled_by_fkey"
+      columns: ["cancelled_by"]
+isOneToOne: false
+      referencedRelation: "people"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "issuances_family_id_fkey"
+      columns: ["family_id"]
+isOneToOne: false
+      referencedRelation: "families"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "issuances_issued_by_fkey"
+      columns: ["issued_by"]
+isOneToOne: false
+      referencedRelation: "people"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "issuances_meal_id_fkey"
+      columns: ["meal_id"]
+isOneToOne: false
+      referencedRelation: "meals"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "issuances_person_id_fkey"
+      columns: ["person_id"]
+isOneToOne: false
+      referencedRelation: "people"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"meals": {
+                  Row: {
+                    "created_at": string,"created_by": string | null,"id": string,"note": string | null,"served_on": string,"title": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"note"?: string | null,"served_on": string,"title": string
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"note"?: string | null,"served_on"?: string,"title"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "meals_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "people"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"people": {
                   Row: {
                     "auth_user_id": string | null,"consent_version": string | null,"consented_at": string | null,"created_at": string,"deleted_at": string | null,"family_id": string,"guardian_consented_at": string | null,"guardian_id": string | null,"id": string,"is_minor": boolean,"name": string,"phone": string | null,"role": string,"updated_at": string
@@ -63,10 +127,62 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"usages": {
+                  Row: {
+                    "family_id": string,"id": string,"meal_id": string,"person_id": string,"quantity": number,"recorded_by": string,"request_id": string,"used_at": string,"used_via": string,"voided_at": string | null,"voided_by": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "family_id": string,"id"?: string,"meal_id": string,"person_id": string,"quantity"?: number,"recorded_by": string,"request_id": string,"used_at"?: string,"used_via": string,"voided_at"?: string | null,"voided_by"?: string | null
+                  }
+                  Update: {
+                    "family_id"?: string,"id"?: string,"meal_id"?: string,"person_id"?: string,"quantity"?: number,"recorded_by"?: string,"request_id"?: string,"used_at"?: string,"used_via"?: string,"voided_at"?: string | null,"voided_by"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "usages_family_id_fkey"
+      columns: ["family_id"]
+isOneToOne: false
+      referencedRelation: "families"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "usages_meal_id_fkey"
+      columns: ["meal_id"]
+isOneToOne: false
+      referencedRelation: "meals"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "usages_person_id_fkey"
+      columns: ["person_id"]
+isOneToOne: false
+      referencedRelation: "people"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "usages_recorded_by_fkey"
+      columns: ["recorded_by"]
+isOneToOne: false
+      referencedRelation: "people"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "usages_voided_by_fkey"
+      columns: ["voided_by"]
+isOneToOne: false
+      referencedRelation: "people"
+      referencedColumns: ["id"]
+    }
+                  ]
                 }
           }
           Views: {
-            [_ in never]: never
+            "ticket_balances": {
+                  Row: {
+                    "amount": number | null,"family_id": string | null,"issued": number | null,"meal_id": string | null,"remaining": number | null,"used": number | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    
+                  ]
+                }
           }
           Functions: {
             "claim_person":
@@ -92,6 +208,21 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"create_next_sunday_lunch":
+{ Args: { "p_today"?: string }; Returns: {
+              "created_at": string,
+"created_by": string | null,
+"id": string,
+"note": string | null,
+"served_on": string,
+"title": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "meals"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
 "current_family_id":
 { Args: Record<PropertyKey, never>; Returns: string
                            },
@@ -104,6 +235,27 @@ isOneToOne: false
 "is_valid_mobile":
 { Args: { "p": string }; Returns: boolean
                            },
+"issue_tickets":
+{ Args: { "p_meal_id": string,"p_memo"?: string,"p_person_id": string,"p_quantity": number,"p_unit_price": number }; Returns: {
+              "cancel_reason": string | null,
+"cancelled_at": string | null,
+"cancelled_by": string | null,
+"family_id": string,
+"id": string,
+"issued_at": string,
+"issued_by": string,
+"meal_id": string,
+"memo": string | null,
+"person_id": string,
+"quantity": number,
+"unit_price": number
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "issuances"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
 "normalize_name":
 { Args: { "p": string }; Returns: string
                            },
@@ -112,7 +264,27 @@ isOneToOne: false
                            },
 "ping":
 { Args: Record<PropertyKey, never>; Returns: number
-                           }
+                           },
+"use_ticket":
+{ Args: { "p_meal_id": string,"p_request_id": string }; Returns: {
+              "family_id": string,
+"id": string,
+"meal_id": string,
+"person_id": string,
+"quantity": number,
+"recorded_by": string,
+"request_id": string,
+"used_at": string,
+"used_via": string,
+"voided_at": string | null,
+"voided_by": string | null
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "usages"
+        isOneToOne: true
+        isSetofReturn: false
+      } }
           }
           Enums: {
             [_ in never]: never

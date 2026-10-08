@@ -1,7 +1,7 @@
 # 교회 식권 모바일 웹 · 설계 문서
 
 - 작성일: 2026-10-07
-- 상태: 사용자 검토 대기
+- 상태: 1·2단계 구현 완료 (2026-10-08). 3단계 계획 전 §15·2단계 계획의 인계 항목 참고
 - 목업: `docs/superpowers/specs/mockups/2026-10-07-meal-ticket/index.html` (브라우저에서 바로 열리는 단독 HTML. 파란 테두리가 확정된 선택)
 
 ## 1. 개요
@@ -187,6 +187,8 @@ GitHub Actions ─────────────────────�
 | used_at | timestamptz | |
 | voided_at, voided_by | | 무효 표시 |
 
+제약: `(cancelled_at is null) = (cancelled_by is null)`, `(voided_at is null) = (voided_by is null)`, `used_via = 'self'` 이면 `recorded_by = person_id`. `usages.request_id` 는 not null unique. `cancel_reason` 과 `memo` 는 100자 이내.
+
 **pairing_codes** — 연결 코드
 | 열 | 타입 | 비고 |
 |---|---|---|
@@ -205,6 +207,8 @@ GitHub Actions ─────────────────────�
 - remaining = issued − used
 - amount = Σ quantity × unit_price (취소 제외)
 
+`meal_id`/`family_id` 가 coalesce 식이라 PostgREST 임베딩이 안 된다 → 프론트는 뷰를 읽은 뒤 `meals` 를 id 목록으로 따로 읽는다. `security_invoker` 라 관리자는 모든 가족, 교인은 자기 가족 행만 본다.
+
 ### 7.3 함수 (RPC, SECURITY DEFINER, 호출자 검증 포함)
 
 | 함수 | 호출자 | 동작 |
@@ -216,15 +220,15 @@ GitHub Actions ─────────────────────�
 | `leave_family()` | 어른 교인 | 호출자와 그 자녀를 새 가족으로 이동 |
 | `remove_child(child_id)` | 보호자 | 자녀 익명화(`deleted_at`, 이름 치환, `auth_user_id` NULL) |
 | `delete_my_account()` | 교인 | 본인 익명화. 자녀가 있으면 먼저 자녀 처리 요구 |
-| `use_ticket(meal_id, request_id)` | 가족 구성원(자녀 포함) | `request_id` 중복이면 기존 결과 반환. 식사가 **오늘(Asia/Seoul)**이 아니면 `not_today`. 가족 잔량 행 잠금(advisory lock on family_id, meal_id) → remaining < 1이면 `no_remaining` → usages 1건 삽입 |
-| `issue_tickets(person_id, meal_id, qty, unit_price, memo)` | 관리자 | issuances 삽입. `family_id`는 그 사람의 현재 가족 |
+| `use_ticket(meal_id, request_id)` | 가족 구성원(자녀 포함) | `request_id` 중복이면 기존 결과 반환. 식사가 **오늘(Asia/Seoul)**이 아니면 `not_today`. 가족 잔량 행 잠금(advisory lock on family_id, meal_id) → remaining < 1이면 `no_remaining` → usages 1건 삽입. 코드: `not_registered \| invalid_request \| meal_not_found \| not_today \| no_remaining \| duplicate_request`. 잠금(`pg_advisory_xact_lock(hashtext(family_id), hashtext(meal_id))`)을 멱등 조회보다 먼저 건다; 같은 request_id 를 다른 식사에 재사용하면 `duplicate_request` |
+| `issue_tickets(person_id, meal_id, qty, unit_price, memo)` | 관리자 | issuances 삽입. `family_id`는 그 사람의 현재 가족. 코드: `forbidden \| invalid_quantity \| invalid_price \| invalid_memo \| person_not_found \| person_is_minor \| meal_not_found`(자녀 이름으로는 발급하지 않는다) |
 | `cancel_issuance(id, reason)` | 관리자 | 취소 후 remaining이 음수가 되면 `would_go_negative` 거부 |
 | `use_ticket_as_admin(person_id, meal_id)` | 관리자 | 날짜 제한 없음. `used_via='admin'`, `recorded_by`=관리자 |
 | `void_usage(id)` | 관리자 | `voided_at` 기록 |
 | `merge_people(from_id, into_id)` | 관리자 | from의 장부·자녀·계정을 into로 옮기고 from 익명화. 둘 다 계정이 있으면 `both_have_accounts` 거부 |
 | `link_person(person_id, auth_user_id)` | 관리자 | 수동 연결 |
 | `admin_reset_person(person_id)` | 관리자 | 잘못 가입한 사람 초기화: 익명화 + 계정 연결 해제. 장부는 보존. 그 폰은 다음 접속 때 가입 화면부터 다시 시작 |
-| `create_next_sunday_lunch()` | 관리자 | 가장 늦은 '주일 점심' 이후의 첫 일요일(없으면 오늘 이후 첫 일요일)에 생성. 이미 있으면 그대로 반환 |
+| `create_next_sunday_lunch(p_today date default 서울 오늘)` | 관리자 | 기준일 = max(가장 늦은 '주일 점심', 어제)의 다음 일요일. 동시 클릭만 on conflict 로 수렴하고 순차 재호출은 다음 일요일을 만든다(프론트는 자동 재시도하지 않는다) |
 | `ping()` | anon | keep-alive용. `select 1` |
 
 모든 함수는 실패 시 `raise exception '<snake_case 코드>'`(메시지에 코드 문자열만, 값 보간 없음)로 오류를 내고, PostgREST가 `{"code":"P0001","message":"<코드>"}`로 내보내면 프론트가 사용자 문구로 바꾼다. DB 원시 오류(23503·23505 등)가 그대로 새어 나가면 규약 위반이다.
@@ -278,13 +282,14 @@ issuances·usages·pairing_codes에는 insert/update 정책을 두지 않는다(
 **홈**:
 - 상단: 가족 아바타 + "우리 가족 식권 · N명". 1인 가족이면 "내 식권".
 - 식사 카드: "오늘 · 10월 12일 (주일)", 식사명, **초 단위 실시간 시계**, "N장 남음".
-- **식권 목록**: 한 장 = 좌우 꽉 찬 가로 막대, 아래로 쌓임. 왼쪽 아이콘, 가운데 상태, 오른쪽 "3 / 4" 번호. 사용된 장은 제자리에서 회색, "12:31 사용 · 아빠 폰", "사용 완료" 도장. 사용된 장이 3장 이상이면 "사용 완료 N장" 한 줄로 접고 탭하면 펼침. 장수가 많으면 세로 스크롤.
+- **식권 목록**: 한 장 = 좌우 꽉 찬 가로 막대, 아래로 쌓임. 왼쪽 아이콘, 가운데 상태, 오른쪽 "3 / 4" 번호. 사용된 장은 제자리에서 회색, "12:31 사용 · 아빠 폰", "사용 완료" 도장. 사용된 장이 3장 이상이면 "사용 완료 N장" 한 줄로 접고 탭하면 펼침. 장수가 많으면 세로 스크롤. 사용된 장은 목록 앞쪽에 모아 회색으로 표시한다(식권은 서로 바꿔 쓸 수 있으므로 "제자리" 는 의미가 없다). 식권 행은 세로 스크롤을 허용한다(`touch-pan-y`, `touch-action: pan-y`), 드래그는 누름을 취소한다.
 - **사용 동작**: 담당자가 식권 한 장을 **600ms 꾹 누름**. 누르는 동안 왼쪽에서 색이 차오르고, 다 차면 RPC 호출 → 성공 시 회색 전환 + 짧은 체크 애니메이션. 손을 떼면 즉시 취소. 두 명분이면 두 장을 연달아.
 - 안내문: "담당자가 식권을 꾹 눌러 주세요".
 - 맨 아래 작은 줄: "다음 · 10/19 주일 점심 · 4장".
 - 오늘 식사가 없으면: "오늘은 식사가 없어요" 카드 + 다가오는 식권 목록 + 지난 식권(미사용 장수 표시, 접힘).
 - 하단 탭: 식권 · 내역 · 가족(어른만).
 - 갱신: 화면이 보이는 동안 5초 폴링, 포커스 복귀 시 즉시 재조회.
+- 오프라인 배지 문구는 "오프라인 · 사용 처리 불가"(마지막 확인 시각은 미표시).
 
 **내역**: 발급(장수·금액·담당자)과 사용(시각·어느 폰)이 시간 역순.
 
@@ -298,7 +303,7 @@ issuances·usages·pairing_codes에는 insert/update 정책을 두지 않는다(
 
 **식사**: 맨 위 "+ 다음 주일 점심 만들기 (날짜)". 다가오는 식사 카드(발급 장수·가족 수·금액·사용률 바), 지난 식사(발급·사용·미사용). "+ 식사 직접 추가"(제목·날짜·비고). 발급 없는 식사만 삭제 가능.
 
-**발급**: 식사(다음 식사 기본 선택, "변경"), 이름·번호 뒷자리 검색(2글자부터), 결과에 가입/미가입/방문자 태그와 가족 수, "+ 새로 등록(이름·전화)". 다음 → 장수(−/+), 단가(누구에게든 가장 최근 발급한 단가가 기본값, 첫 발급은 빈칸), 메모, 합계 표시, "N장 발급하기". 완료 후 발급 화면으로 복귀.
+**발급**: 식사(다음 식사 기본 선택, "변경"), 이름·번호 뒷자리 검색(2글자부터), 결과에 가입/미가입/방문자 태그와 가족 수(검색 결과의 "방문자" 태그와 "가족 수" 는 3·4단계에서 — 2단계는 가입/미가입 태그만. 자녀는 검색 결과에서 제외), "+ 새로 등록(이름·전화)". 다음 → 장수(−/+), 단가(가장 최근의 **유료(0원 제외)·미취소** 발급 단가가 기본값, 첫 발급이면 빈칸), 메모, 합계 표시, "N장 발급하기". 완료 후 발급 화면으로 복귀.
 중복 방어: 버튼 즉시 비활성. 같은 사람·식사·장수 발급이 60초 안에 있으면 확인 창.
 
 **식사 상세(현황판)**: 발급·사용·남음·금액 네 숫자, 이름 검색, 가족 단위 명단("4장 중 2장 사용"). 행의 ⋯ 메뉴: "1장 대신 사용 처리", "발급 내역 보기 / 취소", "최근 사용 무효 처리". 위험 동작은 확인 창을 거친다. 5초 폴링.
@@ -377,7 +382,7 @@ Supabase 설정: Kakao provider(REST API key, client secret), "Allow users witho
    - `create_next_sunday_lunch`: 날짜 계산, 중복 시 기존 반환.
 2. **Vitest 단위**: 전화번호 정규화·검증, 금액 표기, 식권 목록 접기 규칙, Asia/Seoul 날짜 유틸, 꾹 누르기 훅(600ms, 조기 해제 취소), 오류 코드 → 문구 매핑.
 3. **Testing Library 컴포넌트**: 식권 목록 상태(미사용·누르는 중·사용·접힘), 가입 폼(동의 전 비활성), 발급 폼(검증·합계), 식사 상세 ⋯ 메뉴.
-4. **Playwright E2E (로컬 Supabase, 테스트 세션 주입)**: (a) 관리자 발급 → 교인 홈 표시 → 꾹 눌러 사용 → 회색. (b) 아이 익명 시작 → 코드 → 부모 자녀 추가 → 아이 폰에 가족 잔량. (c) 선발급 → 가입 → 자동 연결.
+4. **Playwright E2E (로컬 Supabase, 테스트 세션 주입)**: (a)+(c) 관리자 발급 → 선발급 가입 자동 연결 → 꾹 눌러 사용 → 회색, 2단계에서 한 테스트(`e2e/tickets.spec.ts`)로 합친다. (b) 아이 익명 시작 → 코드 → 부모 자녀 추가 → 아이 폰에 가족 잔량 → 3단계. E2E 는 단일 워커 직렬 실행(공유 DB).
 5. **CI**: `supabase start` → `supabase db reset` → pgTAP → Vitest(coverage) → Playwright → 통과 시 `supabase db push`(마이그레이션 먼저) → Pages 배포. 새 프론트가 옛 스키마를 만나지 않도록 DB를 먼저 올린다.
 6. **수동**: 실제 폰에서 꾹 누르기 감도, 지하 식당 네트워크, iOS Safari PWA 설치.
 
@@ -395,8 +400,8 @@ Supabase 설정: Kakao provider(REST API key, client secret), "Allow users witho
 
 단계마다 별도의 구현 계획을 세우고, 각 단계가 끝날 때마다 배포 가능한 상태를 유지한다.
 
-1. **기반**: 저장소·Vite·Tailwind·Supabase CLI·CI 뼈대, 카카오 로그인, 어른 가입(동의), 처리방침 페이지.
-2. **식권 핵심**: meals/people/families/issuances/usages 스키마와 함수, 관리자 식사·발급, 교인 홈(식권 목록, 꾹 누르기), 내역.
+1. **기반**: 저장소·Vite·Tailwind·Supabase CLI·CI 뼈대, 카카오 로그인, 어른 가입(동의), 처리방침 페이지. (완료, 2026-10-08)
+2. **식권 핵심**: meals/people/families/issuances/usages 스키마와 함수, 관리자 식사·발급, 교인 홈(식권 목록, 꾹 누르기), 내역. (완료, 2026-10-08)
 3. **가족·아이**: pairing_codes, 익명 로그인, 가족 탭, 자녀 추가·재연결, 가족 공유 잔량.
 4. **관리 확장**: 식사 상세 현황판(대신 사용·취소·무효), 사람 관리(합치기·연결), 통계·CSV·공유.
 5. **운영**: PWA, keep-alive, 백업, 운영 문서(관리자 지정, 복구 절차, 카카오·Supabase 설정 안내).
@@ -409,3 +414,10 @@ Supabase 설정: Kakao provider(REST API key, client secret), "Allow users witho
 - 식단 공지, 식수 예측 외 기능.
 - 스테이징 환경(Supabase 무료 프로젝트 2개로 가능하나 당장은 두지 않음).
 - 로그아웃 시 쿼리 캐시 정리를 `AuthProvider`의 `SIGNED_OUT` 처리로 이동(세션 만료·다른 탭 로그아웃 등 두 번째 로그아웃 경로가 생길 때. 콜백 안에서 `setTimeout(…, 0)`으로 호출해 auth lock 재진입을 피한다).
+- 가족 합치기(`add_family_member` adult 경로) 때는 장부 `family_id` 를 통째로 새 가족으로 옮긴다(풀 병합). `leave_family` 는 장부를 옛 가족에 두고 나간다(2단계 계획 인계 항목).
+- pg_cron 의 빈 가족 정리는 장부(issuances·usages)가 없는 가족만 지운다(2단계 계획 인계 항목).
+- 4단계에서 잔량을 바꾸는 함수(`cancel_issuance`·`void_usage`·`use_ticket_as_admin`)는 `use_ticket` 과 같은 잠금 키를 쓰는 공통 헬퍼 `lock_family_meal(uuid, uuid)` 를 통해 잠근다(2단계 계획 인계 항목).
+- `cancel_issuance` 는 잔량이 음수가 되면 `would_go_negative` 로 반드시 거부해야 한다(2단계 계획 인계 항목).
+- 취소된 발급이 있는 식사의 삭제 정책(soft-delete 또는 삭제 버튼 숨김)을 4단계에서 정해야 한다(2단계 계획 인계 항목).
+- 가족 이력이 쌓이면 홈·잔량 조회에 90일 등 이력 창을 두는 것을 검토한다(2단계 계획 인계 항목).
+- PWA standalone 표시가 생기면 상단 안전 영역(`pt-[env(safe-area-inset-top)]`)을 시작·가입·홈 머리말에 더해야 한다(2단계 계획 인계 항목).
