@@ -45,7 +45,7 @@
 - **Task 1** (`pairing_codes`): 품질 리뷰가 같은 계정의 동시 호출이 살아 있는 코드를 둘 만드는 것을 재현해, `create_pairing_code` 가 삭제 전에 계정 단위 advisory lock(`pg_advisory_xact_lock(hashtext('pairing_code:' || uid))`, 단일 키라 `lock_family_meal` 의 두 키 공간과 겹치지 않음)을 잡도록 바꿨다. 테스트 전화번호 블록을 020 과 겹치지 않는 `0107700…` 으로, "토큰은 유효하지만 계정이 지워진 경우 → not_authenticated" 테스트 추가(`100` 은 29건), 재활용 upsert 테스트는 새 사용자를 쓰고 함수·테스트에 상호 참조 주석, pgcrypto 스키마 확인용 `do $$ perform extensions.gen_random_bytes(1) $$` 추가, `lock_family_meal` 본문 `pg_catalog` 한정, 죽은 `v_try` 선언 제거. 아래 Task 1 스니펫은 리뷰 전 버전이다.
 - **Task 2** (`add_family_member` · `relink_child`): 품질 리뷰(두 세션 재현)로 크게 보강했다. ① **연결 코드를 8자리로**(`^[0-9]{8}$`, `gen_random_bytes(8)`): 어른 코드를 맞히면 상대 가족·장부·전체 번호까지 넘어오는데 속도 제한이 없어 공간을 100배 키웠다 — 프런트(Task 9~13)의 6자리 가정도 모두 8자리로 바꿨다. ② **잠금 순서 규칙**(가족 함수 공통, 공통 규약에 명문화): "① `pairing_codes` 행 → ② 쓸 사람 행을 id 순으로 `for update` → ③ `lock_family(uuid)`(새 단일 키 헬퍼) 를 가족 id 순으로 → ④ `lock_family_meal`". `relink_child` 는 처음 코드 행을 사람 행 뒤에 잠갔다가(교착 가능) 코드 행을 먼저 잠그도록 고쳤다. 호출자 행을 잠그지 않아 합류 도중 호출자가 다른 가족으로 옮겨지면 엉뚱한 가족에 붙거나 FK 23503 이 나던 것, 자녀 삭제·나가기와 "빈 가족" 판정이 어긋나던 것을 막는다. ③ `issue_tickets` 가 사람 행을 `for update` 로 읽도록 재정의(합류 중 발급이 옛 가족에 떨어지는 경합). ④ 빈 가족 삭제는 `cleanup_empty_families` 와 같은 조건(사람·장부 모두 없음)에서만. ⑤ 사용된 코드로 재시도하면 이미 연결된 그 사람 행을 돌려준다(RPC 멱등 규약). ⑥ 자녀 추가에 `p_consent_version`(YYYY-MM-DD, `consent_required`) 를 받아 자녀 행 `consent_version` 에 남긴다(§10 증빙) — 프런트 `useAddChild` 가 `church.consentVersion` 을 보낸다. ⑦ 이름 유효성은 `normalize_name`, 코드 입력은 공백·개행 제거, `relink_child` 의 `unique_violation` → `already_registered`, 자녀 이동은 옛 가족 범위로만, 잠그는 식사는 오늘 이후만. `110` 은 62건(식사 잠금 범위를 `pg_locks` 로 고정하는 2건 포함). "코드 계정의 auth.users 행이 없는" 분기는 FK cascade 때문에 닿을 수 없어 테스트하지 않는다(방어 코드는 둔다). 아래 Task 1·2 스니펫은 리뷰 전 버전이다.
 - **Task 3** (계획 단계에서 미리 반영): 위 잠금 규칙에 맞춰 `leave_family` 는 내 행 → 옮길 자녀 행(id 순) → `lock_family`, `remove_child` 는 (잠금 없이 자녀를 읽어) 자녀 계정의 코드 행 삭제 → 자녀 행 `for update` → `lock_family`, `delete_my_account` 는 내 코드 행 삭제 → 내 행 → `lock_family` 순으로 잠근다(코드 행이 ① 클래스라 사람 행보다 먼저). 나가기는 내 가족 범위의 자녀만 옮긴다(다른 가족에 사는 자녀 테스트 추가). `120` 은 리뷰 반영 뒤 46건. 아래 Task 3 스니펫은 반영된 버전이며 2026-10-09 에 다시 롤백 검증했다. **품질 리뷰 뒤**: `delete_my_account` 에 마지막 관리자 보호(`last_admin` — 관리자 지정이 SQL 로만 가능해 마지막 관리자가 탈퇴하면 운영이 멈춘다) 추가, 헤더에 "어른 행을 자녀 행보다 먼저 잠근다" 불변식과 식사 잠금 생략 이유 주석, 테스트 보강(`not_registered`·본인 코드 삭제·`pg_locks`·익명 구성원 no-op·마지막 관리자). 가족 나가기 확인 문구는 발급·사용 내역도 남는다는 말을 넣었다(Task 11).
-- **Task 4** (정리 작업, 계획 단계에서 미리 반영): Task 1 리뷰 권고에 따라 `cleanup_orphan_anonymous_users` 가 **살아 있는 연결 코드를 가진 익명 계정은 지우지 않도록** 조건을 더했다(하루 전에 로그인해 둔 아이 폰이 지금 코드를 보여 주는 중일 수 있다 — 지우면 cascade 로 코드가 사라지고 그 폰이 로그아웃된다). `130` 은 18건. 아래 Task 4 스니펫은 반영된 버전(코드 리터럴도 8자리)이며 2026-10-09 에 다시 롤백 검증했다 — 구현 중 코드 리터럴이 6자리로 남아 있던 것을 8자리로 고쳤다. **품질 리뷰 뒤**: Supabase 공식 문서의 `grant … on schema cron to postgres` 두 줄을 **제거**했다(supautils 가 이미 권한을 주고, 그 grant 가 남으면 Supabase 의 pg_cron after-create 스크립트의 CASCADE 없는 revoke 가 2BP01 로 실패해 `db push` 가 깨진다) — 대신 그런 grant 가 있으면 먼저 거두는 prelude 를 둔다. 정리 함수는 SECURITY INVOKER(cron 이 postgres 로 실행; DEFINER 는 service_role 에 auth.users 삭제 권한을 넘겨 준다), 세 건수 단언은 다른 세션이 남긴 행에 깨지지 않게 `>=` 로, `cron.job` 의 command·active 를 고정하는 테스트 2건 추가(`130` 은 20건). 아래 스니펫은 리뷰 전 버전이다.
+- **Task 4** (정리 작업, 계획 단계에서 미리 반영): Task 1 리뷰 권고에 따라 `cleanup_orphan_anonymous_users` 가 **살아 있는 연결 코드를 가진 익명 계정은 지우지 않도록** 조건을 더했다(하루 전에 로그인해 둔 아이 폰이 지금 코드를 보여 주는 중일 수 있다 — 지우면 cascade 로 코드가 사라지고 그 폰이 로그아웃된다). `130` 은 18건. 아래 Task 4 스니펫은 반영된 버전(코드 리터럴도 8자리)이며 2026-10-09 에 다시 롤백 검증했다 — 구현 중 코드 리터럴이 6자리로 남아 있던 것을 8자리로 고쳤다. **품질 리뷰 뒤**: Supabase 공식 문서의 `grant … on schema cron to postgres` 두 줄을 **제거**했다(supautils 가 이미 권한을 주고, 그 grant 가 남으면 Supabase 의 pg_cron after-create 스크립트의 CASCADE 없는 revoke 가 2BP01 로 실패해 `db push` 가 깨진다) — 대신 그런 grant 가 있으면 먼저 거두는 prelude 를 둔다. 정리 함수는 SECURITY INVOKER(cron 이 postgres 로 실행; DEFINER 는 service_role 에 auth.users 삭제 권한을 넘겨 준다), 세 건수 단언은 다른 세션이 남긴 행에 깨지지 않게 `>=` 로, `cron.job` 의 command·active 를 고정하는 테스트 2건 추가(`130` 은 20건). 아래 Task 4 스니펫은 반영된 최종 버전이다.
 
 ---
 
@@ -1048,13 +1048,20 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ```sql
 begin;
-select plan(18);
+select plan(20);
 
 select has_extension('pg_cron', 'pg_cron 확장이 설치되어 있다');
 select set_eq(
   $$ select jobname from cron.job where jobname like 'cleanup_%' $$,
   $$ values ('cleanup_pairing_codes'::name), ('cleanup_orphan_anonymous_users'), ('cleanup_empty_families') $$,
   '정리 작업 3건이 등록되어 있다');
+select set_eq(
+  $$ select jobname, command from cron.job where jobname like 'cleanup_%' $$,
+  $$ values ('cleanup_pairing_codes'::name, 'select public.cleanup_pairing_codes()'),
+            ('cleanup_orphan_anonymous_users', 'select public.cleanup_orphan_anonymous_users()'),
+            ('cleanup_empty_families', 'select public.cleanup_empty_families()') $$,
+  '작업이 올바른 함수를 부른다');
+select is((select bool_and(active) from cron.job where jobname like 'cleanup_%'), true, '세 작업 모두 활성');
 select is((select schedule from cron.job where jobname = 'cleanup_pairing_codes'), '0 * * * *', '연결 코드 정리는 매시간');
 select is(has_function_privilege('authenticated', 'public.cleanup_pairing_codes()', 'EXECUTE'), false, '정리 함수는 API 역할에 열려 있지 않다');
 select is(has_function_privilege('authenticated', 'public.cleanup_orphan_anonymous_users()', 'EXECUTE'), false, '익명 계정 정리 함수도 열려 있지 않다');
@@ -1068,7 +1075,9 @@ insert into public.pairing_codes (code, auth_user_id, kind, expires_at, used_at)
   ('00000301', :'u1', 'child', now() + interval '5 minutes', null),                    -- 살아 있음
   ('00000302', :'u2', 'child', now() - interval '1 minute', null),                     -- 만료
   ('00000303', :'u3', 'child', now() + interval '5 minutes', now() - interval '1 minute'); -- 사용됨
-select is(public.cleanup_pairing_codes(), 2, '만료·사용된 코드 2건을 지운다');
+-- cmp_ok('>=') 로 느슨하게 잰다: 같은 DB 에서 돌던 E2E·수동 세션이 남긴 다른 만료 코드가 섞여 있어도 깨지지 않는다.
+-- 정확한 집합은 바로 다음 set_eq 가 잡는다.
+select cmp_ok(public.cleanup_pairing_codes(), '>=', 2, '만료·사용된 코드 2건 이상을 지운다 (다른 세션이 남긴 행이 더 있을 수 있다)');
 select set_eq($$ select code from public.pairing_codes where code like '000003%' $$, $$ values ('00000301'::text) $$, '살아 있는 코드만 남는다');
 
 -- ---------- 고아 익명 계정 정리 ----------
@@ -1087,7 +1096,9 @@ values ('연결된아이', (select family_id from public.people where auth_user_
 -- 고아 계정의 만료된 코드는 FK cascade 로 함께 지워져야 한다. 살아 있는 코드를 띄워 둔 폰(old_live)은 계정째 남아야 한다.
 insert into public.pairing_codes (code, auth_user_id, kind, expires_at) values ('00000304', :'old_orphan', 'child', now() - interval '1 minute');
 insert into public.pairing_codes (code, auth_user_id, kind, expires_at) values ('00000305', :'old_live', 'child', now() + interval '5 minutes');
-select is(public.cleanup_orphan_anonymous_users(), 1, '24시간 지난 미연결 익명 계정 중 살아 있는 코드가 없는 1건만 지운다');
+-- cmp_ok('>=') 로 느슨하게 잰다: 같은 DB 에서 돌던 E2E·수동 세션이 남긴 다른 고아 계정이 섞여 있어도 깨지지 않는다.
+-- 이 테스트가 만든 계정의 생사는 바로 다음 is 들이 정확히 잡는다.
+select cmp_ok(public.cleanup_orphan_anonymous_users(), '>=', 1, '24시간 지난 미연결 익명 계정 중 살아 있는 코드가 없는 1건 이상을 지운다 (다른 세션이 남긴 행이 더 있을 수 있다)');
 select is((select count(*) from auth.users where id = :'old_orphan'), 0::bigint, '고아 익명 계정이 지워졌다');
 select is((select count(*) from public.pairing_codes where code = '00000304'), 0::bigint, '그 계정의 (만료된) 연결 코드도 함께 지워졌다');
 select is((select count(*) from auth.users where id = :'old_live'), 1::bigint, '살아 있는 코드를 보여 주는 중인 익명 계정은 남는다 (코드가 사라지면 그 폰이 로그아웃된다)');
@@ -1106,7 +1117,9 @@ insert into public.meals (title, served_on, created_by) values ('테스트 점�
 -- 사람은 없고 장부만 남은 가족 (구성원이 전부 다른 가족으로 옮겨 간 뒤 남은 장부)
 insert into public.issuances (person_id, family_id, meal_id, quantity, unit_price, issued_by)
 values (:'admin_pid', :'ledger_only', :'meal_id', 1, 0, :'admin_pid');
-select is(public.cleanup_empty_families(), 1, '사람도 장부도 없고 1시간 지난 가족 1건만 지운다');
+-- cmp_ok('>=') 로 느슨하게 잰다: 같은 DB 에서 돌던 E2E·수동 세션이 남긴 다른 빈 가족이 섞여 있어도 깨지지 않는다.
+-- 이 테스트가 만든 세 가족의 생사는 바로 다음 is 들이 정확히 잡는다.
+select cmp_ok(public.cleanup_empty_families(), '>=', 1, '사람도 장부도 없고 1시간 지난 가족 1건 이상을 지운다 (다른 세션이 남긴 행이 더 있을 수 있다)');
 select is((select count(*) from public.families where id = :'empty_old'), 0::bigint, '오래된 빈 가족이 지워졌다');
 select is((select count(*) from public.families where id = :'empty_new'), 1::bigint, '방금 만든 빈 가족은 남는다 (진행 중인 가입일 수 있다)');
 select is((select count(*) from public.families where id = :'ledger_only'), 1::bigint, '장부가 있는 가족은 남는다');
@@ -1119,7 +1132,7 @@ rollback;
 - [x] **Step 2: 실패 확인**
 
 Run: `npm run db:reset && npm run db:test`
-Expected: 130 에서 `has_extension('pg_cron')` 실패. 나머지 통과.
+Expected: 130 에서 `has_extension('pg_cron')` 실패. 나머지 통과. (아래 두 스니펫은 리뷰 반영 뒤의 최종 버전이다 — `plan(20)`.)
 
 - [x] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261009000004_cleanup_jobs.sql`**
 
@@ -1127,16 +1140,26 @@ Expected: 130 에서 `has_extension('pg_cron')` 실패. 나머지 통과.
 -- =========================================================
 -- 주기 작업 (설계 §7.5). pg_cron 은 Supabase Free 에서도 쓸 수 있다 (비용 없음). 로컬 CLI 에도 들어 있다.
 -- 작업 본문은 함수로 두어 pgTAP 이 직접 호출해 검증한다. cron 은 그 함수를 부르기만 한다.
+-- pg_cron 권한은 supautils 가 postgres 에게 이미 주므로 grant 하지 않는다 (공식 문서 스니펫을 운영 콘솔에서 실행하지 말 것).
 -- =========================================================
+
+-- Supabase 의 pg_cron after-create 스크립트는 create extension 때마다(이미 있어도) `revoke all on cron.job from postgres` 를
+-- CASCADE 없이 실행한다. postgres 가 직접 준 grant(공식 문서의 'grant … on schema cron to postgres' 스니펫)가 남아 있으면
+-- 2BP01(dependent privileges exist) 로 마이그레이션이 실패하므로, 그런 grant 가 있으면 먼저 거둔다. supautils 가 준 권한은 건드리지 않는다.
+do $$
+begin
+  if exists (select 1 from pg_namespace where nspname = 'cron') then
+    execute 'revoke all on all tables in schema cron from postgres';
+    execute 'revoke usage on schema cron from postgres';
+  end if;
+end
+$$;
 create extension if not exists pg_cron with schema pg_catalog;
-grant usage on schema cron to postgres;
-grant all privileges on all tables in schema cron to postgres;
 
 -- 만료·사용된 연결 코드 삭제 (매시간)
 create or replace function public.cleanup_pairing_codes()
 returns integer
 language plpgsql
-security definer
 set search_path = public, pg_temp
 as $$
 declare
@@ -1148,6 +1171,8 @@ begin
 end
 $$;
 
+comment on function public.cleanup_pairing_codes() is '만료되었거나 사용된 연결 코드를 지운다 (cron, 매시간).';
+
 -- 만든 지 24시간이 지났고 사람 행에 연결되지 않았으며 살아 있는 연결 코드도 없는 익명 계정 삭제 (매일).
 -- 그 계정의 연결 코드(만료·사용된 것)는 FK cascade 로 함께 지워진다.
 -- 살아 있는 코드를 띄워 둔 폰은 남긴다 — 하루 전에 "아이 계정으로 시작" 해 둔 폰이 지금 보호자 앞에서 코드를 보여 주는 중일 수 있다
@@ -1155,7 +1180,6 @@ $$;
 create or replace function public.cleanup_orphan_anonymous_users()
 returns integer
 language plpgsql
-security definer
 set search_path = public, pg_temp
 as $$
 declare
@@ -1172,12 +1196,18 @@ begin
 end
 $$;
 
+comment on function public.cleanup_orphan_anonymous_users() is '24시간 지난 미연결·무효코드 익명 계정을 지운다 (cron, 매일).';
+
 -- 구성원 행도 장부도 없는 가족 삭제 (매일). 만든 지 1시간 안 된 가족은 건드리지 않는다.
 -- 장부가 있는 가족은 지우지 않는다 (2단계 계획 인계 결정 — 장부 FK 가 어차피 막지만 조건으로도 명시한다).
+-- lock_family 를 잡지 않는다: 기존 가족에 행을 붙이는 모든 경로(합류·재연결)는 그 가족에 살아 있는 people 행이 있거나
+-- 같은 트랜잭션 안에서 가족을 새로 만들므로, "people 행이 없다" 조건은 지금 누군가 참조하려는 가족을 절대 고르지 않는다.
+-- 동시에 삽입이 들어와도 FK 의 key-share 잠금이 순서를 정리해 준다 — 이 delete 가 기다렸다가 자신의 not exists 재확인에서
+-- 걸러지거나, 23503 으로 실패한다. cron 작업이 23503 으로 실패해도 된다 — 다음 예정 실행 때 다시 돈다
+-- (pg_cron 은 재시도하지 않는다; 실패는 cron.job_run_details 에만 남는다).
 create or replace function public.cleanup_empty_families()
 returns integer
 language plpgsql
-security definer
 set search_path = public, pg_temp
 as $$
 declare
@@ -1192,6 +1222,8 @@ begin
   return v_count;
 end
 $$;
+
+comment on function public.cleanup_empty_families() is '구성원도 장부도 없고 만든 지 1시간 지난 가족을 지운다 (cron, 매일).';
 
 revoke execute on function public.cleanup_pairing_codes(), public.cleanup_orphan_anonymous_users(), public.cleanup_empty_families()
   from public, anon, authenticated;
