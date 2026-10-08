@@ -156,7 +156,7 @@ select is((select count(*) from information_schema.role_table_grants where table
 
 -- 사용자: 교인 A, 관리자
 select tests.create_user('meal-a@test.local') as a_uid \gset
-select tests.create_user('meal-e2e-admin@test.local') as admin_uid \gset
+select tests.create_user('meal-admin@test.local') as admin_uid \gset
 insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
 values ('김철수', '01033330001', :'a_uid', now(), '2026-10-07'),
        ('권사',   '01033330009', :'admin_uid', now(), '2026-10-07');
@@ -305,7 +305,7 @@ select is((select array_agg(distinct privilege_type::text order by privilege_typ
 -- 준비: 가족 A(김철수), 가족 B(이영희), 관리자. 식사 하나.
 select tests.create_user('ledger-a@test.local') as a_uid \gset
 select tests.create_user('ledger-b@test.local') as b_uid \gset
-select tests.create_user('ledger-e2e-admin@test.local') as admin_uid \gset
+select tests.create_user('ledger-admin@test.local') as admin_uid \gset
 insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
 values ('김철수', '01044440001', :'a_uid', now(), '2026-10-07'),
        ('이영희', '01044440002', :'b_uid', now(), '2026-10-07'),
@@ -504,7 +504,7 @@ select is(has_function_privilege('anon', 'public.issue_tickets(uuid,uuid,integer
 select is(has_function_privilege('anon', 'public.create_next_sunday_lunch(date)', 'EXECUTE'), false, 'anon 은 create_next_sunday_lunch 를 실행할 수 없다');
 
 select tests.create_user('issue-a@test.local') as a_uid \gset
-select tests.create_user('issue-e2e-admin@test.local') as admin_uid \gset
+select tests.create_user('issue-admin@test.local') as admin_uid \gset
 select tests.create_user('issue-noperson@test.local') as ghost_uid \gset
 insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
 values ('김철수', '01055550001', :'a_uid', now(), '2026-10-07'),
@@ -714,7 +714,7 @@ select is(has_function_privilege('anon', 'public.use_ticket(uuid,uuid)', 'EXECUT
 select tests.create_user('use-a@test.local') as a_uid \gset
 select tests.create_user() as kid_uid \gset
 select tests.create_user('use-b@test.local') as b_uid \gset
-select tests.create_user('use-e2e-admin@test.local') as admin_uid \gset
+select tests.create_user('use-admin@test.local') as admin_uid \gset
 select tests.create_user('use-ghost@test.local') as ghost_uid \gset
 insert into public.people (name, phone, auth_user_id, consented_at, consent_version)
 values ('김철수', '01066660001', :'a_uid', now(), '2026-10-07'),

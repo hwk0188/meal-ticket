@@ -30,11 +30,9 @@ async function logout(page: Page) {
 
 /** 식권 한 장을 꾹 누른다 (마우스 다운 → 대기 → 업). Playwright 의 mouse 는 pointer 이벤트도 함께 낸다. */
 async function hold(page: Page, name: string, ms: number) {
+  // hover 는 스크롤·안정화·실제로 포인터를 받는지(덮인 요소 없음)까지 확인해 준다. Playwright 의 mouse 는 pointer 이벤트도 함께 낸다.
   const button = page.getByRole('button', { name })
-  await button.scrollIntoViewIfNeeded()
-  const box = await button.boundingBox()
-  if (!box) throw new Error(`버튼을 찾지 못했다: ${name}`)
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await button.hover()
   await page.mouse.down()
   await page.waitForTimeout(ms)
   await page.mouse.up()
@@ -94,6 +92,9 @@ test('관리자 발급 → 선발급 가입 자동 연결 → 꾹 눌러 사용 
   await test.step('짧게 탭하면 아무 일도 없다', async () => {
     await hold(page, '식권 1번 꾹 눌러 사용하기', 100)
     await page.waitForTimeout(700)
+    // 잘못 눌렸다면 mutate 직후 '처리 중…' 이, 성공했다면 '사용 처리되었어요' 가 바로 뜬다 — 둘 다 없어야 한다
+    await expect(page.getByText(/사용 처리되었어요|처리 중/)).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /꾹 눌러 사용/ })).toHaveCount(2)
     await expect(page.getByText('2장 남음')).toBeVisible()
   })
 
