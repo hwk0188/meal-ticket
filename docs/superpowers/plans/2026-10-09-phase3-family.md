@@ -121,7 +121,7 @@ npm ci && npm run db:start   # 로컬 Supabase (Docker 필요). 이미 떠 있�
 - Create: `supabase/migrations/20261009000001_pairing_codes.sql`
 - Test: `supabase/tests/database/100_pairing_codes.sql`
 
-- [ ] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/100_pairing_codes.sql`**
+- [x] **Step 1: 실패하는 테스트 작성 — `supabase/tests/database/100_pairing_codes.sql`**
 
 ```sql
 begin;
@@ -241,12 +241,12 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: `100_pairing_codes.sql` 에서 `has_table` 등 실패(`pairing_codes` 없음). 기존 010~090 은 통과.
 
-- [ ] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261009000001_pairing_codes.sql`**
+- [x] **Step 3: 마이그레이션 작성 — `supabase/migrations/20261009000001_pairing_codes.sql`**
 
 ```sql
 -- =========================================================
@@ -355,12 +355,12 @@ revoke execute on function public.create_pairing_code(text) from public, anon;
 grant execute on function public.create_pairing_code(text) to authenticated;
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: 100 의 28건 포함 전부 통과. 020 의 "anon 에게 열린 public 함수는 ping 뿐" 도 그대로 통과.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add supabase/migrations/20261009000001_pairing_codes.sql supabase/tests/database/100_pairing_codes.sql
