@@ -20,8 +20,8 @@
 
 | 영역 | 내용 |
 |---|---|
-| DB | `pairing_codes`(RLS 켜고 정책 없음), `lock_family_meal` 헬퍼, `create_pairing_code(kind)`, `add_family_member(code, child_name)`(child/adult, 어른 합류 때 빈 가족의 장부 이동), `relink_child(child_id, code)`, `leave_family()`, `remove_child(child_id)`, `delete_my_account()`, pg_cron 3건(코드 정리·고아 익명 계정 정리·빈 가족 정리 — 함수 + `cron.schedule`) |
-| 교인 | 시작 화면 "아이 계정으로 시작하기(카카오 없이 · 보호자 연결 필요)". 가입 화면 "어른이에요 / 만 14세 미만이에요" 토글. `#/pair` 연결 코드(8자리·남은 시간·새 코드·연결되면 자동 홈). `#/family` 가족 탭(어른만): 구성원 목록(이름·가려진 번호·자녀/미가입 태그·동의 날짜), 자녀 추가(이름·코드·법정대리인 동의 / 기존 자녀 고르면 재연결), 가족 연결(코드 입력 또는 내 코드 보여 주기), 가족 나가기, 자녀 삭제, 내 정보 수정(이름·번호), 탈퇴. 아이 폰: 가족 탭 없음, 로그아웃 전 확인. |
+| DB | `pairing_codes`(RLS 켜고 정책 없음), `lock_family_meal` 헬퍼, `create_pairing_code(kind)`, `add_family_member(code, child_name, consent_version)`(child/adult, 어른 합류 때 빈 가족의 장부 이동), `relink_child(child_id, code)`, `leave_family()`, `remove_child(child_id)`, `delete_my_account()`, pg_cron 3건(코드 정리·고아 익명 계정 정리·빈 가족 정리 — 함수 + `cron.schedule`) |
+| 교인 | 시작 화면 "아이 계정으로 시작하기(카카오 없이 · 보호자 연결 필요)". 가입 화면 "어른이에요 / 만 14세 미만이에요" 토글. `#/pair` 연결 코드(8자리·남은 시간·새 코드·연결되면 자동 홈). `#/family` 가족 탭(어른만): 구성원 목록(이름·가려진 번호·나/자녀/미가입 태그·동의 날짜), 자녀 추가(이름·코드·법정대리인 동의 / 기존 자녀 고르면 재연결), 가족 연결(코드 입력 또는 내 코드 보여 주기), 가족 나가기, 자녀 삭제, 내 정보 수정(이름·번호), 탈퇴. 아이 폰: 가족 탭 없음, 로그아웃 전 확인. |
 | 공통 | 로그아웃 시 캐시 정리를 `AuthProvider` 의 `SIGNED_OUT` 처리로 이동(설계 §15 — 탈퇴·코드 화면 "처음으로" 라는 두 번째 로그아웃 경로가 생긴다). 오류 코드 문구 추가. |
 | 테스트 | pgTAP 4개 파일(+159), Vitest 단위·컴포넌트, Playwright E2E 1개(아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰 가족 잔량 → 아이 폰에서 사용 → 보호자 폰 반영) |
 | 운영 | README: Supabase **Anonymous sign-ins 켜기**(운영 콘솔, 사용자 작업), pg_cron 안내. 설계 문서 상태 갱신. |
@@ -66,7 +66,7 @@
 | 파일 | 책임 |
 |---|---|
 | `migrations/20261009000001_pairing_codes.sql` | pgcrypto 보장, `pairing_codes` 테이블(RLS·권한 회수·정책 없음), `lock_family_meal(uuid,uuid)`, `create_pairing_code(text)` |
-| `migrations/20261009000002_family_functions.sql` | `add_family_member(text,text)`(child/adult + 장부 이동), `relink_child(uuid,text)` |
+| `migrations/20261009000002_family_functions.sql` | `lock_family(uuid)`, `add_family_member(text,text,text)`(child/adult + 장부 이동), `relink_child(uuid,text)`, `issue_tickets` 재정의(`for update`) |
 | `migrations/20261009000003_leave_remove_delete.sql` | `leave_family()`, `remove_child(uuid)`, `delete_my_account()` |
 | `migrations/20261009000004_cleanup_jobs.sql` | `pg_cron` 확장, `cleanup_pairing_codes()` · `cleanup_orphan_anonymous_users()` · `cleanup_empty_families()`, `cron.schedule` 3건 |
 | `tests/database/100_pairing_codes.sql` · `110_add_family_member.sql` · `120_leave_remove_delete.sql` · `130_cleanup_jobs.sql` | pgTAP (29 · 64 · 46 · 20) |
@@ -4420,7 +4420,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 "운영 설정 › 1. Supabase 프로젝트" 3번 항목의 Anonymous sign-ins 줄을 바꾼다:
 
 ```markdown
-   - Anonymous sign-ins: **켜기** (3단계 아이 계정 — 켜지 않으면 "아이 계정으로 시작하기" 가 "잠시 후 다시 시도해 주세요" 로 실패한다). 익명 가입 속도 제한은 기본값(IP 당 시간 30회)으로 둔다. 캡차는 붙이지 않는다(무료지만 UI 가 복잡해진다).
+   - Anonymous sign-ins: **켜기** (3단계 아이 계정 — 켜지 않으면 "아이 계정으로 시작하기" 가 "아이 계정 시작이 꺼져 있어요. 권사님께 문의해 주세요." 로 실패한다). 익명 가입 속도 제한은 기본값(IP 당 시간 30회)으로 둔다. 캡차는 붙이지 않는다(무료지만 UI 가 복잡해진다).
 ```
 
 "5. 운영 체크리스트" 에 추가:

@@ -209,11 +209,11 @@ GitHub Actions ─────────────────────�
 
 `meal_id`/`family_id` 가 coalesce 식이라 PostgREST 임베딩이 안 된다 → 프론트는 뷰를 읽은 뒤 `meals` 를 id 목록으로 따로 읽는다. `security_invoker` 라 관리자는 모든 가족, 교인은 자기 가족 행만 본다.
 
-### 7.3 함수 (RPC 는 SECURITY DEFINER · 호출자 검증 포함. 내부 잠금 헬퍼만 예외)
+### 7.3 함수 (RPC 는 SECURITY DEFINER · 호출자 검증 포함. 내부 잠금 헬퍼와 `ping()` 만 예외)
 
 | 함수 | 호출자 | 동작 |
 |---|---|---|
-| `claim_person(name, phone, consent_version)` | 로그인 사용자 | 번호 정규화 → 같은 번호·**같은 이름**의 미연결 어른이 있으면 `auth_user_id` 연결, 번호가 없으면 새 사람(1인 가족). `consented_at` 기록. 번호가 이미 다른 계정에 연결되어 있거나 이름이 다르면 오류 `phone_taken`(권사님이 사람 탭에서 정리). 이름까지 맞아야 하므로 번호만 대입해 남의 선발급 식권을 가로채기 어렵다 |
+| `claim_person(name, phone, consent_version)` | 로그인 사용자 | 번호 정규화 → 같은 번호·**같은 이름**의 미연결 어른이 있으면 `auth_user_id` 연결, 번호가 없으면 새 사람(1인 가족). `consented_at` 기록. 번호가 이미 다른 계정에 연결되어 있거나 이름이 다르면 오류 `phone_taken`(권사님이 사람 탭에서 정리). 코드: `not_authenticated \| anonymous_cannot_claim \| invalid_phone \| invalid_name \| consent_required \| already_registered \| phone_taken`. 이름까지 맞아야 하므로 번호만 대입해 남의 선발급 식권을 가로채기 어렵다 |
 | `create_pairing_code(kind)` | 로그인 사용자 | `child`: 사람 미연결 계정만. `adult`: 가입을 마친 어른만. 같은 계정의 이전 코드를 지우고 새 8자리 숫자 코드(10분). 반환은 `{code, expires_at}` 한 행. 같은 계정의 동시 호출은 계정 단위 advisory lock 으로 직렬화. 코드: `not_authenticated \| invalid_kind \| already_registered \| not_registered \| not_adult \| code_generation_failed` |
 | `add_family_member(code, child_name, consent_version)` | 어른 교인 | `child`(이름 있음): 자녀 사람 생성(`is_minor`, `guardian_id`=호출자, `guardian_consented_at`=now, `consent_version`=법정대리인 동의 문구 버전 — 없으면 `consent_required`, 가족=호출자 가족, `auth_user_id`=코드의 계정). `adult`(이름 없음): 코드 계정의 사람과 **그 사람의 미성년 자녀**를 호출자 가족으로 옮긴다 — 옛 가족에 산 사람이 없을 때만 장부(issuances·usages)를 새 가족으로 옮기고, 사람도 장부도 없는 빈 가족만 지운다. 남는 사람이 있으면 장부는 남는다. 같은 가족이면 그대로 돌려준다. 사용된 코드로 같은 의도로 다시 부르면 그때 만든 행을 돌려준다(멱등). 코드 종류와 호출 의도가 어긋나면 `expected_child_code`/`expected_adult_code`. 코드: `not_authenticated \| not_registered \| not_adult \| invalid_code \| expected_child_code \| expected_adult_code \| invalid_name \| consent_required \| already_registered` |
 | `relink_child(child_id, code)` | 그 자녀의 보호자 | 자녀의 `auth_user_id`를 코드의 계정으로 교체(가족·보호자·미성년 여부와 장부는 그대로). 옛 계정은 사람 행을 잃는다. 코드: `not_authenticated \| not_registered \| not_adult \| child_not_found \| invalid_code \| already_registered` |
@@ -222,8 +222,8 @@ GitHub Actions ─────────────────────�
 | `delete_my_account()` | 교인 | 본인 익명화. 자녀가 있으면 먼저 자녀 처리 요구(`has_children`), 마지막 관리자는 거부(`last_admin` — 역할 지정이 SQL 로만 가능해 운영이 멈춘다). 동의 시각·버전은 증빙으로 남긴다. 코드: `not_authenticated \| not_registered \| not_adult \| has_children \| last_admin` |
 | `lock_family(family_id)` | 내부 전용(API 역할 revoke) | 가족 하나를 트랜잭션 단위로 직렬화하는 advisory lock 헬퍼(단일 키, `'family:'` 이름공간) |
 | `lock_family_meal(family_id, meal_id)` | 내부 전용(API 역할 revoke) | 가족·식사 단위 advisory lock 헬퍼. `use_ticket` 과 같은 두 키(`hashtext(family), hashtext(meal)`) |
-| `use_ticket(meal_id, request_id)` | 가족 구성원(자녀 포함) | `request_id` 중복이면 기존 결과 반환. 식사가 **오늘(Asia/Seoul)**이 아니면 `not_today`. 가족 잔량 행 잠금(advisory lock on family_id, meal_id) → remaining < 1이면 `no_remaining` → usages 1건 삽입. 코드: `not_registered \| invalid_request \| meal_not_found \| not_today \| no_remaining \| duplicate_request`. 잠금(`pg_advisory_xact_lock(hashtext(family_id), hashtext(meal_id))`)을 멱등 조회보다 먼저 건다; 같은 request_id 를 다른 식사에 재사용하면 `duplicate_request` |
-| `issue_tickets(person_id, meal_id, qty, unit_price, memo)` | 관리자 | issuances 삽입. `family_id`는 그 사람의 현재 가족. 코드: `forbidden \| invalid_quantity \| invalid_price \| invalid_memo \| person_not_found \| person_is_minor \| meal_not_found`(자녀 이름으로는 발급하지 않는다) |
+| `use_ticket(meal_id, request_id)` | 가족 구성원(자녀 포함) | `request_id` 중복이면 기존 결과 반환. 식사가 **오늘(Asia/Seoul)**이 아니면 `not_today`. 가족 잔량 행 잠금(advisory lock on family_id, meal_id) → remaining < 1이면 `no_remaining` → usages 1건 삽입. 코드: `not_authenticated \| not_registered \| invalid_request \| meal_not_found \| not_today \| no_remaining \| duplicate_request`. 잠금(`pg_advisory_xact_lock(hashtext(family_id), hashtext(meal_id))`)을 멱등 조회보다 먼저 건다; 같은 request_id 를 다른 식사에 재사용하면 `duplicate_request` |
+| `issue_tickets(person_id, meal_id, qty, unit_price, memo)` | 관리자 | issuances 삽입. `family_id`는 그 사람의 현재 가족. 코드: `not_authenticated \| forbidden \| invalid_quantity \| invalid_price \| invalid_memo \| person_not_found \| person_is_minor \| meal_not_found`(자녀 이름으로는 발급하지 않는다) |
 | `cancel_issuance(id, reason)` | 관리자 | 취소 후 remaining이 음수가 되면 `would_go_negative` 거부 |
 | `use_ticket_as_admin(person_id, meal_id)` | 관리자 | 날짜 제한 없음. `used_via='admin'`, `recorded_by`=관리자 |
 | `void_usage(id)` | 관리자 | `voided_at` 기록 |
