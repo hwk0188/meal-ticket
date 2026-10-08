@@ -1,6 +1,18 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { ConfirmButton } from './ConfirmButton'
+
+/** onConfirm 이 (뮤테이션처럼) 같은 처리 중에 트리거를 비활성화하는 호출하는 쪽을 흉내 낸다. */
+function DisablingDuringConfirm() {
+  const [disabled, setDisabled] = useState(false)
+  return (
+    <>
+      <ConfirmButton label="탈퇴" message="정말요?" disabled={disabled} onConfirm={() => setDisabled(true)} />
+      <button type="button" onClick={() => setDisabled(false)}>처리 완료</button>
+    </>
+  )
+}
 
 describe('ConfirmButton', () => {
   it('확인 문구가 없으면 바로 실행한다', async () => {
@@ -61,5 +73,30 @@ describe('ConfirmButton', () => {
     rerender(<ConfirmButton label="탈퇴" message="정말요?" onConfirm={onConfirm} disabled />)
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '탈퇴' })).toBeDisabled()
+  })
+
+  it('열린 채로 disabled 가 되어 강제로 닫히면, 트리거가 다시 활성화될 때 포커스를 되돌린다', async () => {
+    const onConfirm = vi.fn<() => void>()
+    const { rerender } = render(<ConfirmButton label="탈퇴" message="정말요?" onConfirm={onConfirm} />)
+    await userEvent.click(screen.getByRole('button', { name: '탈퇴' }))
+
+    rerender(<ConfirmButton label="탈퇴" message="정말요?" onConfirm={onConfirm} disabled />)
+    // 아직 비활성이다 — 비활성 버튼에 포커스를 걸어 봐야 소용없으니 미뤄 둔다.
+    expect(document.activeElement).not.toBe(screen.getByRole('button', { name: '탈퇴' }))
+
+    rerender(<ConfirmButton label="탈퇴" message="정말요?" onConfirm={onConfirm} disabled={false} />)
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '탈퇴' }))
+  })
+
+  it('확인이 트리거를 비활성화하는 처리라면, 처리가 끝나 다시 활성화될 때 포커스를 되돌린다', async () => {
+    render(<DisablingDuringConfirm />)
+    await userEvent.click(screen.getByRole('button', { name: '탈퇴' }))
+    await userEvent.click(screen.getByRole('button', { name: '확인' }))
+    // 트리거가 비활성인 동안은(처리 중) 포커스를 돌려받지 못한다.
+    expect(document.activeElement).not.toBe(screen.getByRole('button', { name: '탈퇴' }))
+
+    // 처리가 끝나 다시 활성화되면 그제야 포커스가 돌아온다.
+    await userEvent.click(screen.getByRole('button', { name: '처리 완료' }))
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '탈퇴' }))
   })
 })

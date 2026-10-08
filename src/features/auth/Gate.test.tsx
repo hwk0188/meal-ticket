@@ -89,6 +89,20 @@ describe('Gate', () => {
     expect(screen.getByRole('status')).toHaveTextContent('연결에 문제가 있어요')
   })
 
+  it('한 번도 성공한 적 없이 실패하면(data undefined) 안내 스피너지만, 성공한 적 있는 data(없음)로 폴링만 실패하면 가입 화면을 그대로 유지한다', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'error', data: null })
+    renderAt('/')
+    expect(screen.getByText('onboarding')).toBeInTheDocument()
+  })
+
+  it('성공한 적 있는 data(사람)로 폴링만 실패하면 홈 화면을 그대로 유지한다', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'error', data: { id: 'p1', name: '김철수' } })
+    renderAt('/')
+    expect(screen.getByText('home')).toBeInTheDocument()
+  })
+
   it('익명(아이) 계정에 사람이 없으면 가입이 아니라 연결 코드 화면으로 보낸다', () => {
     useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'k1', is_anonymous: true } } })
     usePerson.mockReturnValue({ status: 'success', data: null })
@@ -129,6 +143,13 @@ describe('Gate', () => {
     expect(screen.getByRole('status')).toHaveTextContent('연결에 문제가 있어요')
   })
 
+  it('RequireSession: 성공한 적 있는 data(가입 전)로 폴링만 실패하면 가입 화면을 그대로 유지한다', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'error', data: null })
+    renderAt('/onboarding')
+    expect(screen.getByText('onboarding')).toBeInTheDocument()
+  })
+
   it('RequireSession: 이미 가입했으면 /로 보낸다', () => {
     useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
     usePerson.mockReturnValue({ status: 'success', data: { id: 'p1', name: '김철수' } })
@@ -143,14 +164,18 @@ describe('Gate', () => {
     expect(screen.getByText('pair')).toBeInTheDocument()
   })
 
-  it('RequireSession allowAnonymous: 익명도, 카카오 미가입도 통과한다 (14세 미만 토글 경로)', () => {
+  it('RequireSession allowAnonymous: 익명 계정도 통과한다 (14세 미만 토글 경로)', () => {
     useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'k1', is_anonymous: true } } })
     usePerson.mockReturnValue({ status: 'success', data: null })
     renderAt('/pair')
     expect(screen.getByText('pair')).toBeInTheDocument()
+  })
+
+  it('RequireSession allowAnonymous: 카카오 미가입 계정도 통과한다', () => {
     useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1', is_anonymous: false } } })
+    usePerson.mockReturnValue({ status: 'success', data: null })
     renderAt('/pair')
-    expect(screen.getAllByText('pair')).toHaveLength(2)
+    expect(screen.getByText('pair')).toBeInTheDocument()
   })
 
   it('RequireSession allowAnonymous: 연결이 끝나(사람이 생기면) 홈으로 간다', () => {
@@ -162,11 +187,25 @@ describe('Gate', () => {
 })
 
 describe('RequirePerson', () => {
+  it('세션 확인 중이면 스피너', () => {
+    useAuth.mockReturnValue({ status: 'loading' })
+    usePerson.mockReturnValue({ status: 'pending', data: undefined })
+    renderAt('/history')
+    expect(screen.getByRole('status')).toBeInTheDocument()
+  })
+
   it('세션이 없으면 홈으로 보낸다 (홈이 시작 화면을 띄운다)', () => {
     useAuth.mockReturnValue({ status: 'ready', session: null })
     usePerson.mockReturnValue({ status: 'pending', data: undefined })
     renderAt('/history')
     expect(screen.getByText('start')).toBeInTheDocument()
+  })
+
+  it('사람을 불러오는 중이면 스피너', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'pending', data: undefined })
+    renderAt('/history')
+    expect(screen.getByRole('status')).toBeInTheDocument()
   })
 
   it('가입 전이면 가입 화면으로', () => {
@@ -196,6 +235,21 @@ describe('RequirePerson', () => {
     usePerson.mockReturnValue({ status: 'success', data: { id: 'p1', name: '김철수', role: 'member', family_id: 'f1' } })
     renderAt('/show-name')
     expect(screen.getByText('김철수')).toBeInTheDocument()
+  })
+
+  it('성공한 적 있는 data(가입 전)로 폴링만 실패하면 가입 화면을 그대로 유지한다', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'error', data: null })
+    renderAt('/history')
+    expect(screen.getByText('onboarding')).toBeInTheDocument()
+  })
+
+  it('성공한 적 있는 data(사람)로 폴링만 실패하면 화면과 탭을 그대로 유지한다', () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1' } } })
+    usePerson.mockReturnValue({ status: 'error', data: { id: 'p1', name: '김철수', role: 'member', family_id: 'f1' } })
+    renderAt('/history')
+    expect(screen.getByText('history')).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: '주요 메뉴' })).toBeInTheDocument()
   })
 })
 

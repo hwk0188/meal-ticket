@@ -23,14 +23,17 @@ export function Gate() {
 
   if (auth.status === 'loading') return <Spinner />
   if (!auth.session) return <StartPage />
-  if (person.status === 'pending') return <Spinner />
+  // data 가 있으면(성공한 null 포함) 그대로 간다 — 폴링 한 번 실패로 화면을 갈아엎지 않는다 (공통 규약: data 로 분기)
+  if (person.data !== undefined) {
+    if (!person.data) return <Navigate to={unregisteredPath(auth.session)} replace />
+    return (
+      <PersonShell person={person.data}>
+        <HomePage person={person.data} />
+      </PersonShell>
+    )
+  }
   if (person.status === 'error') return <Spinner label={CONNECTION_ERROR} />
-  if (!person.data) return <Navigate to={unregisteredPath(auth.session)} replace />
-  return (
-    <PersonShell person={person.data}>
-      <HomePage person={person.data} />
-    </PersonShell>
-  )
+  return <Spinner />
 }
 
 type RequireSessionProps = {
@@ -47,12 +50,15 @@ export function RequireSession({ children, allowAnonymous = false }: RequireSess
 
   if (auth.status === 'loading') return <Spinner />
   if (!auth.session) return <Navigate to="/" replace />
-  if (person.status === 'pending') return <Spinner />
-  // 이미 가입한 사람일 수도 있다. 조회가 실패한 채로 가입을 진행시키지 않는다.
+  // data 가 있으면(성공한 null 포함) 그대로 간다 — 폴링 한 번 실패로 화면을 갈아엎지 않는다 (공통 규약: data 로 분기)
+  if (person.data !== undefined) {
+    if (person.data) return <Navigate to="/" replace />
+    if (!allowAnonymous && auth.session.user.is_anonymous) return <Navigate to="/pair" replace />
+    return <>{children}</>
+  }
+  // 가입 여부를 아직 모른다 (한 번도 성공한 적이 없다). 조회가 실패한 채로 가입을 진행시키지 않는다.
   if (person.status === 'error') return <Spinner label={CONNECTION_ERROR} />
-  if (person.data) return <Navigate to="/" replace />
-  if (!allowAnonymous && auth.session.user.is_anonymous) return <Navigate to="/pair" replace />
-  return <>{children}</>
+  return <Spinner />
 }
 
 /** 가입을 마친 사람만 통과하는 레이아웃 라우트. 자식 화면은 useCurrentPerson() 으로 사람을 받는다. */
@@ -63,14 +69,17 @@ export function RequirePerson() {
 
   if (auth.status === 'loading') return <Spinner />
   if (!auth.session) return <Navigate to="/" replace />
-  if (person.status === 'pending') return <Spinner />
+  // data 가 있으면(성공한 null 포함) 그대로 간다 — 폴링 한 번 실패로 화면을 갈아엎지 않는다 (공통 규약: data 로 분기)
+  if (person.data !== undefined) {
+    if (!person.data) return <Navigate to={unregisteredPath(auth.session)} replace />
+    return (
+      <PersonShell person={person.data}>
+        <Outlet context={person.data} />
+      </PersonShell>
+    )
+  }
   if (person.status === 'error') return <Spinner label={CONNECTION_ERROR} />
-  if (!person.data) return <Navigate to={unregisteredPath(auth.session)} replace />
-  return (
-    <PersonShell person={person.data}>
-      <Outlet context={person.data} />
-    </PersonShell>
-  )
+  return <Spinner />
 }
 
 /** 관리자만. RequirePerson 아래에서 쓴다. 교인이 주소를 직접 치면 홈으로 보낸다 (데이터는 RLS 가 따로 막는다). */
