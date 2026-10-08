@@ -1,7 +1,7 @@
 # 교회 식권 모바일 웹 · 설계 문서
 
 - 작성일: 2026-10-07
-- 상태: 1·2단계 구현 완료 (2026-10-08). 3단계 계획 전 §15·2단계 계획의 인계 항목 참고
+- 상태: 1·2·3단계 구현 완료 (2026-10-09). 4단계 계획 전 §15 와 3단계 계획(`docs/superpowers/plans/2026-10-09-phase3-family.md`)의 "4단계로 넘기는 것" 참고
 - 목업: `docs/superpowers/specs/mockups/2026-10-07-meal-ticket/index.html` (브라우저에서 바로 열리는 단독 HTML. 파란 테두리가 확정된 선택)
 
 ## 1. 개요
@@ -54,7 +54,7 @@ Supabase Free의 알려진 제약과 대응: 7일 미사용 시 일시정지 →
 - **식권(ticket)**: 특정 식사에 묶인 1식 권리. 낱장 단위로 보이고 한 번 누를 때마다 1장 사용. 날짜가 지나면 사용 불가(미사용으로 통계에 남음).
 - **사람(person)**: 교인·자녀·방문자. 카카오 계정과 분리되어 있어, 계정 없이도 존재할 수 있다(선발급).
 - **가족(family)**: 잔량을 공유하는 단위. 사람은 항상 정확히 하나의 가족에 속한다(처음엔 1인 가족). 식권은 산 사람 이름으로 기록되지만 잔량은 가족 단위로 계산한다.
-- **연결 코드(pairing code)**: 아이 폰 또는 배우자 폰에 뜨는 6자리 1회용 코드(10분). 어른이 자기 앱에 입력하면 그 폰의 계정이 어른의 가족에 연결된다.
+- **연결 코드(pairing code)**: 아이 폰 또는 배우자 폰에 뜨는 8자리 1회용 코드(10분). 어른이 자기 앱에 입력하면 그 폰의 계정이 어른의 가족에 연결된다.
 - **장부(ledger)**: 발급과 사용은 삭제하지 않고 쌓는다. 발급 취소는 `cancelled_at`, 사용 무효는 `voided_at`으로 표시한다.
 
 ## 5. 사용자 흐름
@@ -192,8 +192,8 @@ GitHub Actions ─────────────────────�
 **pairing_codes** — 연결 코드
 | 열 | 타입 | 비고 |
 |---|---|---|
-| code | text PK | 6자리 숫자 |
-| auth_user_id | uuid FK auth.users | 코드를 띄운 폰의 계정 |
+| code | text PK | 8자리 숫자(`^[0-9]{8}$`). 만료·사용된 코드 자리는 새 코드가 재활용 |
+| auth_user_id | uuid FK auth.users **on delete cascade** | 코드를 띄운 폰의 계정 |
 | kind | text check in ('child','adult') | |
 | created_at, expires_at | timestamptz | 10분 |
 | used_at | timestamptz | 1회용 |
@@ -209,17 +209,19 @@ GitHub Actions ─────────────────────�
 
 `meal_id`/`family_id` 가 coalesce 식이라 PostgREST 임베딩이 안 된다 → 프론트는 뷰를 읽은 뒤 `meals` 를 id 목록으로 따로 읽는다. `security_invoker` 라 관리자는 모든 가족, 교인은 자기 가족 행만 본다.
 
-### 7.3 함수 (RPC, SECURITY DEFINER, 호출자 검증 포함)
+### 7.3 함수 (RPC 는 SECURITY DEFINER · 호출자 검증 포함. 내부 잠금 헬퍼만 예외)
 
 | 함수 | 호출자 | 동작 |
 |---|---|---|
 | `claim_person(name, phone, consent_version)` | 로그인 사용자 | 번호 정규화 → 같은 번호·**같은 이름**의 미연결 어른이 있으면 `auth_user_id` 연결, 번호가 없으면 새 사람(1인 가족). `consented_at` 기록. 번호가 이미 다른 계정에 연결되어 있거나 이름이 다르면 오류 `phone_taken`(권사님이 사람 탭에서 정리). 이름까지 맞아야 하므로 번호만 대입해 남의 선발급 식권을 가로채기 어렵다 |
-| `create_pairing_code(kind)` | 로그인 사용자 | `child`: 사람 미연결 계정만(연결된 계정이면 `already_registered`). `adult`: 가입을 마친 어른만. 기존 미사용 코드 무효화 후 새 6자리 숫자 코드. 10분 |
-| `add_family_member(code, child_name)` | 어른 교인 | `child`: 자녀 사람 생성(이름만, `is_minor`, `guardian_id`=호출자, `guardian_consented_at`=now, 가족=호출자 가족, `auth_user_id`=코드의 계정). `adult`: 코드 계정의 사람을 호출자 가족으로 이동(그 사람의 자녀도 함께). 비어 버린 가족은 삭제. 코드 `used_at` 기록. 만료·사용된 코드는 `invalid_code` |
-| `relink_child(child_id, code)` | 그 자녀의 보호자 | 자녀의 `auth_user_id`를 코드의 계정으로 교체 |
-| `leave_family()` | 어른 교인 | 호출자와 그 자녀를 새 가족으로 이동 |
-| `remove_child(child_id)` | 보호자 | 자녀 익명화(`deleted_at`, 이름 치환, `auth_user_id` NULL) |
-| `delete_my_account()` | 교인 | 본인 익명화. 자녀가 있으면 먼저 자녀 처리 요구 |
+| `create_pairing_code(kind)` | 로그인 사용자 | `child`: 사람 미연결 계정만. `adult`: 가입을 마친 어른만. 같은 계정의 이전 코드를 지우고 새 8자리 숫자 코드(10분). 반환은 `{code, expires_at}` 한 행. 같은 계정의 동시 호출은 계정 단위 advisory lock 으로 직렬화. 코드: `not_authenticated \| invalid_kind \| already_registered \| not_registered \| not_adult \| code_generation_failed` |
+| `add_family_member(code, child_name, consent_version)` | 어른 교인 | `child`(이름 있음): 자녀 사람 생성(`is_minor`, `guardian_id`=호출자, `guardian_consented_at`=now, `consent_version`=법정대리인 동의 문구 버전 — 없으면 `consent_required`, 가족=호출자 가족, `auth_user_id`=코드의 계정). `adult`(이름 없음): 코드 계정의 사람과 **그 사람의 미성년 자녀**를 호출자 가족으로 옮긴다 — 옛 가족에 산 사람이 없을 때만 장부(issuances·usages)를 새 가족으로 옮기고, 사람도 장부도 없는 빈 가족만 지운다. 남는 사람이 있으면 장부는 남는다. 같은 가족이면 그대로 돌려준다. 사용된 코드로 같은 의도로 다시 부르면 그때 만든 행을 돌려준다(멱등). 코드 종류와 호출 의도가 어긋나면 `expected_child_code`/`expected_adult_code`. 코드: `not_authenticated \| not_registered \| not_adult \| invalid_code \| expected_child_code \| expected_adult_code \| invalid_name \| consent_required \| already_registered` |
+| `relink_child(child_id, code)` | 그 자녀의 보호자 | 자녀의 `auth_user_id`를 코드의 계정으로 교체(가족·보호자·미성년 여부와 장부는 그대로). 옛 계정은 사람 행을 잃는다. 코드: `not_authenticated \| not_registered \| not_adult \| child_not_found \| invalid_code \| already_registered` |
+| `leave_family()` | 어른 교인 | 호출자와 그 자녀를 새 가족으로 이동. 장부는 옛 가족에 남는다. 다른 어른(또는 남의 자녀)이 없으면 아무것도 바꾸지 않고 현재 행을 돌려준다. 코드: `not_authenticated \| not_registered \| not_adult` |
+| `remove_child(child_id)` | 보호자 | 자녀 익명화(`deleted_at`, 이름 '탈퇴한 사용자', 번호·`auth_user_id` NULL). 자녀 계정의 연결 코드도 지운다. 코드: `not_authenticated \| not_registered \| not_adult \| child_not_found` |
+| `delete_my_account()` | 교인 | 본인 익명화. 자녀가 있으면 먼저 자녀 처리 요구(`has_children`), 마지막 관리자는 거부(`last_admin` — 역할 지정이 SQL 로만 가능해 운영이 멈춘다). 동의 시각·버전은 증빙으로 남긴다. 코드: `not_authenticated \| not_registered \| not_adult \| has_children \| last_admin` |
+| `lock_family(family_id)` | 내부 전용(API 역할 revoke) | 가족 하나를 트랜잭션 단위로 직렬화하는 advisory lock 헬퍼(단일 키, `'family:'` 이름공간) |
+| `lock_family_meal(family_id, meal_id)` | 내부 전용(API 역할 revoke) | 가족·식사 단위 advisory lock 헬퍼. `use_ticket` 과 같은 두 키(`hashtext(family), hashtext(meal)`) |
 | `use_ticket(meal_id, request_id)` | 가족 구성원(자녀 포함) | `request_id` 중복이면 기존 결과 반환. 식사가 **오늘(Asia/Seoul)**이 아니면 `not_today`. 가족 잔량 행 잠금(advisory lock on family_id, meal_id) → remaining < 1이면 `no_remaining` → usages 1건 삽입. 코드: `not_registered \| invalid_request \| meal_not_found \| not_today \| no_remaining \| duplicate_request`. 잠금(`pg_advisory_xact_lock(hashtext(family_id), hashtext(meal_id))`)을 멱등 조회보다 먼저 건다; 같은 request_id 를 다른 식사에 재사용하면 `duplicate_request` |
 | `issue_tickets(person_id, meal_id, qty, unit_price, memo)` | 관리자 | issuances 삽입. `family_id`는 그 사람의 현재 가족. 코드: `forbidden \| invalid_quantity \| invalid_price \| invalid_memo \| person_not_found \| person_is_minor \| meal_not_found`(자녀 이름으로는 발급하지 않는다) |
 | `cancel_issuance(id, reason)` | 관리자 | 취소 후 remaining이 음수가 되면 `would_go_negative` 거부 |
@@ -231,7 +233,9 @@ GitHub Actions ─────────────────────�
 | `create_next_sunday_lunch(p_today date default 서울 오늘)` | 관리자 | 기준일 = max(가장 늦은 '주일 점심', 어제)의 다음 일요일. 동시 클릭만 on conflict 로 수렴하고 순차 재호출은 다음 일요일을 만든다(프론트는 자동 재시도하지 않는다) |
 | `ping()` | anon | keep-alive용. `select 1` |
 
-모든 함수는 실패 시 `raise exception '<snake_case 코드>'`(메시지에 코드 문자열만, 값 보간 없음)로 오류를 내고, PostgREST가 `{"code":"P0001","message":"<코드>"}`로 내보내면 프론트가 사용자 문구로 바꾼다. DB 원시 오류(23503·23505 등)가 그대로 새어 나가면 규약 위반이다.
+모든 함수는 실패 시 `raise exception '<snake_case 코드>'`(메시지에 코드 문자열만, 값 보간 없음)로 오류를 내고, PostgREST가 `{"code":"P0001","message":"<코드>"}`로 내보내면 프론트가 사용자 문구로 바꾼다. DB 원시 오류(23503·23505 등)가 그대로 새어 나가면 규약 위반이다. 각 함수의 권위 있는 오류 코드 목록은 마이그레이션 파일의 함수 머리 주석이다.
+
+**가족·장부 함수의 잠금 순서(어기면 40P01 교착).** ① `pairing_codes` 행 → ② 쓸 `people` 행을 **id 순**으로 `for update`(어른·본인 행을 자녀 행보다 먼저) → ③ `lock_family(uuid)` 를 **가족 id 순**으로 → ④ `lock_family_meal(uuid, uuid)` 를 **meal_id 순**으로. 가족 잠금을 쥔 채 사람 행을 새로 잠그지 않는다 — 잠글 사람 행은 ②에서 모두 잡는다. "빈 가족인가 / 자녀가 있나 / 나뿐인가" 같은 구성원 판정은 ③ 뒤에서 한다.
 
 ### 7.4 RLS
 
@@ -248,9 +252,17 @@ issuances·usages·pairing_codes에는 insert/update 정책을 두지 않는다(
 
 ### 7.5 주기 작업 (pg_cron)
 
-- 매시간: `pairing_codes`에서 만료·사용된 코드 삭제.
-- 매일: 생성 24시간이 지났고 `people`에 연결되지 않은 **익명** `auth.users` 삭제.
-- 매일: 구성원이 없는 `families` 행 삭제(가족 이동이나 실패한 삽입이 남긴 빈 가족 정리).
+작업 본문은 `public` 함수로 두고 `cron.schedule` 이 그 함수만 부른다(pgTAP 이 함수를 직접 호출해 검증한다). 세 함수 모두 **SECURITY INVOKER** — cron 이 `postgres` 로 실행하므로 충분하고, DEFINER 로 두면 `auth.users` 삭제 권한이 API 역할에 새어 나간다. 세 함수는 `public, anon, authenticated` 에서 execute 를 모두 revoke 한다.
+
+| 함수 | 주기 (UTC → KST) | 지우는 것 |
+|---|---|---|
+| `cleanup_pairing_codes()` | `0 * * * *` 매시간 | 만료되었거나 사용된 연결 코드 |
+| `cleanup_orphan_anonymous_users()` | `15 18 * * *` → 03:15 KST | 만든 지 **24시간**이 지났고 `people` 행이 없으며 **살아 있는 연결 코드도 없는** 익명 `auth.users`(코드를 띄워 둔 폰은 남긴다 — 지우면 cascade 로 코드가 사라지고 그 폰이 로그아웃된다). 카카오 계정은 지우지 않는다 |
+| `cleanup_empty_families()` | `30 18 * * *` → 03:30 KST | 사람 행도 장부(issuances·usages)도 없고 만든 지 **1시간** 지난 `families` 행만 |
+
+마이그레이션이 `create extension pg_cron with schema pg_catalog` 로 확장을 켠다(Supabase Free 에서도 무료). **Supabase 공식 문서의 `grant usage on schema cron to postgres; grant all privileges on all tables in schema cron to postgres;` 스니펫은 절대 실행하지 않는다** — supautils 가 이미 권한을 주며, 그 grant 가 남아 있으면 Supabase 의 pg_cron after-create 스크립트가 CASCADE 없이 `revoke all on cron.job from postgres` 를 돌리다 2BP01 로 실패해 `db push` 가 깨진다(마이그레이션이 그런 grant 를 먼저 거두는 prelude 를 둔다).
+
+pg_cron 은 실패를 재시도하지 않는다 — 실패는 `cron.job_run_details` 에만 남고 다음 예정 시각에 다시 돈다.
 
 ## 8. 화면 설계
 
@@ -277,7 +289,7 @@ issuances·usages·pairing_codes에는 insert/update 정책을 두지 않는다(
 - 어른: 이름(입금자명과 같게 안내), 휴대폰 번호, **[필수] 개인정보 수집·이용 동의** 체크(항목·목적·보유·거부 시 불이익 네 가지를 화면에 표기, "자세히"는 처리방침). 체크 전 버튼 비활성. 버튼 "동의하고 시작하기".
 - 만 14세 미만: 입력 없이 `#/pair`로.
 
-**연결 코드(pair)**: 6자리 큰 글씨, 남은 시간, "보호자 앱의 가족 › 자녀 추가에서 입력" 안내, "홈 화면에 추가" 권유. 연결되면 자동으로 홈으로.
+**연결 코드(pair)**: 8자리 큰 글씨, 남은 시간(폰 시계가 아니라 **코드를 받은 시각 + 10분**으로 센다 — 시계가 틀린 폰에서 영원히 '만료' 로 보이지 않게), "보호자 앱의 가족 › 자녀 추가에서 입력" 안내, "홈 화면에 추가" 권유, "처음으로 돌아가기"(로그아웃). 연결되면 사람 행 **3초 폴링**이 알아채 자동으로 홈으로.
 
 **홈**:
 - 상단: 가족 아바타 + "우리 가족 식권 · N명". 1인 가족이면 "내 식권".
@@ -288,12 +300,13 @@ issuances·usages·pairing_codes에는 insert/update 정책을 두지 않는다(
 - 맨 아래 작은 줄: "다음 · 10/19 주일 점심 · 4장".
 - 오늘 식사가 없으면: "오늘은 식사가 없어요" 카드 + 다가오는 식권 목록 + 지난 식권(미사용 장수 표시, 접힘).
 - 하단 탭: 식권 · 내역 · 가족(어른만).
+- 바닥글에 처리방침 링크와 로그아웃. **아이 계정(익명)은 로그아웃 전에 한 번 더 묻는다** — "아이 계정은 로그아웃하면 보호자가 새 코드로 다시 연결해야 해요. 정말 로그아웃할까요?"(세션을 잃으면 사람 행과의 유일한 연결이 끊어진다).
 - 갱신: 화면이 보이는 동안 5초 폴링, 포커스 복귀 시 즉시 재조회.
 - 오프라인 배지 문구는 "오프라인 · 사용 처리 불가"(마지막 확인 시각은 미표시).
 
 **내역**: 발급(장수·금액·담당자)과 사용(시각·어느 폰)이 시간 역순.
 
-**가족**: 구성원 목록(이름, 가려진 번호, 자녀 태그, 동의 날짜), "+ 자녀 추가"(이름, 코드, 법정대리인 동의 체크, 기존 자녀 선택 시 재연결), "+ 가족 연결"(코드만), 길게 눌러 "가족 나가기 / 자녀 삭제". 맨 아래 "내 정보 수정(이름·번호) · 탈퇴". 어른은 1인 가족이어도 이 탭이 있다.
+**가족**: 구성원 목록(이름, 가려진 번호, 나/자녀/미가입 태그, 동의 날짜), "+ 자녀 추가"(이름, 코드, 법정대리인 동의 체크, 기존 자녀 선택 시 재연결), "+ 가족 연결"(두 모드 — "상대 코드 입력 / 내 코드 보여 주기". 내 코드를 보여 주는 중에 상대가 나를 흡수하면 그것도 알아채 "가족이 연결되었어요" 를 띄운다), **행마다 작은 버튼 + 두 단계 확인**("가족 나가기" / "자녀 삭제"). 맨 아래 "내 정보 수정(이름·번호) · 탈퇴". 어른은 1인 가족이어도 이 탭이 있다.
 
 **부정 사용 대비**: 실시간 시계와 흐르는 빛(스크린샷 판별), 사용 시각 표시, 당일만 버튼 노출, 서버 당일 검증. 교인이 스스로 눌러 버리는 것은 본인 손해이므로 막지 않는다.
 
@@ -346,8 +359,9 @@ CSV 열: 종류(발급/취소/사용/무효), 일시, 식사일, 식사명, 이�
 - **법적 근거**: 교인 가입 시 명시적 동의(개인정보 보호법 제15조). 선발급 입력은 식권 구매 계약 이행에 필요한 처리로 별도 동의 없이 가능하며, 가입 시 정식 동의를 받는다. 만 14세 미만은 보호자가 "자녀 추가"에서 체크하는 것을 법정대리인 동의로 기록한다(제22조의2).
 - **수집 최소화**: 카카오에서 실제로 쓰는 항목은 회원번호뿐이며, 닉네임·프로필 사진·이메일은 모두 **선택 동의**로 두어 교인이 거부할 수 있게 한다(앱은 세 값을 읽지 않는다). 앱은 어른의 이름·휴대폰 번호, 자녀의 이름만 저장한다. (Supabase 의 카카오 연동은 `account_email` scope 를 항상 요청하므로, 카카오 앱을 **개인 개발자 비즈 앱**으로 전환해 이메일 동의항목을 등록해야 로그인이 된다. 비용은 없다. 2025~2026년 Supabase 이슈 #36878 참고.)
 - **고지 4요소**: 항목(이름, 휴대폰 번호) / 목적(식권 발급·사용 확인, 본인 식별) / 보유(탈퇴 시까지, 탈퇴 후 익명 처리) / 거부 시 서비스 이용 불가. 가입 화면과 `#/privacy`에 표기.
-- **증빙**: `consented_at`, `consent_version`, `guardian_consented_at`.
-- **파기**: 탈퇴·자녀 삭제 시 이름 치환, 번호·계정 NULL. 장부는 익명 상태로 보존(금액 통계).
+- **증빙**: `consented_at`, `consent_version`, `guardian_consented_at`. 자녀 행의 `consent_version` 은 보호자가 "자녀 추가" 에서 체크한 **법정대리인 동의 문구의 버전**(`YYYY-MM-DD`)이다.
+- **파기**: 탈퇴·자녀 삭제 시 이름 '탈퇴한 사용자' 로 치환, 번호·계정 NULL. 장부는 익명 상태로 보존(금액 통계). 익명화된 구성원 행은 가족 행과 함께 영구히 남는다 — 구성원 행이 하나라도 있는 가족 행은 지우지 않으므로(`cleanup_empty_families`) `families` 는 세대 변동만큼만 늘어난다. 마지막 관리자는 탈퇴할 수 없다(`last_admin`) — 역할 지정이 SQL 로만 가능해 운영이 멈춘다.
+- **연결 코드 길이(8자리)**: 어른 코드를 한 번 맞히면 그 가족과 장부, 가려지지 않은 전화번호까지 공격자의 가족으로 통째로 합쳐진다. RPC 에는 호출 횟수 제한이 없어 방어는 추측 공간뿐이므로 6자리(10^6)보다 100배 비싼 8자리(10^8 × 10분 창)로 둔다.
 - **노출 최소화**: 교인 화면은 번호 가운데 마스킹. 전체 번호는 관리자 사람 탭에서만.
 - **백업**: 비공개 저장소에만. 공개 저장소의 Actions 아티팩트에 두지 않는다.
 - **처리방침 필수 항목(제30조)**: 수집 항목·목적·보유기간·거부권 외에 정보주체 권리 행사 방법(열람·정정·삭제·처리정지, 법정대리인 대리 행사), 제3자 제공 없음, 처리 위탁(Supabase·카카오), 데이터 보관 위치(Supabase 국내·서울 리전 — 프로젝트 생성 시 반드시 서울 리전 선택), 로컬 저장소에 세션 토큰 저장·로그아웃 시 삭제, 안전조치(RLS·익명화)를 적는다. 홈 화면에서도 처리방침 링크에 상시 접근 가능해야 한다.
@@ -382,8 +396,8 @@ Supabase 설정: Kakao provider(REST API key, client secret), "Allow users witho
    - `create_next_sunday_lunch`: 날짜 계산, 중복 시 기존 반환.
 2. **Vitest 단위**: 전화번호 정규화·검증, 금액 표기, 식권 목록 접기 규칙, Asia/Seoul 날짜 유틸, 꾹 누르기 훅(600ms, 조기 해제 취소), 오류 코드 → 문구 매핑.
 3. **Testing Library 컴포넌트**: 식권 목록 상태(미사용·누르는 중·사용·접힘), 가입 폼(동의 전 비활성), 발급 폼(검증·합계), 식사 상세 ⋯ 메뉴.
-4. **Playwright E2E (로컬 Supabase, 테스트 세션 주입)**: (a)+(c) 관리자 발급 → 선발급 가입 자동 연결 → 꾹 눌러 사용 → 회색, 2단계에서 한 테스트(`e2e/tickets.spec.ts`)로 합친다. (b) 아이 익명 시작 → 코드 → 부모 자녀 추가 → 아이 폰에 가족 잔량 → 3단계. E2E 는 단일 워커 직렬 실행(공유 DB).
-5. **CI**: `supabase start` → `supabase db reset` → pgTAP → Vitest(coverage) → Playwright → 통과 시 `supabase db push`(마이그레이션 먼저) → Pages 배포. 새 프론트가 옛 스키마를 만나지 않도록 DB를 먼저 올린다.
+4. **Playwright E2E (로컬 Supabase, 테스트 세션 주입)**: (a)+(c) 관리자 발급 → 선발급 가입 자동 연결 → 꾹 눌러 사용 → 회색, 2단계에서 한 테스트(`e2e/tickets.spec.ts`)로 합쳤다. (b) 아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰에 가족 잔량 → 아이 폰에서 사용 → 보호자 폰 반영 = 3단계의 `e2e/family.spec.ts`(**두 브라우저 컨텍스트** = 두 대의 폰). 공통 동작은 `e2e/helpers.ts`. E2E 는 단일 워커 직렬 실행(공유 DB).
+5. **CI**: `supabase start`(러너마다 새 DB — 마이그레이션·시드가 그때 적용되므로 `db reset` 은 불필요) → pgTAP → 린트 → Vitest(coverage) → `npm run build` → 하위 경로 빌드(`VITE_BASE_PATH=/meal-ticket/`) → Playwright. main push 는 통과 시 `supabase db push`(마이그레이션 먼저) → Pages 배포. 새 프론트가 옛 스키마를 만나지 않도록 DB를 먼저 올린다.
 6. **수동**: 실제 폰에서 꾹 누르기 감도, 지하 식당 네트워크, iOS Safari PWA 설치.
 
 ## 13. 운영 자동화 (GitHub Actions)
@@ -402,7 +416,7 @@ Supabase 설정: Kakao provider(REST API key, client secret), "Allow users witho
 
 1. **기반**: 저장소·Vite·Tailwind·Supabase CLI·CI 뼈대, 카카오 로그인, 어른 가입(동의), 처리방침 페이지. (완료, 2026-10-08)
 2. **식권 핵심**: meals/people/families/issuances/usages 스키마와 함수, 관리자 식사·발급, 교인 홈(식권 목록, 꾹 누르기), 내역. (완료, 2026-10-08)
-3. **가족·아이**: pairing_codes, 익명 로그인, 가족 탭, 자녀 추가·재연결, 가족 공유 잔량.
+3. **가족·아이**: pairing_codes, 익명 로그인, 가족 탭, 자녀 추가·재연결, 가족 공유 잔량, pg_cron 정리. (완료, 2026-10-09)
 4. **관리 확장**: 식사 상세 현황판(대신 사용·취소·무효), 사람 관리(합치기·연결), 통계·CSV·공유.
 5. **운영**: PWA, keep-alive, 백업, 운영 문서(관리자 지정, 복구 절차, 카카오·Supabase 설정 안내).
 
@@ -413,7 +427,11 @@ Supabase 설정: Kakao provider(REST API key, client secret), "Allow users witho
 - 알림(발급 완료 카카오톡 알림 등). 알림톡은 유료라 제외.
 - 식단 공지, 식수 예측 외 기능.
 - 스테이징 환경(Supabase 무료 프로젝트 2개로 가능하나 당장은 두지 않음).
-- 로그아웃 시 쿼리 캐시 정리를 `AuthProvider`의 `SIGNED_OUT` 처리로 이동(세션 만료·다른 탭 로그아웃 등 두 번째 로그아웃 경로가 생길 때. 콜백 안에서 `setTimeout(…, 0)`으로 호출해 auth lock 재진입을 피한다).
+- ~~로그아웃 시 쿼리 캐시 정리를 `AuthProvider`의 `SIGNED_OUT` 처리로 이동~~ → **3단계에서 구현됨**(콜백 안에서 `setTimeout(…, 0)`으로 한 틱 미뤄 auth lock 재진입을 피한다. `['pairing-code', kind]` 키가 사용자 범위가 아니라, 비우지 않으면 새 익명 계정이 이전 계정의 코드를 캐시에서 읽는다).
+- 로그아웃은 `scope: 'local'`(이 기기만) — 공용 폰에서 로그아웃해도 본인 폰의 세션은 남는다.
+- 연결 코드 무차별 대입 완화(실패 횟수 제한) 보류: RPC 가 예외로 끝나면 같은 트랜잭션의 "실패 기록" 도 함께 롤백된다. 코드는 8자리·10분이라 교회 앱에서는 감수한다(§10). 필요해지면 `add_family_member` 가 예외 대신 실패 행을 반환하도록 바꾼다.
+- 탈퇴한 카카오 계정의 `auth.users` 행 정리 보류(사람 행만 익명화하고 계정은 남긴다 — 다음 로그인 때 가입 화면으로 간다). 5단계에서 `cleanup_orphan_anonymous_users` 를 넓혀 결정한다.
+- 같은 가족의 두 어른이 각자 다른 가족으로 합류하면, 나중에 커밋된 쪽이 옛 가족의 장부 풀을 통째로 가져간다(순서 의존 — 손상은 없고 설계상 그렇다).
 - 가족 합치기(`add_family_member` adult 경로) 때는 장부 `family_id` 를 통째로 새 가족으로 옮긴다(풀 병합). `leave_family` 는 장부를 옛 가족에 두고 나간다(2단계 계획 인계 항목).
 - pg_cron 의 빈 가족 정리는 장부(issuances·usages)가 없는 가족만 지운다(2단계 계획 인계 항목).
 - 4단계에서 잔량을 바꾸는 함수(`cancel_issuance`·`void_usage`·`use_ticket_as_admin`)는 `use_ticket` 과 같은 잠금 키를 쓰는 공통 헬퍼 `lock_family_meal(uuid, uuid)` 를 통해 잠근다(2단계 계획 인계 항목).

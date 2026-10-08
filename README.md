@@ -28,6 +28,9 @@ npm run dev                # http://localhost:5173
 - 로컬 관리자 계정: `e2e-admin@test.local / password123` (`supabase/seeds/010_e2e_admin.sql`, 운영에는 없음 — `db push` 는 마이그레이션만 올린다). 개발 로그인 폼에 넣으면 하단 "관리" 탭이 보인다.
 - 마이그레이션을 추가하면 `npm run db:reset && npm run db:types` 로 타입을 다시 만들어 커밋한다. 새 함수는 반드시 `revoke execute … from public, anon` (auto_expose_new_tables 때문; pgTAP 020 이 잡는다).
 - E2E 는 로컬 Supabase 한 DB 를 공유하므로 단일 워커로 직렬 실행한다 (`playwright.config.ts` `workers: 1`).
+- 아이 계정(익명 로그인)은 로컬 `config.toml` 에서 이미 켜져 있다(`enable_anonymous_sign_ins = true`). E2E `family.spec.ts` 가 쓴다.
+- E2E 는 실행마다 오늘 식사·사람·가족·아이 계정을 남긴다(정리 작업은 연결된 자녀와 장부 있는 가족을 지우지 않는다). 홈이 식사 카드로 붐비면 `npm run db:reset`. 로컬 Auth 속도 제한(5분당 가입·로그인 30회, 시간당 익명 30회 — `config.toml` `[auth.rate_limit]`)에 걸리면 429 가 테스트 실패처럼 보이니 연속 실행은 5분에 세 번 안쪽으로.
+- pg_cron 정리 작업 3건(`cleanup_pairing_codes` 매시간, `cleanup_orphan_anonymous_users`·`cleanup_empty_families` 매일 03:15/03:30 KST)은 마이그레이션이 확장을 켜고 `cron.schedule` 로 등록한다. 로컬에서도 돈다. 상태는 `select jobname, schedule, active from cron.job;` 과 `select * from cron.job_run_details order by start_time desc limit 20;`. **Supabase 공식 문서의 `grant usage on schema cron to postgres; grant all privileges on all tables in schema cron to postgres;` 스니펫은 실행하지 말 것** — supautils 가 이미 권한을 주며, 그 grant 가 남아 있으면 이후 `create extension pg_cron` 이 2BP01 로 실패한다(마이그레이션이 그런 grant 를 먼저 거둔다).
 
 ## 운영 설정 (최초 1회)
 
@@ -39,7 +42,7 @@ npm run dev                # http://localhost:5173
    - Redirect URLs: 같은 주소 추가.
 3. **Authentication › Sign In / Providers**
    - Email: 운영에서는 **끄기** (개발용 로그인은 운영 빌드에 없다. 켜 두면 카카오 없이 이메일로 자가 가입이 가능해진다).
-   - Anonymous sign-ins: **켜기** (3단계 아이 계정용. 미리 켜 두어도 무방).
+   - Anonymous sign-ins: **켜기** (3단계 아이 계정 — 켜지 않으면 "아이 계정으로 시작하기" 가 "아이 계정 시작이 꺼져 있어요. 권사님께 문의해 주세요." 로 실패한다). 익명 가입 속도 제한은 기본값(IP 당 시간 30회)으로 둔다. 캡차는 붙이지 않는다(무료지만 UI 가 복잡해진다).
    - Kakao: **켜기**. 아래 카카오 콘솔에서 받은 REST API 키를 Client ID에, Client Secret 코드를 Secret에 입력. **"Allow users without an email"을 켠다.**
    - Kakao 설정 화면에 표시되는 Callback URL(`https://<ref>.supabase.co/auth/v1/callback`)을 복사해 둔다.
 4. **Project Settings › API Keys**: Project URL과 **Publishable key**(`sb_publishable_…`)를 복사해 둔다. 레거시 anon JWT는 쓰지 않는다.
@@ -85,6 +88,8 @@ update public.people set role = 'admin' where phone = '01012345678' and deleted_
 - `index.html`의 `<title>`도 같은 앱 이름으로 맞춘다 (TS 설정을 읽지 못하므로 수동 편집).
 - 운영 Supabase 의 **Email provider 는 반드시 끈다**. 개발용 로그인 코드는 운영 번들에서 제거되지만 서버 쪽 차단이 진짜 경계다.
 - Supabase **Redirect URLs** 에 GitHub Pages 주소(`https://<github-user>.github.io/<repo>/`)가 등록되어 있는지 확인한다.
+- 3단계 배포 뒤 Supabase **Authentication › Sign In / Providers › Anonymous** 가 켜져 있는지 확인한다. pg_cron 은 마이그레이션이 켠다 — 콘솔에서 미리 켜지 말고, 특히 공식 문서의 `grant … on schema cron to postgres` 스니펫은 실행하지 않는다. 확인은 SQL Editor 에서 `select jobname, schedule, active from cron.job;`(3건) 과 `select * from cron.job_run_details order by start_time desc limit 10;` 로 한다(Integrations › Cron 화면은 대시보드 통합을 켰을 때만 보이고, 작업은 그와 무관하게 돈다).
+- 자녀 삭제·탈퇴는 화면에서 본인(보호자)이 한다. 관리자가 대신 처리해야 하면(권사님 요청) 4단계 `admin_reset_person` 전까지는 SQL 로: `update public.people set name = '탈퇴한 사용자', phone = null, auth_user_id = null, deleted_at = now() where id = '<사람 id>';`
 
 #### 발급 실수 정정 (4단계 전 임시 절차)
 
@@ -105,3 +110,4 @@ update public.issuances set cancelled_at = now(), cancelled_by = (select id from
 - `supabase db reset --linked` — 운영 DB를 비우고 테스트용 시드(가짜 사용자 생성 헬퍼)를 넣는다.
 - `supabase db push --include-seed` — 시드를 운영에 적용한다. CI는 `supabase db push --project-ref <ref> --yes` 만 쓴다(`--include-seed` 없음).
 - `supabase config push` — 로컬 `config.toml`(localhost 주소, 카카오 없음)로 운영 Auth 설정을 덮어쓴다.
+- Supabase 공식 문서의 `grant usage on schema cron to postgres; grant all privileges on all tables in schema cron to postgres;` — supautils 가 이미 권한을 주며, 이 grant 가 남으면 이후 `create extension pg_cron` 이 2BP01 로 실패해 `db push` 가 깨진다.

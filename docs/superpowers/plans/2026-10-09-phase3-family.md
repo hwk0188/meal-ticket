@@ -23,7 +23,7 @@
 | DB | `pairing_codes`(RLS 켜고 정책 없음), `lock_family_meal` 헬퍼, `create_pairing_code(kind)`, `add_family_member(code, child_name)`(child/adult, 어른 합류 때 빈 가족의 장부 이동), `relink_child(child_id, code)`, `leave_family()`, `remove_child(child_id)`, `delete_my_account()`, pg_cron 3건(코드 정리·고아 익명 계정 정리·빈 가족 정리 — 함수 + `cron.schedule`) |
 | 교인 | 시작 화면 "아이 계정으로 시작하기(카카오 없이 · 보호자 연결 필요)". 가입 화면 "어른이에요 / 만 14세 미만이에요" 토글. `#/pair` 연결 코드(8자리·남은 시간·새 코드·연결되면 자동 홈). `#/family` 가족 탭(어른만): 구성원 목록(이름·가려진 번호·자녀/미가입 태그·동의 날짜), 자녀 추가(이름·코드·법정대리인 동의 / 기존 자녀 고르면 재연결), 가족 연결(코드 입력 또는 내 코드 보여 주기), 가족 나가기, 자녀 삭제, 내 정보 수정(이름·번호), 탈퇴. 아이 폰: 가족 탭 없음, 로그아웃 전 확인. |
 | 공통 | 로그아웃 시 캐시 정리를 `AuthProvider` 의 `SIGNED_OUT` 처리로 이동(설계 §15 — 탈퇴·코드 화면 "처음으로" 라는 두 번째 로그아웃 경로가 생긴다). 오류 코드 문구 추가. |
-| 테스트 | pgTAP 4개 파일(+157), Vitest 단위·컴포넌트, Playwright E2E 1개(아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰 가족 잔량 → 아이 폰에서 사용 → 보호자 폰 반영) |
+| 테스트 | pgTAP 4개 파일(+159), Vitest 단위·컴포넌트, Playwright E2E 1개(아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰 가족 잔량 → 아이 폰에서 사용 → 보호자 폰 반영) |
 | 운영 | README: Supabase **Anonymous sign-ins 켜기**(운영 콘솔, 사용자 작업), pg_cron 안내. 설계 문서 상태 갱신. |
 
 **이번 단계에서 의도적으로 미루는 것**
@@ -55,6 +55,7 @@
 - **Task 8** (시작·가입 화면): 품질 리뷰로 가입 유형 토글을 **공용 `SegmentedControl`**(`src/components/SegmentedControl.tsx`, 숨긴 네이티브 라디오 + peer 스타일)로 바꿨다 — 손으로 만든 `role="radio"` 버튼은 방향키·단일 탭 정지가 없고 선택 안 된 라벨(`text-gray-500` on `bg-gray-100`, 14px bold)이 4.39:1 로 AA 미달이었다. 네이티브 라디오라 `getByRole('radio', { name })`·`toBeChecked()` 테스트가 그대로 산다. Task 12 의 `JoinFamilyPanel` 도 같은 컴포넌트를 쓴다(스니펫 반영). 아이 계정 버튼에 진행 안내(role=status) 추가, iPhone Safari bfcache 복원(`pageshow` persisted)으로 `pending` 이 되살아나 두 버튼이 영구 잠기던 2단계 버그 수정, `/pair` 링크에 `active:` 피드백. 아이 계정 시작 실패 테스트는 supabase-js 의 `AuthApiError` 모양(`code: 'anonymous_provider_disabled'`)으로 바꿔 전용 문구('아이 계정 시작이 꺼져 있어요…')를 단언한다(Task 5 리뷰 반영의 결과).
 - **Task 6** (로그아웃 경로 통합): 품질 리뷰로 `ConfirmButton` 의 접근성을 다듬었다 — 열리면 취소 버튼에 포커스, 취소하면 원래 버튼으로 포커스 복귀, 취소를 먼저(파괴적 버튼은 뒤) 배치, 버튼 `py-3`, `aria-describedby` 로 확인 버튼에 문구 연결, 정렬 `align` prop(기본 `end`, SignOutButton 은 `center`), 열린 채 `disabled` 가 되면 닫힘. 홈 바닥글은 세로 배치로 되돌려 문구·오류가 전체 폭을 쓴다. `signOut` 은 `scope: 'local'`(이 폰만 — 공용 폰에서 로그아웃해도 본인 폰은 유지). `AuthProvider` 는 SIGNED_OUT 타이머를 정리하고, 캐시 비움이 꼭 필요한 이유(`['pairing-code', kind]` 키가 사용자 범위가 아니라 새 익명 계정이 이전 계정의 코드를 캐시에서 읽을 수 있다)를 주석에 적었다. 리스트 행의 ConfirmButton 은 처리 중일 때 `label` 을 '처리 중…' 으로 바꾼다(Task 11·12). `useDeleteAccount` 는 onSuccess/onSettled 무효화를 두지 않는다(그 콜백이 clear 보다 먼저 돌아 폐기된 토큰으로 401 재조회를 쏜다).
 - **Task 4** (정리 작업, 계획 단계에서 미리 반영): Task 1 리뷰 권고에 따라 `cleanup_orphan_anonymous_users` 가 **살아 있는 연결 코드를 가진 익명 계정은 지우지 않도록** 조건을 더했다(하루 전에 로그인해 둔 아이 폰이 지금 코드를 보여 주는 중일 수 있다 — 지우면 cascade 로 코드가 사라지고 그 폰이 로그아웃된다). `130` 은 18건. 아래 Task 4 스니펫은 반영된 버전(코드 리터럴도 8자리)이며 2026-10-09 에 다시 롤백 검증했다 — 구현 중 코드 리터럴이 6자리로 남아 있던 것을 8자리로 고쳤다. **품질 리뷰 뒤**: Supabase 공식 문서의 `grant … on schema cron to postgres` 두 줄을 **제거**했다(supautils 가 이미 권한을 주고, 그 grant 가 남으면 Supabase 의 pg_cron after-create 스크립트의 CASCADE 없는 revoke 가 2BP01 로 실패해 `db push` 가 깨진다) — 대신 그런 grant 가 있으면 먼저 거두는 prelude 를 둔다. 정리 함수는 SECURITY INVOKER(cron 이 postgres 로 실행; DEFINER 는 service_role 에 auth.users 삭제 권한을 넘겨 준다), 세 건수 단언은 다른 세션이 남긴 행에 깨지지 않게 `>=` 로, `cron.job` 의 command·active 를 고정하는 테스트 2건 추가(`130` 은 20건). 아래 Task 4 스니펫은 반영된 최종 버전이다.
+- **Task 14** (문서 동기화): README 에 로컬 E2E 위생·Auth 속도 제한·pg_cron 3건(상태 확인 SQL, 공식 문서 grant 스니펫 금지) 메모와, 운영 설정의 Anonymous sign-ins 실패 문구(`아이 계정 시작이 꺼져 있어요. 권사님께 문의해 주세요.`)·운영 체크리스트 2줄(배포 뒤 확인, 관리자 대신 처리 SQL)·금지 명령 1줄을 넣었다. 설계 문서는 상태(1·2·3단계 완료), 6자리 → **8자리**(§4·§7.1·§7.3·§8.2)와 그 이유(§10), §7.3 의 3단계 함수 6개 동작·오류 코드와 헬퍼 `lock_family`·`lock_family_meal` 행 + 잠금 순서 ①~④ 규칙, §7.5 정리 작업 3건 표(함수·주기·조건·SECURITY INVOKER·grant 금지), §8.2(연결 코드 카운트다운·3초 폴링·처음으로, 가족 탭의 두 단계 확인 버튼·가족 연결 두 모드, 홈의 아이 계정 로그아웃 확인), §10(영구히 남는 익명 구성원 행·자녀 `consent_version`·`last_admin`), §12(가족 E2E 두 컨텍스트, CI 실제 순서), §14 3단계 완료, §15(로그아웃 `scope: 'local'`, 무차별 대입 완화 보류, 탈퇴 카카오 계정 정리 보류, 두 어른 동시 합류의 순서 의존, `AuthProvider` SIGNED_OUT 은 구현됨으로 표시)을 고쳤다. 이 계획 파일은 수치를 실측값으로(pgTAP +159 총 348 — 110 이 62 → 64, vitest 407, 커버리지, Playwright 4) 맞추고 Step 체크박스를 모두 닫았다. `src/**`·`e2e/**`·`supabase/**` 는 건드리지 않았다.
 
 ---
 
@@ -68,7 +69,7 @@
 | `migrations/20261009000002_family_functions.sql` | `add_family_member(text,text)`(child/adult + 장부 이동), `relink_child(uuid,text)` |
 | `migrations/20261009000003_leave_remove_delete.sql` | `leave_family()`, `remove_child(uuid)`, `delete_my_account()` |
 | `migrations/20261009000004_cleanup_jobs.sql` | `pg_cron` 확장, `cleanup_pairing_codes()` · `cleanup_orphan_anonymous_users()` · `cleanup_empty_families()`, `cron.schedule` 3건 |
-| `tests/database/100_pairing_codes.sql` · `110_add_family_member.sql` · `120_leave_remove_delete.sql` · `130_cleanup_jobs.sql` | pgTAP (29 · 62 · 46 · 20) |
+| `tests/database/100_pairing_codes.sql` · `110_add_family_member.sql` · `120_leave_remove_delete.sql` · `130_cleanup_jobs.sql` | pgTAP (29 · 64 · 46 · 20) |
 
 **프론트 (`src/`)** — 기능별 폴더. 한 파일 하나의 책임, 테스트는 옆에 둔다.
 
@@ -1250,7 +1251,7 @@ select cron.schedule('cleanup_empty_families', '30 18 * * *', $$select public.cl
 - [x] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
-Expected: 010~130 전부 통과 (총 189 + 29 + 62 + 46 + 20 = **346**).
+Expected: 010~130 전부 통과 (총 189 + 29 + 64 + 46 + 20 = **348**).
 
 - [x] **Step 5: DB 타입 재생성 + 타입 검사**
 
@@ -2655,7 +2656,7 @@ import { PairPage } from './pages/PairPage'
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과. `rpc('create_pairing_code', …)` 의 반환 타입은 Task 4 에서 재생성한 `database.types.ts` 가 `{ code: string; expires_at: string }[]` 로 준다.
 
-- [ ] **Step 5: 수동 확인 (로컬)**
+- [x] **Step 5: 수동 확인 (로컬)**
 
 Run: `npm run dev` → 시작 화면 → "아이 계정으로 시작하기" → `#/pair` 에 8자리 코드와 남은 시간이 보인다. "새 코드 받기" 로 코드가 바뀐다. (연결은 Task 11 이후.)
 
@@ -3134,7 +3135,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/pages/FamilyPage.tsx`, `src/pages/FamilyPage.test.tsx`
 - Modify: `src/App.tsx` (`/family` 라우트)
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/family/MemberList.test.tsx`:
 
@@ -3438,12 +3439,12 @@ describe('FamilyPage', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/family src/pages/FamilyPage`
 Expected: 모듈 없음.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/family/MemberList.tsx`:
 
@@ -3715,16 +3716,16 @@ import { FamilyPage } from './pages/FamilyPage'
               <Route path="/family" element={<RequireAdult><FamilyPage /></RequireAdult>} />
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과.
 
-- [ ] **Step 5: 수동 확인 (로컬, 두 브라우저 창)**
+- [x] **Step 5: 수동 확인 (로컬, 두 브라우저 창)** (E2E `family.spec.ts` 로 대체)
 
 Run: `npm run dev`. 창 A: 개발 로그인 `e2e-admin@test.local` → 가족 탭. 창 B(시크릿): "아이 계정으로 시작하기" → 코드. 창 A: + 자녀 추가 → 이름·코드·동의 → 연결하기 → 목록에 자녀. 창 B: 3초 안에 홈으로 바뀌고 머리말 "우리 가족 식권 · 2명".
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add src/features/family/MemberList.tsx src/features/family/MemberList.test.tsx src/features/family/AddChildForm.tsx src/features/family/AddChildForm.test.tsx src/pages/FamilyPage.tsx src/pages/FamilyPage.test.tsx src/App.tsx
@@ -3743,7 +3744,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `src/pages/FamilyPage.tsx`, `src/pages/FamilyPage.test.tsx`
 - Modify: `src/features/auth/usePerson.test.tsx` (같은 키의 두 관찰자 테스트 — Task 11 리뷰)
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/auth/usePerson.test.tsx` 에 추가 (가드는 폴링 없이, 가족 화면은 3초로 같은 키를 본다 — 타이머는 관찰자별이라 요청은 한 번만 늘어야 한다):
 
@@ -3972,12 +3973,12 @@ vi.mock('../features/family/ProfileSection', () => ({ ProfileSection: () => <p>�
 
 (`renderPage` 가 `render(...)` 의 결과를 돌려주도록 두었으므로 `utils.rerender` 를 그대로 쓸 수 있다.) Task 11 이 임시 구역의 '닫기' 로 검증하던 "가족 연결 패널 폴링 켜짐·꺼짐" 테스트는 위 첫 테스트가 대신하므로 지운다. Task 11 의 `Mutation` 픽스처에는 이미 `reset` 이 있다 — `useJoinFamily` 는 패널 안에서만 쓰므로 FamilyPage 테스트에서 목으로 만들 필요 없다.
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/family src/pages/FamilyPage`
 Expected: `JoinFamilyPanel`·`ProfileSection` 없음, FamilyPage 가족 연결 동작 없음.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/family/JoinFamilyPanel.tsx`:
 
@@ -4162,16 +4163,16 @@ import { ProfileSection } from '../features/family/ProfileSection'
 
 (`joined` 가 true 인 동안은 패널을 그리지 않는다. 닫기를 누르면 `panel` 이 `none` 이 되어 `joined` 도 false 로 돌아간다 — `useEffect` 로 상태를 맞추지 않고 렌더에서 계산한다. `resetActions()` 는 가족 나가기·자녀 삭제 두 뮤테이션만 다룬다 — 패널·내 정보 구역의 뮤테이션은 각자 안에서 관리한다.) Task 11 리뷰의 한 줄짜리 잔여 2건도 여기서 정리한다: `FamilyPage.test.tsx` 의 자녀 추가 성공 알림 단언을 `getByText('서연 님을 연결했어요')` 로, `FamilyPage.tsx` 의 `resetActions` 주석 "both 를 지운다" 를 "둘 다 지운다" 로.
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b && npm run build`
 Expected: 전부 통과.
 
-- [ ] **Step 5: 수동 확인 (로컬, 두 창)**
+- [x] **Step 5: 수동 확인 (로컬, 두 창)** (E2E `family.spec.ts` 로 대체)
 
 창 A 관리자, 창 B 다른 개발 로그인(새 이메일 → 가입). 창 B 가족 › 가족 연결 › 내 코드 보여 주기. 창 A 가족 › 가족 연결 › 상대 코드 입력 → "○○ 님이 우리 가족이 되었어요". 창 B 는 3초 안에 "가족이 연결되었어요", 구성원 목록에 둘. 창 B 내 정보 수정으로 번호를 바꾸면 홈 머리말의 번호도 바뀐다.
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add src/features/family/JoinFamilyPanel.tsx src/features/family/JoinFamilyPanel.test.tsx src/features/family/ProfileSection.tsx src/features/family/ProfileSection.test.tsx src/pages/FamilyPage.tsx src/pages/FamilyPage.test.tsx src/features/auth/usePerson.test.tsx
@@ -4188,7 +4189,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `e2e/family.spec.ts`
 - Modify: `e2e/tickets.spec.ts` (헬퍼 사용으로 정리 — 동작 동일)
 
-- [ ] **Step 1: 공통 헬퍼 — `e2e/helpers.ts`**
+- [x] **Step 1: 공통 헬퍼 — `e2e/helpers.ts`**
 
 ```ts
 import { expect, type Page } from '@playwright/test'
@@ -4265,7 +4266,7 @@ export async function signUpAsPrepaid(page: Page, { email, name, phone }: { emai
 }
 ```
 
-- [ ] **Step 2: `e2e/tickets.spec.ts` 를 헬퍼로 정리**
+- [x] **Step 2: `e2e/tickets.spec.ts` 를 헬퍼로 정리**
 
 파일 상단의 `ADMIN`·`devLogin`·`logout`·`hold` 정의를 지우고 `import { adminCreateTodayMealAndIssueTwo, hold, signUpAsPrepaid, uniqueDigits } from './helpers.ts'` 로 바꾼다. 첫 두 step("관리자: 오늘 식사 만들기", "관리자: 새로 등록한 사람에게 2장 발급")은 한 step 으로:
 
@@ -4287,7 +4288,7 @@ export async function signUpAsPrepaid(page: Page, { email, name, phone }: { emai
 Run: `npm run e2e -- e2e/tickets.spec.ts`
 Expected: 통과 (동작 동일).
 
-- [ ] **Step 3: 가족 E2E — `e2e/family.spec.ts`**
+- [x] **Step 3: 가족 E2E — `e2e/family.spec.ts`**
 
 ```ts
 import { expect, test } from '@playwright/test'
@@ -4383,12 +4384,12 @@ test('아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰
 })
 ```
 
-- [ ] **Step 4: 실행**
+- [x] **Step 4: 실행**
 
 Run: `npm run e2e`
 Expected: 4개 전부 통과 (`onboarding` 2 + `tickets` 1 + `family` 1), 단일 워커. 실패하면 `npx playwright show-report` 로 트레이스를 본다. 흔한 원인: (1) 로컬 Supabase 의 익명 로그인이 꺼짐 — `supabase/config.toml` 의 `enable_anonymous_sign_ins = true` 확인 후 `npm run db:stop && npm run db:start`; (2) `getByText('2장 남음')` 이 여러 개 — `.first()`; (3) 코드 텍스트에 공백이 들어 있어 `replace(/\D/g, '')` 로 지운다.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add e2e/helpers.ts e2e/family.spec.ts e2e/tickets.spec.ts
@@ -4406,7 +4407,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md`
 - Modify: `docs/superpowers/plans/2026-10-09-phase3-family.md` (이 파일 — 차이·수치)
 
-- [ ] **Step 1: README**
+- [x] **Step 1: README**
 
 "로컬 개발" 표 아래 목록에 추가:
 
@@ -4429,7 +4430,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - 자녀 삭제·탈퇴는 화면에서 본인(보호자)이 한다. 관리자가 대신 처리해야 하면(권사님 요청) 4단계 `admin_reset_person` 전까지는 SQL 로: `update public.people set name = '탈퇴한 사용자', phone = null, auth_user_id = null, deleted_at = now() where id = '<사람 id>';`
 ```
 
-- [ ] **Step 2: 설계 문서**
+- [x] **Step 2: 설계 문서**
 
 - 상단 "상태" 를 `1·2·3단계 구현 완료 (2026-10-09). 4단계 계획 전 이 계획의 인계 항목 참고` 로.
 - 연결 코드는 **8자리**다(2단계 리뷰 반영). 설계 문서의 "6자리" 를 모두 바꾼다: §4 핵심 개념, §7.1 `pairing_codes`(`code text PK` 설명에 "8자리 숫자(`^[0-9]{8}$`), 만료·사용된 코드 자리는 새 코드가 재활용", `auth_user_id` 에 "on delete cascade"), §7.3 `create_pairing_code`("새 8자리 숫자 코드"), §8.2 연결 코드 화면("8자리 큰 글씨"). 8자리로 늘린 이유(어른 코드를 맞히면 가족·장부·전체 번호가 넘어오는데 속도 제한이 없다)도 §10 또는 §15 에 한 줄.
@@ -4440,14 +4441,14 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - §15: "로그아웃은 `scope: 'local'`(이 기기만) — 공용 폰에서 로그아웃해도 본인 폰 세션은 남는다", "연결 코드 무차별 대입 완화 보류(이유: RPC 예외는 같은 트랜잭션의 기록을 롤백한다; 코드는 8자리)", "탈퇴한 카카오 계정의 auth.users 정리 보류", "같은 가족에서 두 어른이 각자 다른 가족으로 합류하면 나중 커밋이 장부 풀을 가져간다".
 - §10: 익명화된 구성원 행은 가족 행과 함께 영구히 남는다(구성원 행이 하나라도 있으면 가족 행은 지우지 않는다 — `families` 는 세대 변동만큼만 늘어난다). 자녀 행의 `consent_version` 은 보호자가 체크한 법정대리인 동의 문구의 버전이다. `delete_my_account` 는 마지막 관리자를 거부한다(`last_admin`).
 
-- [ ] **Step 3: 이 계획 파일**
+- [x] **Step 3: 이 계획 파일**
 
 "구현 결과와 계획의 차이" 에 Task 별로 실제로 바뀐 것을 적고, 완료 기준의 수치를 실제 값으로 맞춘다. 모든 Step 체크박스를 `[x]` 로.
 
-- [ ] **Step 4: 전체 검증**
+- [x] **Step 4: 전체 검증**
 
 ```bash
-npm run db:reset && npm run db:test        # pgTAP 346
+npm run db:reset && npm run db:test        # pgTAP 348
 npm run lint && npx tsc -b
 npm run test:coverage                      # 임계값(80/80/70/80) 통과
 npm run build && VITE_BASE_PATH=/meal-ticket/ npm run build && grep -q '/meal-ticket/assets/' dist/index.html
@@ -4456,7 +4457,7 @@ npm run e2e                                # 4 passed
 
 Expected: 전부 통과. 커버리지 요약과 pgTAP/vitest/E2E 개수를 완료 기준에 적는다.
 
-- [ ] **Step 5: 커밋 · push · PR**
+- [x] **Step 5: 커밋 · push · PR**
 
 ```bash
 git add README.md docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md docs/superpowers/plans/2026-10-09-phase3-family.md
@@ -4471,7 +4472,7 @@ gh pr create --title "3단계: 가족·아이 — 연결 코드, 익명 아이 �
 
 ```markdown
 ## Summary
-- DB: `pairing_codes`, `lock_family_meal`, `create_pairing_code`, `add_family_member`(자녀 추가·어른 합류, 빈 가족 장부 이동), `relink_child`, `leave_family`, `remove_child`, `delete_my_account`, pg_cron 정리 3건. pgTAP +157 (총 346).
+- DB: `pairing_codes`, `lock_family_meal`, `create_pairing_code`, `add_family_member`(자녀 추가·어른 합류, 빈 가족 장부 이동), `relink_child`, `leave_family`, `remove_child`, `delete_my_account`, pg_cron 정리 3건. pgTAP +159 (총 348).
 - 교인: 시작 화면 "아이 계정으로 시작하기", 가입 "만 14세 미만" 토글, `#/pair` 연결 코드, `#/family` 가족 탭(구성원·자녀 추가·재연결·가족 연결·가족 나가기·자녀 삭제·내 정보·탈퇴), 아이 폰 로그아웃 확인.
 - 공통: 로그아웃 캐시 정리를 AuthProvider SIGNED_OUT 으로 이동. E2E 가족 흐름(두 브라우저 컨텍스트).
 
@@ -4480,7 +4481,7 @@ gh pr create --title "3단계: 가족·아이 — 연결 코드, 익명 아이 �
 - 마이그레이션이 `pg_cron` 을 켜고 작업 3건을 등록한다 (비용 없음).
 
 ## Test Plan
-- [ ] CI 녹색 (pgTAP 346 · vitest · E2E 4)
+- [ ] CI 녹색 (pgTAP 348 · vitest 407 · E2E 4)
 - [ ] merge 후 Deploy 성공, 운영에서 익명 로그인 → `#/pair` 코드 표시 확인
 - [ ] 실제 폰 2대: 아이 계정 → 코드 → 보호자 자녀 추가 → 아이 폰에 가족 식권
 
@@ -4493,10 +4494,10 @@ PR 은 사용자가 merge 한다. merge 전에 사용자에게 **Supabase 콘솔
 
 ## 완료 기준
 
-- pgTAP: 010~130 전부 통과, 총 346 (100=29 · 110=62 · 120=46 · 130=20).
-- Vitest: 전부 통과, 커버리지 임계값(lines 80 · functions 80 · branches 70 · statements 80) 통과.
-- `npm run lint` · `npx tsc -b` · `npm run build` · 하위 경로 빌드 통과.
-- Playwright: 4 passed (onboarding 2 · tickets 1 · family 1).
+- pgTAP: 010~130 전부 통과, 총 348 (100=29 · 110=64 · 120=46 · 130=20).
+- Vitest: 58개 파일 **407 passed**. 커버리지 임계값(lines 80 · functions 80 · branches 70 · statements 80) 통과 — 실측 lines 98.74% · functions 96.38% · branches 91.86% · statements 97.49%.
+- `npm run lint` · `npx tsc -b` · `npm run build` · 하위 경로 빌드(`VITE_BASE_PATH=/meal-ticket/` → `dist/index.html` 에 `/meal-ticket/assets/`) 통과.
+- Playwright: **4 passed** (onboarding 2 · tickets 1 · family 1). 단, 개발 서버가 차갑게 뜨는 그 세션의 첫 실행에서 `tickets.spec` 의 꾹 누르기가 한 번 깨진 적이 있다(`사용 처리되었어요` 가 안 뜸). 같은 DB·같은 코드로 두 번 더 돌려 둘 다 4 passed — 재현되지 않는 간헐 실패로 본다(로컬 `retries: 0`, CI 는 `retries: 1`). 다시 보이면 `npm run db:reset` 뒤 재실행하고 트레이스를 남긴다.
 - 수동: 로컬 두 창에서 자녀 추가·가족 연결·가족 나가기·자녀 삭제·탈퇴가 모두 화면 문구대로 동작.
 - 운영: merge 뒤 Deploy 성공, Supabase 에 `pg_cron` 작업 3건, Anonymous sign-ins 켜짐(사용자 확인).
 
