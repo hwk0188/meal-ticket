@@ -31,7 +31,8 @@ describe('PrivacyPage', () => {
 
   it('카카오에서 받는 항목과 선택 동의, 제3자 제공·보관 위치를 설명한다', () => {
     renderPage()
-    expect(screen.getByText(/프로필 사진과 카카오계정 이메일은 선택 동의/)).toBeInTheDocument()
+    expect(screen.getByText(/회원번호를 제공받아 로그인 계정 식별에만 사용/)).toBeInTheDocument()
+    expect(screen.getByText(/닉네임·프로필 사진·카카오계정 이메일은 모두 선택 동의/)).toBeInTheDocument()
     expect(screen.getByText(/제3자에게 제공하지 않습니다/)).toBeInTheDocument()
     expect(screen.getByText(/국내\(서울\) 리전/)).toBeInTheDocument()
   })
