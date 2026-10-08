@@ -1,7 +1,7 @@
 -- =========================================================
 -- 발급: 관리자가 입금 확인 후 사람에게 식권을 준다. family_id 는 그 사람의 "현재" 가족을 스냅샷으로 남긴다.
 -- issue_tickets 코드: not_authenticated | forbidden | invalid_quantity | invalid_price | invalid_memo
---                     | person_not_found | meal_not_found
+--                     | person_not_found | person_is_minor | meal_not_found
 -- =========================================================
 create or replace function public.issue_tickets(
   p_person_id uuid,
@@ -18,6 +18,7 @@ as $$
 declare
   v_admin uuid := public.current_person_id();
   v_family uuid;
+  v_is_minor boolean;
   v_memo text := nullif(btrim(coalesce(p_memo, '')), '');
   v_row public.issuances;
 begin
@@ -38,9 +39,13 @@ begin
     raise exception 'invalid_memo';
   end if;
 
-  select family_id into v_family from public.people where id = p_person_id and deleted_at is null;
+  -- 식권은 어른(구매자) 이름으로 기록하고 잔량은 가족이 공유하므로 자녀 이름으로는 발급하지 않는다.
+  select family_id, is_minor into v_family, v_is_minor from public.people where id = p_person_id and deleted_at is null;
   if not found then
     raise exception 'person_not_found';
+  end if;
+  if v_is_minor then
+    raise exception 'person_is_minor';
   end if;
   if not exists (select 1 from public.meals where id = p_meal_id) then
     raise exception 'meal_not_found';
@@ -60,7 +65,8 @@ grant execute on function public.issue_tickets(uuid, uuid, integer, integer, tex
 -- =========================================================
 -- 다음 주일 점심 만들기. 기준일 = max(가장 늦은 '주일 점심' 날짜, 어제). 기준일 다음의 첫 일요일에 만든다.
 --   · 보통: 10/11(일) 이 있으면 10/18. 오래 쉬어 가장 늦은 식사가 과거면 오늘 이후 첫 일요일(오늘이 일요일이면 오늘).
---   · 이미 있으면(동시 클릭) 그 행을 그대로 돌려준다.
+--   · 같은 날짜가 이미 있으면(동시 클릭이 겹친 경우) on conflict 로 수렴해 그 행을 돌려준다. 순차 재호출은
+--     "다음" 일요일을 만든다 — 프론트는 이 RPC 를 자동 재시도하지 않는다.
 -- p_today 는 테스트와 날짜 미리보기용. 기본값은 서울 오늘. 관리자 전용이라 임의 날짜를 넣어도 해가 없다.
 -- 코드: not_authenticated | forbidden | invalid_date
 -- =========================================================
@@ -105,6 +111,6 @@ begin
 end
 $$;
 
-comment on function public.create_next_sunday_lunch(date) is '다음 주일 점심 생성(멱등). 프론트 lib/dates.ts 의 nextSundayAfter 와 같은 규칙.';
+comment on function public.create_next_sunday_lunch(date) is '다음 주일 점심 생성. 동시 클릭만 수렴하고 순차 재호출은 다음 일요일을 만든다 (자동 재시도 금지). 프론트 lib/dates.ts 의 nextSundayAfter 와 같은 규칙.';
 revoke execute on function public.create_next_sunday_lunch(date) from public, anon;
 grant execute on function public.create_next_sunday_lunch(date) to authenticated;
