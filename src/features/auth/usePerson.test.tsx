@@ -119,4 +119,27 @@ describe('usePerson', () => {
       vi.useRealTimers()
     }
   })
+
+  it('같은 키를 보는 두 관찰자 중 하나만 주기를 주면 그 주기로 한 번만 다시 읽고 둘 다 같은 값을 본다', async () => {
+    vi.useFakeTimers()
+    try {
+      maybeSingle.mockResolvedValue({ data: null, error: null })
+      const wrapper = makeWrapper()
+      const guard = renderHook(() => usePerson('u1'), { wrapper })
+      const page = renderHook(() => usePerson('u1', { refetchInterval: 3_000 }), { wrapper })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(maybeSingle).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000)
+      })
+      // 관찰자별 타이머: 가드 쪽(false)은 타이머가 없고, 화면 쪽 타이머 한 번 → 요청 +1 (3이 아니라 2)
+      expect(maybeSingle).toHaveBeenCalledTimes(2)
+      expect(guard.result.current.data).toBeNull()
+      expect(page.result.current.data).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

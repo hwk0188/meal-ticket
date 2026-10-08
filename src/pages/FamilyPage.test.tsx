@@ -30,6 +30,16 @@ vi.mock('../features/family/useFamilyMembers', async (importOriginal) => ({
   useFamilyMembers,
 }))
 vi.mock('../features/family/useFamilyActions', () => ({ useLeaveFamily, useRemoveChild }))
+vi.mock('../features/family/JoinFamilyPanel', () => ({
+  JoinFamilyPanel: ({ onDone, onCancel }: { onDone: (m: string) => void; onCancel: () => void }) => (
+    <div>
+      <p>가족 연결 패널</p>
+      <button type="button" onClick={() => onDone('이영희 님이 우리 가족이 되었어요')}>연결성공</button>
+      <button type="button" onClick={onCancel}>연결취소</button>
+    </div>
+  ),
+}))
+vi.mock('../features/family/ProfileSection', () => ({ ProfileSection: () => <p>내 정보 구역</p> }))
 vi.mock('../features/family/AddChildForm', () => ({
   AddChildForm: (props: { existingChildren: readonly FamilyMember[]; onDone: (m: string) => void; onCancel: () => void }) => {
     addChildProps(props)
@@ -88,7 +98,7 @@ describe('FamilyPage', () => {
     expect(screen.queryByRole('button', { name: '+ 자녀 추가' })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: '폼성공' }))
     expect(screen.queryByText('자녀 추가 폼')).not.toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('서연 님을 연결했어요')
+    expect(screen.getByText('서연 님을 연결했어요')).toBeInTheDocument()
   })
 
   it('자녀 삭제 확인 → remove_child 뮤테이션', async () => {
@@ -159,11 +169,33 @@ describe('FamilyPage', () => {
     expect(lastCall?.[0].existingChildren).toEqual([rows[1]])
   })
 
-  it('"+ 가족 연결" 패널이 열리면 내 사람 행을 PAIR_POLL_MS 로 폴링하고, 닫으면 끈다', async () => {
+  it('"+ 가족 연결" 패널이 열리면 내 사람 행을 3초마다 확인한다 (상대가 나를 합칠 수 있다)', async () => {
     renderPage()
     await userEvent.click(screen.getByRole('button', { name: /가족 연결/ }))
+    expect(screen.getByText('가족 연결 패널')).toBeInTheDocument()
     expect(usePerson).toHaveBeenLastCalledWith('u1', { refetchInterval: PAIR_POLL_MS })
-    await userEvent.click(screen.getByRole('button', { name: '닫기' }))
+    await userEvent.click(screen.getByRole('button', { name: '연결성공' }))
+    expect(screen.getByText('이영희 님이 우리 가족이 되었어요')).toBeInTheDocument()
     expect(usePerson).toHaveBeenLastCalledWith('u1', { refetchInterval: false })
+  })
+
+  it('내 코드를 보여 주는 동안 가족이 바뀌면(상대가 나를 합침) 패널을 닫고 알린다', async () => {
+    const utils = renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /가족 연결/ }))
+    expect(screen.getByText('가족 연결 패널')).toBeInTheDocument()
+    // 폴링으로 내 사람 행의 family_id 가 바뀌어 다시 그려진 상황
+    useCurrentPerson.mockReturnValue({ ...me, family_id: 'f2' })
+    utils.rerender(<MemoryRouter><FamilyPage /></MemoryRouter>)
+    expect(screen.getByText('가족이 연결되었어요')).toBeInTheDocument()
+    expect(screen.queryByText('가족 연결 패널')).not.toBeInTheDocument()
+    expect(useFamilyMembers).toHaveBeenLastCalledWith('f2')
+    await userEvent.click(screen.getByRole('button', { name: '닫기' }))
+    expect(screen.queryByText('가족이 연결되었어요')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ 자녀 추가' })).toBeInTheDocument()
+  })
+
+  it('내 정보 구역이 맨 아래에 있다', () => {
+    renderPage()
+    expect(screen.getByText('내 정보 구역')).toBeInTheDocument()
   })
 })

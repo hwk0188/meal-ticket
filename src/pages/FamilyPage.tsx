@@ -3,7 +3,9 @@ import { Button, Spinner } from '../components/ui'
 import { useAuth } from '../features/auth/AuthProvider'
 import { useCurrentPerson, usePerson } from '../features/auth/usePerson'
 import { AddChildForm } from '../features/family/AddChildForm'
+import { JoinFamilyPanel } from '../features/family/JoinFamilyPanel'
 import { MemberList } from '../features/family/MemberList'
+import { ProfileSection } from '../features/family/ProfileSection'
 import { useLeaveFamily, useRemoveChild } from '../features/family/useFamilyActions'
 import { useFamilyMembers } from '../features/family/useFamilyMembers'
 import { PAIR_POLL_MS } from '../features/pairing/usePairingCode'
@@ -19,6 +21,9 @@ export function FamilyPage() {
   const members = useFamilyMembers(me.family_id)
   const [panel, setPanel] = useState<Panel>('none')
   const [notice, setNotice] = useState<string | null>(null)
+  // 패널을 연 순간의 가족. 내 코드를 보여 주는 동안 상대가 나를 합치면 me.family_id 가 바뀐다 (폴링) → 렌더에서 알아챈다.
+  const [familyAtOpen, setFamilyAtOpen] = useState<string | null>(null)
+  const joined = panel === 'join' && familyAtOpen !== null && familyAtOpen !== me.family_id
   const leave = useLeaveFamily()
   const remove = useRemoveChild()
   // 내 코드를 보여 주는 동안(가족 연결 패널)은 배우자가 나를 자기 가족으로 합칠 수 있다 → 내 사람 행(family_id)을 폴링한다
@@ -26,7 +31,7 @@ export function FamilyPage() {
   const actionError = leave.isError ? toUserMessage(leave.error) : remove.isError ? toUserMessage(remove.error) : null
   const myChildren = (members.data ?? []).filter((m) => m.is_minor && m.guardian_id === me.id)
 
-  // 한쪽 동작(가족 나가기·자녀 삭제)의 오류가 다른 동작의 성공 뒤에도 화면에 남지 않도록 both 를 지운다.
+  // 한쪽 동작(가족 나가기·자녀 삭제)의 오류가 다른 동작의 성공 뒤에도 화면에 남지 않도록 둘 다 지운다.
   function resetActions() {
     leave.reset()
     remove.reset()
@@ -37,8 +42,9 @@ export function FamilyPage() {
     setPanel('none')
   }
   function openPanel(next: Panel) {
-    resetActions()
     setNotice(null)
+    resetActions()
+    setFamilyAtOpen(next === 'join' ? me.family_id : null)
     setPanel(next)
   }
 
@@ -49,6 +55,12 @@ export function FamilyPage() {
         {members.data && <p className="text-xs text-gray-500">우리 가족 · {members.data.length}명</p>}
       </header>
       {notice && <p role="status" className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-700">{notice}</p>}
+      {joined && (
+        <p role="status" className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-700">
+          가족이 연결되었어요
+          <button type="button" onClick={() => setPanel('none')} className="ml-2 underline">닫기</button>
+        </p>
+      )}
 
       {/* status 가 아니라 data 로 분기한다 (공통 규약) */}
       {members.data ? (
@@ -75,12 +87,7 @@ export function FamilyPage() {
             </div>
           )}
           {panel === 'child' && <AddChildForm existingChildren={myChildren} onDone={done} onCancel={() => setPanel('none')} />}
-          {panel === 'join' && (
-            <section className="rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-500">
-              가족 연결은 곧 열려요
-              <Button variant="ghost" className="mt-2" onClick={() => setPanel('none')}>닫기</Button>
-            </section>
-          )}
+          {panel === 'join' && !joined && <JoinFamilyPanel onDone={done} onCancel={() => setPanel('none')} />}
         </>
       ) : members.status === 'error' ? (
         <div role="alert" className="rounded-2xl border border-red-200 bg-white p-4 text-center text-sm text-red-600">
@@ -90,6 +97,7 @@ export function FamilyPage() {
       ) : (
         <Spinner inline />
       )}
+      <ProfileSection me={me} />
     </main>
   )
 }
