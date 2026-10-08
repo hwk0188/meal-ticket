@@ -10,7 +10,7 @@
 
 **설계 문서:** `docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md` §4(연결 코드), §5.1(준비 3·4·5, 예외 2), §7.1(`pairing_codes`), §7.3(함수), §7.4(RLS), §7.5(pg_cron), §8.1(라우트 `#/pair` `#/family`), §8.2(시작·가입·연결 코드·가족), §9(가입·연결), §10(파기·증빙), §12(E2E (b)), §15(장부 이동 결정). 2단계 계획 `docs/superpowers/plans/2026-10-08-phase2-tickets.md` 의 "3단계로 넘기는 것".
 
-**사전 검증(2026-10-09, 계획 작성 중):** 아래 Task 1~4 의 마이그레이션 SQL 과 pgTAP 4개 파일은 로컬 Supabase(Postgres 17, 비슈퍼유저 `postgres`)에서 트랜잭션 롤백 방식으로 미리 실행해 전부 통과(29·60·37·18 — Task 1·2 리뷰로 테스트가 늘었고, Task 3·4 는 리뷰 반영판을 다시 롤백 검증했다)를 확인했다. `create extension pg_cron`·`cron.schedule`·`delete from auth.users` 가 로컬의 비슈퍼유저 `postgres` 로 되는 것도 확인했다(운영 Supabase 의 권한 모델과 같다). 그대로 옮겨 적으면 된다 — 바꿀 때만 다시 검증한다.
+**사전 검증(2026-10-09, 계획 작성 중):** 아래 Task 1~4 의 마이그레이션 SQL 과 pgTAP 4개 파일은 로컬 Supabase(Postgres 17, 비슈퍼유저 `postgres`)에서 트랜잭션 롤백 방식으로 미리 실행해 전부 통과(29·62·37·18 — Task 1·2 리뷰로 테스트가 늘었고, Task 3·4 는 리뷰 반영판을 다시 롤백 검증했다)를 확인했다. `create extension pg_cron`·`cron.schedule`·`delete from auth.users` 가 로컬의 비슈퍼유저 `postgres` 로 되는 것도 확인했다(운영 Supabase 의 권한 모델과 같다). 그대로 옮겨 적으면 된다 — 바꿀 때만 다시 검증한다.
 
 ---
 
@@ -23,7 +23,7 @@
 | DB | `pairing_codes`(RLS 켜고 정책 없음), `lock_family_meal` 헬퍼, `create_pairing_code(kind)`, `add_family_member(code, child_name)`(child/adult, 어른 합류 때 빈 가족의 장부 이동), `relink_child(child_id, code)`, `leave_family()`, `remove_child(child_id)`, `delete_my_account()`, pg_cron 3건(코드 정리·고아 익명 계정 정리·빈 가족 정리 — 함수 + `cron.schedule`) |
 | 교인 | 시작 화면 "아이 계정으로 시작하기(카카오 없이 · 보호자 연결 필요)". 가입 화면 "어른이에요 / 만 14세 미만이에요" 토글. `#/pair` 연결 코드(8자리·남은 시간·새 코드·연결되면 자동 홈). `#/family` 가족 탭(어른만): 구성원 목록(이름·가려진 번호·자녀/미가입 태그·동의 날짜), 자녀 추가(이름·코드·법정대리인 동의 / 기존 자녀 고르면 재연결), 가족 연결(코드 입력 또는 내 코드 보여 주기), 가족 나가기, 자녀 삭제, 내 정보 수정(이름·번호), 탈퇴. 아이 폰: 가족 탭 없음, 로그아웃 전 확인. |
 | 공통 | 로그아웃 시 캐시 정리를 `AuthProvider` 의 `SIGNED_OUT` 처리로 이동(설계 §15 — 탈퇴·코드 화면 "처음으로" 라는 두 번째 로그아웃 경로가 생긴다). 오류 코드 문구 추가. |
-| 테스트 | pgTAP 4개 파일(+144), Vitest 단위·컴포넌트, Playwright E2E 1개(아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰 가족 잔량 → 아이 폰에서 사용 → 보호자 폰 반영) |
+| 테스트 | pgTAP 4개 파일(+146), Vitest 단위·컴포넌트, Playwright E2E 1개(아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰 가족 잔량 → 아이 폰에서 사용 → 보호자 폰 반영) |
 | 운영 | README: Supabase **Anonymous sign-ins 켜기**(운영 콘솔, 사용자 작업), pg_cron 안내. 설계 문서 상태 갱신. |
 
 **이번 단계에서 의도적으로 미루는 것**
@@ -43,7 +43,7 @@
 실행하면서 리뷰로 바뀐 것을 Task 별로 여기에 적는다. 긴 코드 스니펫은 고치지 않고, 실제 동작은 각 Task 의 커밋과 코드를 기준으로 본다.
 
 - **Task 1** (`pairing_codes`): 품질 리뷰가 같은 계정의 동시 호출이 살아 있는 코드를 둘 만드는 것을 재현해, `create_pairing_code` 가 삭제 전에 계정 단위 advisory lock(`pg_advisory_xact_lock(hashtext('pairing_code:' || uid))`, 단일 키라 `lock_family_meal` 의 두 키 공간과 겹치지 않음)을 잡도록 바꿨다. 테스트 전화번호 블록을 020 과 겹치지 않는 `0107700…` 으로, "토큰은 유효하지만 계정이 지워진 경우 → not_authenticated" 테스트 추가(`100` 은 29건), 재활용 upsert 테스트는 새 사용자를 쓰고 함수·테스트에 상호 참조 주석, pgcrypto 스키마 확인용 `do $$ perform extensions.gen_random_bytes(1) $$` 추가, `lock_family_meal` 본문 `pg_catalog` 한정, 죽은 `v_try` 선언 제거. 아래 Task 1 스니펫은 리뷰 전 버전이다.
-- **Task 2** (`add_family_member` · `relink_child`): 품질 리뷰(두 세션 재현)로 크게 보강했다. ① **연결 코드를 8자리로**(`^[0-9]{8}$`, `gen_random_bytes(8)`): 어른 코드를 맞히면 상대 가족·장부·전체 번호까지 넘어오는데 속도 제한이 없어 공간을 100배 키웠다 — 프런트(Task 9~13)의 6자리 가정도 모두 8자리로 바꿨다. ② **잠금 순서 규칙**(가족 함수 공통): "쓸 사람 행을 id 순으로 `for update` → `lock_family(uuid)`(새 단일 키 헬퍼) 를 가족 id 순으로 → `lock_family_meal`". 호출자 행을 잠그지 않아 합류 도중 호출자가 다른 가족으로 옮겨지면 엉뚱한 가족에 붙거나 FK 23503 이 나던 것, 자녀 삭제·나가기와 "빈 가족" 판정이 어긋나던 것을 막는다. ③ `issue_tickets` 가 사람 행을 `for update` 로 읽도록 재정의(합류 중 발급이 옛 가족에 떨어지는 경합). ④ 빈 가족 삭제는 `cleanup_empty_families` 와 같은 조건(사람·장부 모두 없음)에서만. ⑤ 사용된 코드로 재시도하면 이미 연결된 그 사람 행을 돌려준다(RPC 멱등 규약). ⑥ 자녀 추가에 `p_consent_version`(YYYY-MM-DD, `consent_required`) 를 받아 자녀 행 `consent_version` 에 남긴다(§10 증빙) — 프런트 `useAddChild` 가 `church.consentVersion` 을 보낸다. ⑦ 이름 유효성은 `normalize_name`, 코드 입력은 공백·개행 제거, `relink_child` 의 `unique_violation` → `already_registered`, 자녀 이동은 옛 가족 범위로만, 잠그는 식사는 오늘 이후만. `110` 은 60건. "코드 계정의 auth.users 행이 없는" 분기는 FK cascade 때문에 닿을 수 없어 테스트하지 않는다(방어 코드는 둔다). 아래 Task 1·2 스니펫은 리뷰 전 버전이다.
+- **Task 2** (`add_family_member` · `relink_child`): 품질 리뷰(두 세션 재현)로 크게 보강했다. ① **연결 코드를 8자리로**(`^[0-9]{8}$`, `gen_random_bytes(8)`): 어른 코드를 맞히면 상대 가족·장부·전체 번호까지 넘어오는데 속도 제한이 없어 공간을 100배 키웠다 — 프런트(Task 9~13)의 6자리 가정도 모두 8자리로 바꿨다. ② **잠금 순서 규칙**(가족 함수 공통, 공통 규약에 명문화): "① `pairing_codes` 행 → ② 쓸 사람 행을 id 순으로 `for update` → ③ `lock_family(uuid)`(새 단일 키 헬퍼) 를 가족 id 순으로 → ④ `lock_family_meal`". `relink_child` 는 처음 코드 행을 사람 행 뒤에 잠갔다가(교착 가능) 코드 행을 먼저 잠그도록 고쳤다. 호출자 행을 잠그지 않아 합류 도중 호출자가 다른 가족으로 옮겨지면 엉뚱한 가족에 붙거나 FK 23503 이 나던 것, 자녀 삭제·나가기와 "빈 가족" 판정이 어긋나던 것을 막는다. ③ `issue_tickets` 가 사람 행을 `for update` 로 읽도록 재정의(합류 중 발급이 옛 가족에 떨어지는 경합). ④ 빈 가족 삭제는 `cleanup_empty_families` 와 같은 조건(사람·장부 모두 없음)에서만. ⑤ 사용된 코드로 재시도하면 이미 연결된 그 사람 행을 돌려준다(RPC 멱등 규약). ⑥ 자녀 추가에 `p_consent_version`(YYYY-MM-DD, `consent_required`) 를 받아 자녀 행 `consent_version` 에 남긴다(§10 증빙) — 프런트 `useAddChild` 가 `church.consentVersion` 을 보낸다. ⑦ 이름 유효성은 `normalize_name`, 코드 입력은 공백·개행 제거, `relink_child` 의 `unique_violation` → `already_registered`, 자녀 이동은 옛 가족 범위로만, 잠그는 식사는 오늘 이후만. `110` 은 62건(식사 잠금 범위를 `pg_locks` 로 고정하는 2건 포함). "코드 계정의 auth.users 행이 없는" 분기는 FK cascade 때문에 닿을 수 없어 테스트하지 않는다(방어 코드는 둔다). 아래 Task 1·2 스니펫은 리뷰 전 버전이다.
 - **Task 3** (계획 단계에서 미리 반영): 위 잠금 규칙에 맞춰 `leave_family` 는 내 행 → 옮길 자녀 행(id 순) → `lock_family`, `remove_child` 는 (잠금 없이 자녀를 읽어) 자녀 계정의 코드 행 삭제 → 자녀 행 `for update` → `lock_family`, `delete_my_account` 는 내 코드 행 삭제 → 내 행 → `lock_family` 순으로 잠근다(코드 행이 ① 클래스라 사람 행보다 먼저). 나가기는 내 가족 범위의 자녀만 옮긴다(다른 가족에 사는 자녀 테스트 추가). `120` 은 37건. 아래 Task 3 스니펫은 반영된 버전이며 2026-10-09 에 다시 롤백 검증했다.
 - **Task 4** (정리 작업, 계획 단계에서 미리 반영): Task 1 리뷰 권고에 따라 `cleanup_orphan_anonymous_users` 가 **살아 있는 연결 코드를 가진 익명 계정은 지우지 않도록** 조건을 더했다(하루 전에 로그인해 둔 아이 폰이 지금 코드를 보여 주는 중일 수 있다 — 지우면 cascade 로 코드가 사라지고 그 폰이 로그아웃된다). `130` 은 18건. 아래 Task 4 스니펫은 반영된 버전이며 2026-10-09 에 다시 롤백 검증했다.
 
@@ -59,7 +59,7 @@
 | `migrations/20261009000002_family_functions.sql` | `add_family_member(text,text)`(child/adult + 장부 이동), `relink_child(uuid,text)` |
 | `migrations/20261009000003_leave_remove_delete.sql` | `leave_family()`, `remove_child(uuid)`, `delete_my_account()` |
 | `migrations/20261009000004_cleanup_jobs.sql` | `pg_cron` 확장, `cleanup_pairing_codes()` · `cleanup_orphan_anonymous_users()` · `cleanup_empty_families()`, `cron.schedule` 3건 |
-| `tests/database/100_pairing_codes.sql` · `110_add_family_member.sql` · `120_leave_remove_delete.sql` · `130_cleanup_jobs.sql` | pgTAP (29 · 60 · 37 · 18) |
+| `tests/database/100_pairing_codes.sql` · `110_add_family_member.sql` · `120_leave_remove_delete.sql` · `130_cleanup_jobs.sql` | pgTAP (29 · 62 · 37 · 18) |
 
 **프론트 (`src/`)** — 기능별 폴더. 한 파일 하나의 책임, 테스트는 옆에 둔다.
 
@@ -718,7 +718,7 @@ grant execute on function public.relink_child(uuid, text) to authenticated;
 - [x] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
-Expected: 110 의 41건 포함 전부 통과 (리뷰 반영 뒤 60건).
+Expected: 110 의 41건 포함 전부 통과 (리뷰 반영 뒤 62건).
 
 - [x] **Step 5: 커밋**
 
@@ -1205,7 +1205,7 @@ select cron.schedule('cleanup_empty_families', '30 18 * * *', $$select public.cl
 - [ ] **Step 4: 통과 확인**
 
 Run: `npm run db:reset && npm run db:test`
-Expected: 010~130 전부 통과 (총 189 + 29 + 60 + 37 + 18 = **333**).
+Expected: 010~130 전부 통과 (총 189 + 29 + 62 + 37 + 18 = **335**).
 
 - [ ] **Step 5: DB 타입 재생성 + 타입 검사**
 
@@ -4345,7 +4345,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - [ ] **Step 4: 전체 검증**
 
 ```bash
-npm run db:reset && npm run db:test        # pgTAP 333
+npm run db:reset && npm run db:test        # pgTAP 335
 npm run lint && npx tsc -b
 npm run test:coverage                      # 임계값(80/80/70/80) 통과
 npm run build && VITE_BASE_PATH=/meal-ticket/ npm run build && grep -q '/meal-ticket/assets/' dist/index.html
@@ -4369,7 +4369,7 @@ gh pr create --title "3단계: 가족·아이 — 연결 코드, 익명 아이 �
 
 ```markdown
 ## Summary
-- DB: `pairing_codes`, `lock_family_meal`, `create_pairing_code`, `add_family_member`(자녀 추가·어른 합류, 빈 가족 장부 이동), `relink_child`, `leave_family`, `remove_child`, `delete_my_account`, pg_cron 정리 3건. pgTAP +144 (총 333).
+- DB: `pairing_codes`, `lock_family_meal`, `create_pairing_code`, `add_family_member`(자녀 추가·어른 합류, 빈 가족 장부 이동), `relink_child`, `leave_family`, `remove_child`, `delete_my_account`, pg_cron 정리 3건. pgTAP +146 (총 335).
 - 교인: 시작 화면 "아이 계정으로 시작하기", 가입 "만 14세 미만" 토글, `#/pair` 연결 코드, `#/family` 가족 탭(구성원·자녀 추가·재연결·가족 연결·가족 나가기·자녀 삭제·내 정보·탈퇴), 아이 폰 로그아웃 확인.
 - 공통: 로그아웃 캐시 정리를 AuthProvider SIGNED_OUT 으로 이동. E2E 가족 흐름(두 브라우저 컨텍스트).
 
@@ -4378,7 +4378,7 @@ gh pr create --title "3단계: 가족·아이 — 연결 코드, 익명 아이 �
 - 마이그레이션이 `pg_cron` 을 켜고 작업 3건을 등록한다 (비용 없음).
 
 ## Test Plan
-- [ ] CI 녹색 (pgTAP 333 · vitest · E2E 4)
+- [ ] CI 녹색 (pgTAP 335 · vitest · E2E 4)
 - [ ] merge 후 Deploy 성공, 운영에서 익명 로그인 → `#/pair` 코드 표시 확인
 - [ ] 실제 폰 2대: 아이 계정 → 코드 → 보호자 자녀 추가 → 아이 폰에 가족 식권
 
@@ -4391,7 +4391,7 @@ PR 은 사용자가 merge 한다. merge 전에 사용자에게 **Supabase 콘솔
 
 ## 완료 기준
 
-- pgTAP: 010~130 전부 통과, 총 333 (100=29 · 110=60 · 120=37 · 130=18).
+- pgTAP: 010~130 전부 통과, 총 335 (100=29 · 110=62 · 120=37 · 130=18).
 - Vitest: 전부 통과, 커버리지 임계값(lines 80 · functions 80 · branches 70 · statements 80) 통과.
 - `npm run lint` · `npx tsc -b` · `npm run build` · 하위 경로 빌드 통과.
 - Playwright: 4 passed (onboarding 2 · tickets 1 · family 1).
@@ -4405,7 +4405,7 @@ PR 은 사용자가 merge 한다. merge 전에 사용자에게 **Supabase 콘솔
 - 사람 탭의 "가족 수" 태그와 발급 검색 결과의 가족 수 — 이제 의미가 생겼다(`people` 을 `family_id` 로 묶어 세면 된다).
 - `admin_reset_person` 이 생기면 README 의 "관리자 대신 처리 SQL" 임시 절차를 지운다.
 - 같은 가족에서 두 어른이 각자 다른 가족으로 합류하면, 나중에 커밋된 쪽이 옛 가족의 장부 풀을 통째로 가져간다(순서 의존 — 손상은 없고 설계상 그렇다). 설계 §15 에 한 줄로 적는다(Task 14).
-- 연결 코드 무차별 대입 완화: 필요해지면 `add_family_member` 가 실패를 예외 대신 "실패 행 반환" 으로 바꾸거나, 코드를 8자리로 늘린다(가장 싼 완화책).
+- 연결 코드 무차별 대입 완화: 코드는 이미 8자리다(2단계 리뷰 반영). 더 필요해지면 `add_family_member` 가 실패를 예외 대신 "실패 행 반환" 으로 바꿔 실패 횟수를 기록한다.
 - 탈퇴한 카카오 계정의 `auth.users` 정리(사람 행이 없는 비익명 계정 N일 뒤 삭제) — 5단계 운영 문서에서 결정. `cleanup_orphan_anonymous_users` 를 넓히면 된다.
 - `onboardingSchema` 와 `familySchema.nameSchema` 가 같은 규칙을 두 번 적는다. 4단계에서 사람 입력 규칙을 `lib/personSchema.ts` 로 모을지 검토(2곳이라 아직 두었다).
 - PWA(5단계) 때 `#/pair` 와 시작 화면에 `pt-[env(safe-area-inset-top)]`.
