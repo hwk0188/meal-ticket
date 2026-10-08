@@ -35,9 +35,9 @@ values ('민준', :'a_fid', :'m_uid', true, :'a_pid', now());
 -- child: 사람 행이 없는 계정(익명·카카오 모두)만
 select tests.authenticate_as(:'k_uid');
 select results_eq(
-  $$ select code ~ '^[0-9]{6}$', expires_at between now() + interval '9 minutes' and now() + interval '10 minutes' from public.create_pairing_code('child') $$,
+  $$ select code ~ '^[0-9]{8}$', expires_at between now() + interval '9 minutes' and now() + interval '10 minutes' from public.create_pairing_code('child') $$,
   $$ values (true, true) $$,
-  '익명 계정은 6자리 자녀 코드를 받고 10분 뒤 만료된다');
+  '익명 계정은 8자리 자녀 코드를 받고 10분 뒤 만료된다');
 select tests.clear_auth();
 select results_eq(
   format($$ select kind, used_at from public.pairing_codes where auth_user_id = %L $$, :'k_uid'),
@@ -48,7 +48,7 @@ select tests.authenticate_as(:'k_uid');
 select lives_ok($$ select public.create_pairing_code('child') $$, '같은 계정이 다시 요청하면 새 코드');
 select tests.clear_auth();
 select is((select count(*) from public.pairing_codes where auth_user_id = :'k_uid'), 1::bigint, '한 계정에 코드는 하나뿐이다 (이전 코드는 지워진다)');
--- 코드는 100만 가지 중 균등 추출이라 1e-6 확률로 같은 값이 나올 수 있다 (실패해도 버그가 아닐 수 있다)
+-- 코드는 1억 가지 중 균등 추출이라 1e-8 확률로 같은 값이 나올 수 있다 (실패해도 버그가 아닐 수 있다)
 select isnt((select code from public.pairing_codes where auth_user_id = :'k_uid'), :'k_code1', '새 코드는 이전 코드와 다르다');
 select tests.authenticate_as(:'n_uid');
 select lives_ok($$ select public.create_pairing_code('child') $$, '카카오 로그인 뒤 "만 14세 미만" 을 고른 계정(사람 행 없음)도 자녀 코드를 받는다');
@@ -80,26 +80,26 @@ select tests.clear_auth();
 select tests.create_user() as old_uid \gset
 select tests.create_user() as recycle_uid \gset
 insert into public.pairing_codes (code, auth_user_id, kind, expires_at, used_at)
-values ('000000', :'old_uid', 'child', now() - interval '1 minute', now() - interval '2 minutes');
+values ('00000000', :'old_uid', 'child', now() - interval '1 minute', now() - interval '2 minutes');
 insert into public.pairing_codes as pc (code, auth_user_id, kind, expires_at)
-values ('000000', :'recycle_uid', 'child', now() + interval '10 minutes')
+values ('00000000', :'recycle_uid', 'child', now() + interval '10 minutes')
 on conflict (code) do update set auth_user_id = excluded.auth_user_id, kind = excluded.kind, created_at = now(), expires_at = excluded.expires_at, used_at = null
   where pc.used_at is not null or pc.expires_at < now();
 select results_eq(
-  $$ select auth_user_id, used_at from public.pairing_codes where code = '000000' $$,
+  $$ select auth_user_id, used_at from public.pairing_codes where code = '00000000' $$,
   format($$ values (%L::uuid, null::timestamptz) $$, :'recycle_uid'),
   '사용된 코드 자리는 새 계정의 코드로 덮어쓸 수 있다');
 -- 살아 있는 코드는 덮어쓰지 못한다
 insert into public.pairing_codes as pc (code, auth_user_id, kind, expires_at)
-values ('000000', :'old_uid', 'child', now() + interval '10 minutes')
+values ('00000000', :'old_uid', 'child', now() + interval '10 minutes')
 on conflict (code) do update set auth_user_id = excluded.auth_user_id, kind = excluded.kind, created_at = now(), expires_at = excluded.expires_at, used_at = null
   where pc.used_at is not null or pc.expires_at < now();
-select is((select auth_user_id from public.pairing_codes where code = '000000'), :'recycle_uid'::uuid, '살아 있는 남의 코드는 덮어쓰지 않는다');
+select is((select auth_user_id from public.pairing_codes where code = '00000000'), :'recycle_uid'::uuid, '살아 있는 남의 코드는 덮어쓰지 않는다');
 
 -- 형식 제약
 select throws_ok(
-  format($$ insert into public.pairing_codes (code, auth_user_id, kind, expires_at) values ('12345', %L, 'child', now()) $$, :'old_uid'),
-  '23514', null, '6자리 숫자가 아닌 코드는 거부한다');
+  format($$ insert into public.pairing_codes (code, auth_user_id, kind, expires_at) values ('1234567', %L, 'child', now()) $$, :'old_uid'),
+  '23514', null, '8자리 숫자가 아닌 코드는 거부한다 (7자리)');
 
 -- 토큰은 유효한데 계정이 지워진 경우 (JWT 는 최대 1시간 더 살아 있다): FK 23503 대신 약속된 코드
 select tests.create_user() as gone_uid \gset

@@ -1,5 +1,7 @@
 -- =========================================================
--- 연결 코드: 아이 폰(또는 합류할 어른 폰)에 뜨는 6자리 1회용 코드. 10분. 함수로만 읽고 쓴다 (정책 없음).
+-- 연결 코드: 아이 폰(또는 합류할 어른 폰)에 뜨는 8자리 1회용 코드. 10분. 함수로만 읽고 쓴다 (정책 없음).
+-- 왜 8자리인가: 어른 코드를 한 번 맞히면 그 가족과 장부, 가려지지 않은 전화번호가 공격자 가족으로 통째로 합쳐진다 (피해 범위가 크다).
+--   호출 횟수 제한이 아직 없어 방어는 추측 공간뿐이다 — 10분 창 × 10^8 가지로 6자리(10^6)보다 100배 비싸게 만든다.
 -- =========================================================
 -- 코드 난수는 pgcrypto 의 gen_random_bytes 로 뽑는다. Supabase 는 기본으로 켜 두지만 명시해 로컬·운영을 같게 한다.
 create extension if not exists pgcrypto with schema extensions;
@@ -7,7 +9,7 @@ create extension if not exists pgcrypto with schema extensions;
 do $$ begin perform extensions.gen_random_bytes(1); end $$;
 
 create table public.pairing_codes (
-  code text primary key check (code ~ '^[0-9]{6}$'),
+  code text primary key check (code ~ '^[0-9]{8}$'),
   auth_user_id uuid not null references auth.users(id) on delete cascade, -- 코드를 띄운 폰의 계정
   kind text not null check (kind in ('child', 'adult')),
   created_at timestamptz not null default now(),
@@ -86,8 +88,10 @@ begin
   delete from public.pairing_codes pc where pc.auth_user_id = v_uid;
 
   for v_try in 1..10 loop
-    -- 암호학적 난수 4바이트 → 0..999999 (random() 은 예측 가능해 쓰지 않는다)
-    v_code := lpad((((('x' || encode(extensions.gen_random_bytes(4), 'hex'))::bit(32)::bigint) % 1000000))::text, 6, '0');
+    -- 암호학적 난수 8바이트 → 0..99999999 (random() 은 예측 가능해 쓰지 않는다).
+    -- 부호 비트를 지워(& 2^63-1) 음수를 막는다 — 음수에 % 를 쓰면 '-12345' 같은 값이 나와 형식 제약에 걸린다.
+    -- 2^63-1 은 10^8 의 배수가 아니라 modulo 편향이 남지만 10^-11 수준이라 추측 난이도에 영향이 없다.
+    v_code := lpad((((('x' || encode(extensions.gen_random_bytes(8), 'hex'))::bit(64)::bigint) & 9223372036854775807) % 100000000)::text, 8, '0');
     -- 살아 있는 남의 코드와 겹치면 where 절이 막아 아무 행도 바뀌지 않는다(found = false) → 다시 뽑는다.
     -- 이 upsert 는 100_pairing_codes.sql 의 재활용 테스트가 그대로 복사해 검증한다. 바꾸면 그쪽도 바꾼다.
     insert into public.pairing_codes as pc (code, auth_user_id, kind, expires_at)
@@ -105,6 +109,6 @@ begin
 end
 $$;
 
-comment on function public.create_pairing_code(text) is '연결 코드 발급(10분·1회용). 오류 코드는 파일 헤더 참고.';
+comment on function public.create_pairing_code(text) is '연결 코드 발급(8자리·10분·1회용). 오류 코드는 파일 헤더 참고.';
 revoke execute on function public.create_pairing_code(text) from public, anon;
 grant execute on function public.create_pairing_code(text) to authenticated;
