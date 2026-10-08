@@ -47,6 +47,7 @@
 - **Task 3** (계획 단계에서 미리 반영): 위 잠금 규칙에 맞춰 `leave_family` 는 내 행 → 옮길 자녀 행(id 순) → `lock_family`, `remove_child` 는 (잠금 없이 자녀를 읽어) 자녀 계정의 코드 행 삭제 → 자녀 행 `for update` → `lock_family`, `delete_my_account` 는 내 코드 행 삭제 → 내 행 → `lock_family` 순으로 잠근다(코드 행이 ① 클래스라 사람 행보다 먼저). 나가기는 내 가족 범위의 자녀만 옮긴다(다른 가족에 사는 자녀 테스트 추가). `120` 은 리뷰 반영 뒤 46건. 아래 Task 3 스니펫은 반영된 버전이며 2026-10-09 에 다시 롤백 검증했다. **품질 리뷰 뒤**: `delete_my_account` 에 마지막 관리자 보호(`last_admin` — 관리자 지정이 SQL 로만 가능해 마지막 관리자가 탈퇴하면 운영이 멈춘다) 추가, 헤더에 "어른 행을 자녀 행보다 먼저 잠근다" 불변식과 식사 잠금 생략 이유 주석, 테스트 보강(`not_registered`·본인 코드 삭제·`pg_locks`·익명 구성원 no-op·마지막 관리자). 가족 나가기 확인 문구는 발급·사용 내역도 남는다는 말을 넣었다(Task 11).
 - **Task 5** (프론트 공통): 품질 리뷰로 `toUserMessage` 가 `code` 필드의 값도 MESSAGES 에서 찾도록 바꿨다 — supabase-js 인증 오류(`AuthApiError.code = 'anonymous_provider_disabled'`, 익명 로그인이 꺼져 있을 때)는 코드가 `message` 가 아니라 `code` 에 온다. 문구 `anonymous_provider_disabled` 추가(총 8개). `usePerson` 의 "옵션 없음" 테스트와 `validateWith` 의 "한 필드 여러 오류" 분기 테스트를 실제로 검증하도록 보강, `formatDateTime` 이 `formatDate` 를 재사용, `UsePersonOptions` 타입 export, `mealSchema` 도 `validateWith` 로 통일(경로 없는 오류가 `"undefined"` 키로 가던 버그 수정). TanStack 은 관찰자마다 타이머를 따로 가지며 가드는 공유 Query 의 갱신만 받는다(계획의 "가장 짧은 주기" 설명은 틀렸고 결론만 맞다).
 - **Task 7** (가드·가족 탭): 품질 리뷰로 세 가드를 **data 기준**으로 바꿨다(위 공통 규약) — 백그라운드 재조회가 실패해도 `data` 가 있으면 화면을 유지한다. `/pair` 라우트를 Task 7 에서 Spinner 자리표시자로 미리 두었다(가드가 보내는 경로에 라우트가 없으면 무한 리다이렉트; `App.test.tsx` 에 익명 세션 → `#/pair` 테스트). `ConfirmButton` 의 포커스 복귀는 ref 를 effect 안에서만 만지고 `disabled` 를 의존성에 넣어, 처리 중 비활성이었다가 다시 활성화될 때 원래 버튼으로 돌아간다(Task 11·12 의 자녀 삭제·가족 나가기·탈퇴가 이 모양이다).
+- **Task 10** (가족 데이터): 품질 리뷰로 ① **DB** `add_family_member` 가 코드 종류와 호출 의도를 대조한다 — 자녀 추가 폼(이름 있음)에 어른 코드가 들어오면 `expected_child_code`, 가족 연결(이름 없음)에 자녀 코드가 들어오면 `expected_adult_code`(둘 다 8자리라 잘못 붙여 넣기 쉬운데, 이전에는 자녀 추가 폼이 가족 전체를 조용히 합쳐 버렸다; pgTAP 110 +2), ② `useDeleteAccount` 는 익명화 뒤 로그아웃이 실패해도 오류가 아니라 `{ signedOut: false }` 로 끝내고 `['person']` 만 무효화한다(오류로 올리면 '다시 시도' 가 뜨고 두 번째 시도는 `not_registered`), Task 12 `ProfileSection` 이 그 경우 "앱을 닫고 다시 열어 주세요" 를 보여 준다, ③ `useUpdateProfile` 도 `invalidateFamily` 로 넓힘(이름이 식권 라벨·내역에도 나온다), ④ `useFamilyMembers` 정렬에 `id` 보조 키, ⑤ `nameSchema`·`phoneSchema` 를 `src/lib/fieldSchemas.ts` 로 모아 가입 스키마와 공유, ⑥ 무효화 테스트를 훅별로 분리하고 키 목록 전체를 단언(위 공통 규약), ⑦ `'static'` 쿼리는 `invalidateQueries` 로도 재조회되지 않는다는 사실로 주석 정정(그래도 명시적 키 목록은 유지). 아래 Task 10 스니펫은 리뷰 전 버전이다.
 - **Task 9** (연결 코드 화면): 품질 리뷰로 ① 재발급 실패를 알리는 작은 안내(데이터 있음 + error) 추가, ② 1초마다 바뀌는 남은 시간은 `aria-live="off"`(스크린리더 홍수 방지)로 두고 만료 때만 sr-only alert 를 한 번 울림, ③ `gcTime` 을 0 이 아니라 `PAIR_CODE_TTL_MS`(10분)로 — 리마운트(StrictMode, Task 12 의 토글)가 코드를 조용히 재발급하지 않고 살아 있는 같은 코드를 다시 보여 준다; 이때 `staleTime` 은 `Infinity` 가 아니라 **`'static'`** 이어야 한다(재발급 실패가 `isInvalidated` 를 켜면 `Infinity` 는 stale 로 판정돼 리마운트 때 다시 부른다; `'static'` 만 그 검사보다 먼저 끊는다), ④ 카운트다운은 서버 `expires_at` 과 폰 시계를 비교하지 않고 `dataUpdatedAt + TTL`(한 시계) 로 센다 — 시계가 10분 이상 틀린 폰에서 영원히 '만료' 로 보이던 문제, ⑤ 8자리 코드는 `text-5xl tracking-[0.2em]` 로는 `max-w-sm` 에 한 줄로 안 들어가(≈346px 필요) `text-4xl tracking-[0.1em] whitespace-nowrap` 으로, ⑥ 하루 넘게 방치돼 정리된 익명 계정(`not_authenticated`)에는 처음으로 돌아가라는 강한 안내. `useCountdown` 은 epoch ms 를 받는다. 아래 Task 9 스니펫은 리뷰 전 버전이다.
 - **Task 8** (시작·가입 화면): 품질 리뷰로 가입 유형 토글을 **공용 `SegmentedControl`**(`src/components/SegmentedControl.tsx`, 숨긴 네이티브 라디오 + peer 스타일)로 바꿨다 — 손으로 만든 `role="radio"` 버튼은 방향키·단일 탭 정지가 없고 선택 안 된 라벨(`text-gray-500` on `bg-gray-100`, 14px bold)이 4.39:1 로 AA 미달이었다. 네이티브 라디오라 `getByRole('radio', { name })`·`toBeChecked()` 테스트가 그대로 산다. Task 12 의 `JoinFamilyPanel` 도 같은 컴포넌트를 쓴다(스니펫 반영). 아이 계정 버튼에 진행 안내(role=status) 추가, iPhone Safari bfcache 복원(`pageshow` persisted)으로 `pending` 이 되살아나 두 버튼이 영구 잠기던 2단계 버그 수정, `/pair` 링크에 `active:` 피드백. 아이 계정 시작 실패 테스트는 supabase-js 의 `AuthApiError` 모양(`code: 'anonymous_provider_disabled'`)으로 바꿔 전용 문구('아이 계정 시작이 꺼져 있어요…')를 단언한다(Task 5 리뷰 반영의 결과).
 - **Task 6** (로그아웃 경로 통합): 품질 리뷰로 `ConfirmButton` 의 접근성을 다듬었다 — 열리면 취소 버튼에 포커스, 취소하면 원래 버튼으로 포커스 복귀, 취소를 먼저(파괴적 버튼은 뒤) 배치, 버튼 `py-3`, `aria-describedby` 로 확인 버튼에 문구 연결, 정렬 `align` prop(기본 `end`, SignOutButton 은 `center`), 열린 채 `disabled` 가 되면 닫힘. 홈 바닥글은 세로 배치로 되돌려 문구·오류가 전체 폭을 쓴다. `signOut` 은 `scope: 'local'`(이 폰만 — 공용 폰에서 로그아웃해도 본인 폰은 유지). `AuthProvider` 는 SIGNED_OUT 타이머를 정리하고, 캐시 비움이 꼭 필요한 이유(`['pairing-code', kind]` 키가 사용자 범위가 아니라 새 익명 계정이 이전 계정의 코드를 캐시에서 읽을 수 있다)를 주석에 적었다. 리스트 행의 ConfirmButton 은 처리 중일 때 `label` 을 '처리 중…' 으로 바꾼다(Task 11·12). `useDeleteAccount` 는 onSuccess/onSettled 무효화를 두지 않는다(그 콜백이 clear 보다 먼저 돌아 폐기된 토큰으로 401 재조회를 쏜다).
@@ -70,7 +71,7 @@
 
 | 파일 | 책임 |
 |---|---|
-| `lib/errors.ts` (수정) | 3단계 오류 코드 문구(`invalid_kind` `not_adult` `invalid_code` `child_not_found` `has_children` `code_generation_failed` `last_admin`) |
+| `lib/errors.ts` (수정) | 3단계 오류 코드 문구(`invalid_kind` `not_adult` `invalid_code` `child_not_found` `has_children` `code_generation_failed` `last_admin` `anonymous_provider_disabled` `expected_child_code` `expected_adult_code`) |
 | `lib/validate.ts` | zod 스키마 → `{ok, values}` 또는 필드별 첫 오류 (`validateWith`). 가입 화면의 `validateOnboarding` 도 이것을 쓰도록 바꾼다 |
 | `lib/dates.ts` (수정) | `formatDate(iso)` → 서울 'M/D' (동의 날짜 표시) |
 | `features/auth/signIn.ts` (수정) | `signInAsChild()` = `supabase.auth.signInAnonymously()` |
@@ -113,7 +114,7 @@
 - **조회 화면은 `status` 가 아니라 `data` 로 분기한다.** 패턴: `data ? <본문 + (error 면 작은 안내)> : status === 'error' ? <alert + 다시 시도> : <Spinner inline />`.
 - **가드(`Gate`·`RequireSession`·`RequirePerson`)도 `data` 로 먼저 분기한다** — `data !== undefined`(성공한 `null` 포함)이면 그대로 가고, `status === 'error'` 는 한 번도 성공한 적이 없을 때만 본다. 폴링 한 번 실패로 연결 코드 화면이 내려가면 코드가 재발급돼 보호자가 적던 코드가 죽는다 (Task 7 리뷰).
 - **가드가 보내는 경로는 같은 커밋 안에 라우트가 있어야 한다.** 라우트 없는 경로로 보내면 `*` → `/` → 가드 → … 무한 리다이렉트가 된다. `/pair` 는 Task 7 에서 자리만 잡고 Task 9 가 화면을 넣는다 (Task 7 리뷰).
-- **뮤테이션의 `onSuccess`/`onSettled` 는 무효화 promise 를 반드시 return** 한다(끝나기 전에 버튼이 열리면 묵은 데이터로 또 누른다).
+- **뮤테이션의 `onSuccess`/`onSettled` 는 무효화 promise 를 반드시 return** 한다(끝나기 전에 버튼이 열리면 묵은 데이터로 또 누른다). 무효화를 검증하는 테스트는 훅마다 새 QueryClient 를 쓰고 **키 목록 전체를 정확히**(`invalidate.mock.calls.map(c => c[0].queryKey)` 가 기대 목록과 같다) 단언한다 — 스파이를 여러 훅이 공유하면 한 훅의 `onSuccess` 가 빠져도 통과한다 (Task 10 리뷰).
 - `PersonShell` 아래 화면은 `<main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4 p-4">`. `PersonShell` 밖(시작·가입·`/pair`)은 `min-h-dvh` 를 스스로 갖는다.
 - 커밋 메시지는 `<type>: <설명>` 형식, 끝에 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 - 작업 브랜치 `feat/phase3-family` 에서 시작한다. `main` 에 직접 커밋하지 않는다. PR 은 사용자가 merge 한다(merge 가 운영 마이그레이션을 실행한다).
@@ -3801,7 +3802,7 @@ import userEvent from '@testing-library/user-event'
 import type { Person } from '../auth/usePerson'
 import { ProfileSection } from './ProfileSection'
 
-type Mutation = { isPending: boolean; isError: boolean; error?: Error; mutate: (vars?: unknown, opts?: { onSuccess?: () => void }) => void; reset: () => void }
+type Mutation = { isPending: boolean; isError: boolean; error?: Error; data?: { signedOut: boolean }; mutate: (vars?: unknown, opts?: { onSuccess?: () => void }) => void; reset: () => void }
 const { useUpdateProfile, useDeleteAccount } = vi.hoisted(() => ({
   useUpdateProfile: vi.fn<() => Mutation>(),
   useDeleteAccount: vi.fn<() => Mutation>(),
@@ -3868,6 +3869,12 @@ describe('ProfileSection', () => {
     render(<ProfileSection me={me} />)
     await userEvent.click(screen.getByRole('button', { name: '수정' }))
     expect(screen.getByRole('alert')).toHaveTextContent('이미 다른 분이 쓰는 번호예요')
+  })
+
+  it('탈퇴 뒤 로그아웃만 실패하면(signedOut=false) 앱을 다시 열라고 안내한다', () => {
+    useDeleteAccount.mockReturnValue({ ...idle(), data: { signedOut: false } })
+    render(<ProfileSection me={me} />)
+    expect(screen.getByRole('alert')).toHaveTextContent('앱을 닫고 다시 열어 주세요')
   })
 
   it('탈퇴는 확인을 거쳐 delete_my_account, has_children 이면 문구', async () => {
@@ -4075,6 +4082,10 @@ export function ProfileSection({ me }: { me: Person }) {
       <div className="flex flex-col items-end gap-1">
         <ConfirmButton label={del.isPending ? '처리 중…' : '탈퇴'} message={DELETE_NOTICE} confirmLabel="탈퇴하기" onConfirm={() => del.mutate()} disabled={del.isPending} />
         {del.isError && <p role="alert" className="text-sm text-red-600">{toUserMessage(del.error)}</p>}
+        {/* 익명화는 끝났는데 로그아웃만 실패한 경우 (Task 10 리뷰): 다시 누르면 not_registered 가 되므로 재시도를 권하지 않는다 */}
+        {del.data?.signedOut === false && (
+          <p role="alert" className="text-sm text-red-600">탈퇴는 끝났어요. 통신이 불안정해 로그아웃은 못 했어요 — 앱을 닫고 다시 열어 주세요.</p>
+        )}
       </div>
     </section>
   )
