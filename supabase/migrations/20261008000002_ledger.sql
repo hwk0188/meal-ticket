@@ -15,7 +15,7 @@ create table public.issuances (
   issued_at timestamptz not null default now(),
   cancelled_at timestamptz,
   cancelled_by uuid references public.people(id),
-  cancel_reason text,
+  cancel_reason text check (cancel_reason is null or char_length(cancel_reason) <= 100),
   constraint issuances_cancel_consistent check ((cancelled_at is null) = (cancelled_by is null))
 );
 create index issuances_family_meal_idx on public.issuances (family_id, meal_id);
@@ -34,7 +34,9 @@ create table public.usages (
   used_at timestamptz not null default now(),
   voided_at timestamptz,
   voided_by uuid references public.people(id),
-  constraint usages_void_consistent check ((voided_at is null) = (voided_by is null))
+  constraint usages_void_consistent check ((voided_at is null) = (voided_by is null)),
+  -- self 면 누른 폰의 사람이 기록자다 (관리자 대리 기록만 recorded_by 가 다를 수 있다)
+  constraint usages_self_recorded_by_person check (used_via <> 'self' or recorded_by = person_id)
 );
 create index usages_family_meal_idx on public.usages (family_id, meal_id);
 create index usages_meal_idx on public.usages (meal_id);
