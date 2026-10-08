@@ -31,8 +31,7 @@ export function useFamilyTickets(person: Person) {
       const mealIds = [
         ...new Set([...balances.map((b) => b.meal_id).filter((id): id is string => id !== null), ...todayMeals.map((m) => m.id)]),
       ]
-      // 뷰의 .eq 는 이미 서버에서 걸리지만, 한 번 더 좁혀 사용 기록 조회 범위를 오늘 식사로만 묶는다.
-      const todayIds = todayMeals.filter((m) => m.served_on === today).map((m) => m.id)
+      const todayIds = todayMeals.map((m) => m.id)
       const [meals, usages] = await Promise.all([
         mealIds.length ? supabase.from('meals').select('*').in('id', mealIds).then(unwrap) : Promise.resolve<Meal[]>([]),
         todayIds.length

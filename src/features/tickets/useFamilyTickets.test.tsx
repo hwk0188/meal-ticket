@@ -48,7 +48,7 @@ describe('useFamilyTickets', () => {
               { family_id: 'f1', meal_id: 'm2', issued: 1, used: 0, remaining: 1, amount: 5000 },
             ])
           : table === 'meals'
-            ? ok([todayMeal, nextMeal])
+            ? ok((queries.meals?.length ?? 0) === 0 ? [todayMeal] : [todayMeal, nextMeal]) // 1st: eq served_on → 오늘만, 2nd: in id → 전부
             : table === 'people'
               ? ok([{ id: 'p1', name: '김철수' }])
               : ok([{ id: 'u1', meal_id: 'm1', used_at: '2026-10-12T03:31:00Z', person_id: 'p1', used_via: 'self' }])
@@ -71,6 +71,8 @@ describe('useFamilyTickets', () => {
     expect(queries.people?.[0]?.has('eq', 'family_id', 'f1')).toBe(true)
     expect(queries.usages?.[0]?.has('in', 'meal_id', ['m1'])).toBe(true)
     expect(queries.usages?.[0]?.has('is', 'voided_at', null)).toBe(true)
+    expect(queries.meals?.[0]?.has('eq', 'served_on', '2026-10-12')).toBe(true)
+    expect(queries.meals?.[1]?.has('in', 'id', ['m1', 'm2'])).toBe(true)
   })
 
   it('잔량도 오늘 식사도 없으면 빈 결과 (추가 조회 없음)', async () => {
