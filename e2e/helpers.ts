@@ -15,6 +15,7 @@ export async function devLogin(page: Page, email: string, password: string) {
   await page.getByRole('button', { name: '개발용 로그인' }).click()
 }
 
+/** 관리자 화면에서 로그아웃한다 — '내 식권' 탭은 관리자 탭에만 있다. 교인 화면에서는 쓰지 말 것. */
 export async function logout(page: Page) {
   await page.getByRole('link', { name: '내 식권' }).click()
   await page.getByRole('button', { name: '로그아웃' }).click()
