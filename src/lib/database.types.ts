@@ -101,6 +101,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"pairing_codes": {
+                  Row: {
+                    "auth_user_id": string,"code": string,"created_at": string,"expires_at": string,"kind": string,"used_at": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "auth_user_id": string,"code": string,"created_at"?: string,"expires_at": string,"kind": string,"used_at"?: string | null
+                  }
+                  Update: {
+                    "auth_user_id"?: string,"code"?: string,"created_at"?: string,"expires_at"?: string,"kind"?: string,"used_at"?: string | null
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"people": {
                   Row: {
                     "auth_user_id": string | null,"consent_version": string | null,"consented_at": string | null,"created_at": string,"deleted_at": string | null,"family_id": string,"guardian_consented_at": string | null,"guardian_id": string | null,"id": string,"is_minor": boolean,"name": string,"phone": string | null,"role": string,"updated_at": string
@@ -185,7 +199,30 @@ isOneToOne: false
                 }
           }
           Functions: {
-            "claim_person":
+            "add_family_member":
+{ Args: { "p_child_name"?: string,"p_code": string,"p_consent_version"?: string }; Returns: {
+              "auth_user_id": string | null,
+"consent_version": string | null,
+"consented_at": string | null,
+"created_at": string,
+"deleted_at": string | null,
+"family_id": string,
+"guardian_consented_at": string | null,
+"guardian_id": string | null,
+"id": string,
+"is_minor": boolean,
+"name": string,
+"phone": string | null,
+"role": string,
+"updated_at": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "people"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"claim_person":
 { Args: { "p_consent_version": string,"p_name": string,"p_phone": string }; Returns: {
               "auth_user_id": string | null,
 "consent_version": string | null,
@@ -208,6 +245,15 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"cleanup_empty_families":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
+"cleanup_orphan_anonymous_users":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
+"cleanup_pairing_codes":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
 "create_next_sunday_lunch":
 { Args: { "p_today"?: string }; Returns: {
               "created_at": string,
@@ -223,11 +269,19 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"create_pairing_code":
+{ Args: { "p_kind": string }; Returns: {
+              "code": string,"expires_at": string
+            }[]
+                           },
 "current_family_id":
 { Args: Record<PropertyKey, never>; Returns: string
                            },
 "current_person_id":
 { Args: Record<PropertyKey, never>; Returns: string
+                           },
+"delete_my_account":
+{ Args: Record<PropertyKey, never>; Returns: undefined
                            },
 "is_admin":
 { Args: Record<PropertyKey, never>; Returns: boolean
@@ -256,6 +310,35 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"leave_family":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "auth_user_id": string | null,
+"consent_version": string | null,
+"consented_at": string | null,
+"created_at": string,
+"deleted_at": string | null,
+"family_id": string,
+"guardian_consented_at": string | null,
+"guardian_id": string | null,
+"id": string,
+"is_minor": boolean,
+"name": string,
+"phone": string | null,
+"role": string,
+"updated_at": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "people"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"lock_family":
+{ Args: { "p_family_id": string }; Returns: undefined
+                           },
+"lock_family_meal":
+{ Args: { "p_family_id": string,"p_meal_id": string }; Returns: undefined
+                           },
 "normalize_name":
 { Args: { "p": string }; Returns: string
                            },
@@ -264,6 +347,32 @@ isOneToOne: false
                            },
 "ping":
 { Args: Record<PropertyKey, never>; Returns: number
+                           },
+"relink_child":
+{ Args: { "p_child_id": string,"p_code": string }; Returns: {
+              "auth_user_id": string | null,
+"consent_version": string | null,
+"consented_at": string | null,
+"created_at": string,
+"deleted_at": string | null,
+"family_id": string,
+"guardian_consented_at": string | null,
+"guardian_id": string | null,
+"id": string,
+"is_minor": boolean,
+"name": string,
+"phone": string | null,
+"role": string,
+"updated_at": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "people"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"remove_child":
+{ Args: { "p_child_id": string }; Returns: undefined
                            },
 "use_ticket":
 { Args: { "p_meal_id": string,"p_request_id": string }; Returns: {

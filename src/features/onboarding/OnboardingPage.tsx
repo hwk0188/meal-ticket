@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
+import { SegmentedControl } from '../../components/SegmentedControl'
 import { Button, Checkbox, TextField } from '../../components/ui'
 import { church } from '../../config/church'
 import { messageOf, toUserMessage } from '../../lib/errors'
@@ -23,12 +24,31 @@ async function claimPerson(values: OnboardingValues) {
   )
 }
 
+/** 만 14세 미만: 이름·번호를 적지 않고 보호자 폰의 연결 코드로 가족에 들어온다. */
+function MinorNotice() {
+  return (
+    <section className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-sm leading-relaxed">
+      <p>
+        만 14세 미만은 이름·번호를 적지 않아요. 보호자 폰의 <strong>가족 › 자녀 추가</strong>에서 연결 코드를 입력하면
+        이 폰에 가족 식권이 보여요.
+      </p>
+      <Link
+        to="/pair"
+        className="block w-full rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white active:bg-blue-700"
+      >
+        연결 코드 받기
+      </Link>
+    </section>
+  )
+}
+
 export function OnboardingPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const auth = useAuth()
   const userId = auth.status === 'ready' ? auth.session?.user.id : undefined
   const formRef = useRef<HTMLFormElement>(null)
+  const [minor, setMinor] = useState(false)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [consent, setConsent] = useState(false)
@@ -92,96 +112,112 @@ export function OnboardingPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col gap-4 p-6">
       <h1 className="text-2xl font-extrabold">처음 오셨네요</h1>
-      <p className="text-sm text-gray-600">권사님이 식권을 발급할 때 쓰는 정보예요. 입금하신 이름과 같게 적어 주세요.</p>
 
-      <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-        <TextField
-          label="이름"
-          name="name"
-          value={name}
-          onChange={(e) => {
-            setName(e.target.value)
-            onEdit('name')
-          }}
-          autoComplete="name"
-          maxLength={20}
-          required
-          error={errors.name}
-        />
-        <TextField
-          label="휴대폰 번호"
-          name="phone"
-          type="tel"
-          // tel 은 + 가 있는 자판을 띄운다 (numeric 은 숫자만 나와 국제 표기를 적을 수 없다).
-          inputMode="tel"
-          value={phone}
-          onChange={(e) => {
-            setPhone(e.target.value)
-            onEdit('phone')
-          }}
-          autoComplete="tel"
-          placeholder="010-0000-0000"
-          required
-          error={errors.phone}
-        />
+      <SegmentedControl
+        label="가입 유형"
+        value={minor ? 'minor' : 'adult'}
+        onChange={(v) => setMinor(v === 'minor')}
+        options={[
+          { value: 'adult', label: '어른이에요' },
+          { value: 'minor', label: '만 14세 미만이에요' },
+        ]}
+      />
 
-        <section className="rounded-xl border border-blue-600 bg-white p-3 text-xs leading-relaxed">
-          <div className="flex items-start justify-between gap-2">
-            <Checkbox
-              id="consent"
-              name="consent"
-              required
-              checked={consent}
+      {minor ? (
+        <MinorNotice />
+      ) : (
+        <>
+          <p className="text-sm text-gray-600">권사님이 식권을 발급할 때 쓰는 정보예요. 입금하신 이름과 같게 적어 주세요.</p>
+          <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+            <TextField
+              label="이름"
+              name="name"
+              value={name}
               onChange={(e) => {
-                setConsent(e.target.checked)
-                clearError('consent')
+                setName(e.target.value)
+                onEdit('name')
               }}
-            >
-              <strong>[필수] 개인정보 수집·이용 동의</strong>
-            </Checkbox>
-            {/* 링크를 레이블 안에 두면 체크박스 이름에 '자세히' 가 섞인다. 밖에 두고 새 창으로 연다
-                (같은 탭에서 열면 적어 둔 이름·번호가 사라진다). */}
-            <Link to="/privacy" target="_blank" rel="noreferrer" className="shrink-0 text-blue-600 underline">
-              자세히
-            </Link>
-          </div>
-          <dl className="mt-2 grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-1 pl-6 text-gray-600">
-            <dt>항목</dt>
-            <dd>{notice.items}</dd>
-            <dt>목적</dt>
-            <dd>{notice.purpose}</dd>
-            <dt>보유</dt>
-            <dd>{notice.retention}</dd>
-            <dt>거부 시</dt>
-            <dd>{notice.refusal}</dd>
-          </dl>
-          {/* 지금은 화면에서 닿지 않는다 (동의 전에는 제출 버튼이 잠겨 consent 오류가 생기지 않는다).
-              규칙은 스키마가 갖고 있으니, 잠금 방식이 바뀌어도 문구가 비지 않도록 남겨 둔다. */}
-          {errors.consent && (
-            <p role="alert" className="mt-2 pl-6 text-red-600">
-              {errors.consent}
-            </p>
-          )}
-        </section>
+              autoComplete="name"
+              maxLength={20}
+              required
+              error={errors.name}
+            />
+            <TextField
+              label="휴대폰 번호"
+              name="phone"
+              type="tel"
+              // tel 은 + 가 있는 자판을 띄운다 (numeric 은 숫자만 나와 국제 표기를 적을 수 없다).
+              inputMode="tel"
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value)
+                onEdit('phone')
+              }}
+              autoComplete="tel"
+              placeholder="010-0000-0000"
+              required
+              error={errors.phone}
+            />
 
-        {serverError && <p role="alert" className="text-sm text-red-600">{serverError}</p>}
+            <section className="rounded-xl border border-blue-600 bg-white p-3 text-xs leading-relaxed">
+              <div className="flex items-start justify-between gap-2">
+                <Checkbox
+                  id="consent"
+                  name="consent"
+                  required
+                  checked={consent}
+                  onChange={(e) => {
+                    setConsent(e.target.checked)
+                    clearError('consent')
+                  }}
+                >
+                  <strong>[필수] 개인정보 수집·이용 동의</strong>
+                </Checkbox>
+                {/* 링크를 레이블 안에 두면 체크박스 이름에 '자세히' 가 섞인다. 밖에 두고 새 창으로 연다
+                    (같은 탭에서 열면 적어 둔 이름·번호가 사라진다). */}
+                <Link to="/privacy" target="_blank" rel="noreferrer" className="shrink-0 text-blue-600 underline">
+                  자세히
+                </Link>
+              </div>
+              <dl className="mt-2 grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-1 pl-6 text-gray-600">
+                <dt>항목</dt>
+                <dd>{notice.items}</dd>
+                <dt>목적</dt>
+                <dd>{notice.purpose}</dd>
+                <dt>보유</dt>
+                <dd>{notice.retention}</dd>
+                <dt>거부 시</dt>
+                <dd>{notice.refusal}</dd>
+              </dl>
+              {/* 지금은 화면에서 닿지 않는다 (동의 전에는 제출 버튼이 잠겨 consent 오류가 생기지 않는다).
+                  규칙은 스키마가 갖고 있으니, 잠금 방식이 바뀌어도 문구가 비지 않도록 남겨 둔다. */}
+              {errors.consent && (
+                <p role="alert" className="mt-2 pl-6 text-red-600">
+                  {errors.consent}
+                </p>
+              )}
+            </section>
 
-        <div>
-          <Button
-            type="submit"
-            disabled={!consent || mutation.isPending}
-            aria-describedby={consent ? undefined : 'submit-hint'}
-          >
-            {mutation.isPending ? '처리 중…' : '동의하고 시작하기'}
-          </Button>
-          {/* 버튼이 왜 눌리지 않는지 말해 준다. 잠긴 버튼만 보이면 사용자는 길을 잃는다. */}
-          {!consent && (
-            <p id="submit-hint" className="mt-2 text-center text-xs text-gray-600">
-              동의에 체크하면 시작할 수 있어요
-            </p>
-          )}
-        </div>
-      </form>
+            {serverError && <p role="alert" className="text-sm text-red-600">{serverError}</p>}
+
+            <div>
+              <Button
+                type="submit"
+                disabled={!consent || mutation.isPending}
+                aria-describedby={consent ? undefined : 'submit-hint'}
+              >
+                {mutation.isPending ? '처리 중…' : '동의하고 시작하기'}
+              </Button>
+              {/* 버튼이 왜 눌리지 않는지 말해 준다. 잠긴 버튼만 보이면 사용자는 길을 잃는다. */}
+              {!consent && (
+                <p id="submit-hint" className="mt-2 text-center text-xs text-gray-600">
+                  동의에 체크하면 시작할 수 있어요
+                </p>
+              )}
+            </div>
+          </form>
+        </>
+      )}
     </main>
   )
 }

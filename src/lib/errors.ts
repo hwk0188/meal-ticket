@@ -23,6 +23,19 @@ const MESSAGES = {
   no_remaining: '방금 다른 폰에서 사용되었어요.',
   duplicate_request: '이미 처리된 요청이에요.',
   invalid_request: '잘못된 요청이에요. 다시 눌러 주세요.',
+  // 3단계 · 가족·아이
+  invalid_kind: '잘못된 요청이에요.',
+  not_adult: '어른 계정만 할 수 있어요.',
+  invalid_code: '코드가 맞지 않거나 만료되었어요. 새 코드를 받아 다시 입력해 주세요.',
+  expected_child_code: '어른 코드예요. 가족 연결에서 입력해 주세요.',
+  expected_adult_code: '아이 폰의 코드예요. 자녀 추가에서 입력해 주세요.',
+  child_not_found: '자녀를 찾을 수 없어요. 목록을 새로고침해 주세요.',
+  has_children: '연결된 자녀가 있어요. 자녀를 먼저 삭제해 주세요.',
+  code_generation_failed: '코드를 만들지 못했어요. 다시 시도해 주세요.',
+  last_admin: '마지막 관리자는 탈퇴할 수 없어요. 다른 관리자를 먼저 지정해 주세요.',
+  anonymous_provider_disabled: '아이 계정 시작이 꺼져 있어요. 권사님께 문의해 주세요.',
+  // 익명 로그인은 기본 30회/시간/IP 로 제한된다 — 교회 와이파이는 IP 를 같이 쓴다.
+  over_request_rate_limit: '지금은 요청이 많아요. 잠시 뒤 다시 시도해 주세요.',
 } as const satisfies Record<string, string>
 
 /** MESSAGES 에 문구가 있는 오류 코드. 호출하는 쪽에서 오타를 막는 데 쓴다. */
@@ -72,11 +85,13 @@ export function rpcCodeOf(err: unknown): RpcErrorCode | undefined {
 
 /** 어떤 오류든 사용자에게 보여 줄 한국어 문구로 바꾼다. 모르는 오류는 일반 문구. */
 export function toUserMessage(err: unknown): string {
-  const rpc = rpcCodeOf(err)
-  if (rpc) return MESSAGES[rpc]
   const code = codeOf(err)
+  // supabase-js 의 AuthApiError 등은 코드 문자열을 message 가 아니라 code 에 담는다
+  // (예: signInAnonymously 가 꺼져 있으면 code: 'anonymous_provider_disabled', message 는 영문).
+  const rpc = rpcCodeOf(err) ?? (code && isRpcErrorCode(code) ? code : undefined)
+  if (rpc) return MESSAGES[rpc]
   if (code && AUTH_CODES.has(code)) return MESSAGES.not_authenticated
-  if (code && CODE_MESSAGES[code]) return CODE_MESSAGES[code]
+  if (code && Object.hasOwn(CODE_MESSAGES, code)) return CODE_MESSAGES[code]
   const name = fieldOf(err, 'name')
   if (name === 'TimeoutError' || name === 'AbortError') return NETWORK
   const message = messageOf(err)

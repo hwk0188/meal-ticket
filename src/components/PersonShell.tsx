@@ -7,6 +7,8 @@ const MEMBER_TABS: readonly TabItem[] = [
   { to: '/', label: '식권', icon: '🎫' },
   { to: '/history', label: '내역', icon: '🧾' },
 ]
+// 어른만. 1인 가족이어도 있다 (설계 §8.2). 자녀 계정에는 없다.
+const FAMILY_TAB: TabItem = { to: '/family', label: '가족', icon: '👪' }
 const ADMIN_LINK: TabItem = { to: '/admin/meals', label: '관리', icon: '🛠️' }
 const ADMIN_TABS: readonly TabItem[] = [
   { to: '/admin/meals', label: '식사', icon: '🍚' },
@@ -19,7 +21,8 @@ export function PersonShell({ person, children }: { person: Person; children: Re
   const { pathname } = useLocation()
   // 교인이 주소를 직접 쳐서 들어와도(RequireAdmin 이 곧 홈으로 돌려보낸다) 관리자 탭이 깜빡이지 않게 role 도 함께 본다.
   const inAdminArea = person.role === 'admin' && (pathname === '/admin' || pathname.startsWith('/admin/'))
-  const items = inAdminArea ? ADMIN_TABS : person.role === 'admin' ? [...MEMBER_TABS, ADMIN_LINK] : MEMBER_TABS
+  const memberTabs = person.is_minor ? MEMBER_TABS : [...MEMBER_TABS, FAMILY_TAB]
+  const items = inAdminArea ? ADMIN_TABS : person.role === 'admin' ? [...memberTabs, ADMIN_LINK] : memberTabs
   return (
     <div className="flex min-h-dvh flex-col pb-[calc(5rem+env(safe-area-inset-bottom))]">
       {children}

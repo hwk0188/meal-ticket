@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { personQueryKey, usePerson } from './usePerson'
 
@@ -78,5 +78,68 @@ describe('usePerson', () => {
     expect(result.current.error?.message).toBe('boom')
     // toUserMessage 는 message/code 를 읽으므로 그대로 보존해야 한다.
     expect(result.current.error).toMatchObject({ code: 'PGRST500', cause: raw })
+  })
+
+  it('refetchInterval 옵션을 주면 그 주기로 다시 읽는다', async () => {
+    vi.useFakeTimers()
+    try {
+      maybeSingle.mockResolvedValue({ data: null, error: null })
+      const { result } = renderHook(() => usePerson('u1', { refetchInterval: 3_000 }), { wrapper: makeWrapper() })
+      // 첫 조회는 마운트 직후 (가짜 타이머 아래서는 microtask 가 한 번에 안 풀려 0ms 를 흘려보낸다)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result.current.status).toBe('success')
+      expect(maybeSingle).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000)
+      })
+      expect(maybeSingle).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('옵션이 없으면 자동 재조회 주기가 없다', async () => {
+    vi.useFakeTimers()
+    try {
+      maybeSingle.mockResolvedValue({ data: null, error: null })
+      const { result } = renderHook(() => usePerson('u1'), { wrapper: makeWrapper() })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result.current.status).toBe('success')
+      expect(maybeSingle).toHaveBeenCalledTimes(1)
+      // refetchInterval 을 안 주면(기본 false) 아무리 시간이 지나도 다시 읽지 않는다.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000)
+      })
+      expect(maybeSingle).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('같은 키를 보는 두 관찰자 중 하나만 주기를 주면 그 주기로 한 번만 다시 읽고 둘 다 같은 값을 본다', async () => {
+    vi.useFakeTimers()
+    try {
+      maybeSingle.mockResolvedValue({ data: null, error: null })
+      const wrapper = makeWrapper()
+      const guard = renderHook(() => usePerson('u1'), { wrapper })
+      const page = renderHook(() => usePerson('u1', { refetchInterval: 3_000 }), { wrapper })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(maybeSingle).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000)
+      })
+      // 같은 키를 두 관찰자가 봐도 3초마다 요청은 한 번이고(중복 요청 없음) 둘 다 같은 데이터를 본다 — 가드 쪽(false)은 타이머를 만들지 않는다.
+      expect(maybeSingle).toHaveBeenCalledTimes(2)
+      expect(guard.result.current.data).toBeNull()
+      expect(page.result.current.data).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

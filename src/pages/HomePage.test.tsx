@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
@@ -6,12 +5,14 @@ import type { Person } from '../features/auth/usePerson'
 import type { FamilyTickets } from '../features/tickets/useFamilyTickets'
 import { HomePage } from './HomePage'
 
-const { signOut, useFamilyTickets, useOnline } = vi.hoisted(() => ({
+const { signOut, useAuth, useFamilyTickets, useOnline } = vi.hoisted(() => ({
   signOut: vi.fn<() => Promise<void>>(),
+  useAuth: vi.fn<() => { status: 'ready'; session: { user: { id: string; is_anonymous?: boolean } } }>(),
   useFamilyTickets: vi.fn<() => { status: 'pending' | 'error' | 'success'; data?: FamilyTickets; refetch: () => void }>(),
   useOnline: vi.fn<() => boolean>(),
 }))
 vi.mock('../features/auth/signIn', () => ({ signOut }))
+vi.mock('../features/auth/AuthProvider', () => ({ useAuth }))
 vi.mock('../features/tickets/useFamilyTickets', () => ({ useFamilyTickets, ticketsQueryKey: ['tickets'] }))
 vi.mock('../features/tickets/useOnline', () => ({ useOnline }))
 vi.mock('../features/tickets/TodayMealCard', () => ({
@@ -30,19 +31,13 @@ const group = (id: string, served_on: string, issued: number, used: number) => (
 const empty: FamilyTickets = { today: [], upcoming: [], past: [], usages: [], members: [{ id: 'p1', name: '김철수' }] }
 
 function renderPage() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  client.setQueryData(['person', 'u1'], person)
-  const utils = render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter><HomePage person={person} /></MemoryRouter>
-    </QueryClientProvider>,
-  )
-  return { ...utils, client }
+  return render(<MemoryRouter><HomePage person={person} /></MemoryRouter>)
 }
 
 beforeEach(() => {
   useOnline.mockReturnValue(true)
   useFamilyTickets.mockReturnValue({ status: 'success', data: empty, refetch: () => {} })
+  useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1', is_anonymous: false } } })
 })
 
 describe('HomePage · 머리말', () => {
@@ -120,12 +115,22 @@ describe('HomePage · 식권 구역', () => {
 })
 
 describe('HomePage · 로그아웃', () => {
-  it('로그아웃 버튼이 signOut을 부르고 쿼리 캐시를 비운다', async () => {
+  it('로그아웃 버튼이 signOut 을 부른다 (캐시 정리는 AuthProvider 의 SIGNED_OUT 처리가 맡는다)', async () => {
     signOut.mockResolvedValue(undefined)
-    const { client } = renderPage()
+    renderPage()
     await userEvent.click(screen.getByRole('button', { name: '로그아웃' }))
     expect(signOut).toHaveBeenCalled()
-    await waitFor(() => expect(client.getQueryData(['person', 'u1'])).toBeUndefined())
+  })
+
+  it('아이(익명) 계정은 로그아웃 전에 한 번 더 묻는다', async () => {
+    useAuth.mockReturnValue({ status: 'ready', session: { user: { id: 'u1', is_anonymous: true } } })
+    signOut.mockResolvedValue(undefined)
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: '로그아웃' }))
+    expect(signOut).not.toHaveBeenCalled()
+    expect(screen.getByText(/보호자가 새 코드로/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '네, 로그아웃' }))
+    expect(signOut).toHaveBeenCalledOnce()
   })
 
   it('로그아웃 중에는 버튼을 잠가 두 번 호출되지 않는다', async () => {

@@ -66,6 +66,10 @@ describe('2단계 오류 문구', () => {
       .toBe('같은 값이 이미 있어요.')
   })
 
+  it('CODE_MESSAGES 에 없는 프로토타입 키(toString 등)는 일반 문구를 쓴다', () => {
+    expect(toUserMessage({ code: 'toString', message: 'x' })).toBe('잠시 후 다시 시도해 주세요.')
+  })
+
   it('타임아웃·중단은 통신 문구', () => {
     expect(toUserMessage(new DOMException('signal timed out', 'TimeoutError'))).toBe('통신이 불안정해요. 잠시 후 다시 시도해 주세요.')
     expect(toUserMessage(new DOMException('The operation was aborted.', 'AbortError'))).toBe('통신이 불안정해요. 잠시 후 다시 시도해 주세요.')
@@ -85,5 +89,30 @@ describe('2단계 오류 문구', () => {
     expect(rpcCodeOf({ message: 'no_remaining' })).toBe('no_remaining')
     expect(rpcCodeOf({ message: 'something else' })).toBeUndefined()
     expect(rpcCodeOf(new Error('failed to fetch'))).toBeUndefined()
+  })
+
+  it('3단계(가족·아이) 오류 코드를 문구로 바꾼다', () => {
+    expect(toUserMessage(new Error('invalid_code'))).toBe('코드가 맞지 않거나 만료되었어요. 새 코드를 받아 다시 입력해 주세요.')
+    expect(toUserMessage(new Error('expected_child_code'))).toBe('어른 코드예요. 가족 연결에서 입력해 주세요.')
+    expect(toUserMessage(new Error('expected_adult_code'))).toBe('아이 폰의 코드예요. 자녀 추가에서 입력해 주세요.')
+    expect(toUserMessage(new Error('not_adult'))).toBe('어른 계정만 할 수 있어요.')
+    expect(toUserMessage(new Error('has_children'))).toBe('연결된 자녀가 있어요. 자녀를 먼저 삭제해 주세요.')
+    expect(toUserMessage(new Error('child_not_found'))).toBe('자녀를 찾을 수 없어요. 목록을 새로고침해 주세요.')
+    expect(toUserMessage(new Error('invalid_kind'))).toBe('잘못된 요청이에요.')
+    expect(toUserMessage(new Error('code_generation_failed'))).toBe('코드를 만들지 못했어요. 다시 시도해 주세요.')
+    expect(toUserMessage(new Error('last_admin'))).toBe('마지막 관리자는 탈퇴할 수 없어요. 다른 관리자를 먼저 지정해 주세요.')
+    expect(rpcCodeOf(new Error('invalid_code'))).toBe('invalid_code')
+  })
+
+  it('supabase-js 인증 오류는 code 필드로도 문구를 찾는다 (message 는 영문)', () => {
+    expect(toUserMessage({ code: 'anonymous_provider_disabled', message: 'Anonymous sign-ins are disabled' })).toBe(
+      '아이 계정 시작이 꺼져 있어요. 권사님께 문의해 주세요.',
+    )
+  })
+
+  it('요청 한도 초과(같은 IP 의 익명 로그인 30회/시) 는 안내 문구로 바꾼다', () => {
+    expect(toUserMessage(Object.assign(new Error('rate limit'), { code: 'over_request_rate_limit' }))).toBe(
+      '지금은 요청이 많아요. 잠시 뒤 다시 시도해 주세요.',
+    )
   })
 })
