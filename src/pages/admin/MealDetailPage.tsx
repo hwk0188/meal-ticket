@@ -91,9 +91,13 @@ export function MealDetailPage() {
               발급 {detail.data.ledger.totals.issued}장 · 사용 {detail.data.ledger.totals.used}장 · 남음 {detail.data.ledger.totals.remaining}장 · {formatWon(detail.data.ledger.totals.amount)}
             </p>
             {(notice || opsError) && (
-              <div ref={feedbackRef} tabIndex={-1} className="sticky top-0 z-10 flex flex-col gap-2 outline-none">
+              <div
+                ref={feedbackRef}
+                tabIndex={-1}
+                className="sticky top-0 z-10 flex flex-col gap-2 bg-[#f5f5f7] py-1 outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+              >
                 {notice && <p role="status" className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-700">{notice}</p>}
-                {opsError && <p role="alert" className="text-sm text-red-600">{opsError}</p>}
+                {opsError && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{opsError}</p>}
               </div>
             )}
             <TextField label="이름으로 찾기" name="query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="구매자·사용자 이름" autoComplete="off" />
