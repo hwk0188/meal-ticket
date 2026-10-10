@@ -1184,7 +1184,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { fail, ok } from '../../test/fakeSupabase'
-import { invalidateMealOps, mealOpsErrorMessage, OPS_TIMEOUT_MS, useCancelIssuance, useUseTicketAsAdmin, useVoidUsage } from './useMealOps'
+import {
+  invalidateMealOps,
+  mealOpsErrorMessage,
+  OPS_TIMEOUT_MS,
+  SETTLE_TIMEOUT_MS,
+  useCancelIssuance,
+  useUseTicketAsAdmin,
+  useVoidUsage,
+} from './useMealOps'
 
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn<(fn: string, args?: Record<string, unknown>) => unknown>() }))
 vi.mock('../../lib/supabase', () => ({ supabase: { rpc } }))
@@ -1242,6 +1250,44 @@ describe('useCancelIssuance', () => {
     await expect(result.current.mutateAsync('i1')).rejects.toThrow('TimeoutError: signal timed out')
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(invalidate).not.toHaveBeenCalled()
+  })
+
+  it(`성공 뒤 재조회가 ${SETTLE_TIMEOUT_MS}ms 안에 끝나지 않아도 버튼을 풀어 준다 (재조회에는 타임아웃이 없다 — 끊긴 연결 대비)`, async () => {
+    rpc.mockReturnValue(ok({ id: 'i1', cancelled_at: '2026-10-10T00:00:00Z' }))
+    const { wrapper, invalidate } = makeWrapper()
+    // 재조회가 영영 끝나지 않는 상황(끊긴 연결)을 흉내 낸다 — useMealDetail 의 queryFn 에는 AbortSignal 이 없다.
+    invalidate.mockReturnValue(new Promise<void>(() => {}))
+    const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
+
+    vi.useFakeTimers()
+    try {
+      act(() => {
+        void result.current.mutateAsync('i1').catch(() => undefined)
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SETTLE_TIMEOUT_MS - 1)
+      })
+      // 재조회가 끝나지 않았으니 아직 처리 중이어야 한다
+      expect(result.current.isPending).toBe(true)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      // react-query 의 성공 알림(notifyManager 의 setTimeout(0))은 바로 위 타이머가 끝난 뒤에 걸리는 또 다른
+      // setTimeout(0) 라, advanceTimersByTimeAsync 한 번만으로는 전부 못 흘려보낼 때가 있다 (★ 타임아웃 테스트와 같은 사정).
+      await act(async () => {
+        await vi.runAllTimersAsync()
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+    // 한도를 넘으면 재조회가 안 끝났어도 성공으로 풀어 준다 — 5초 폴링이 뒤따라 맞춘다
+    await waitFor(() => expect(result.current.isPending).toBe(false))
+    expect(result.current.isSuccess).toBe(true)
+  })
+
+  it(`SETTLE_TIMEOUT_MS 는 ${SETTLE_TIMEOUT_MS}ms`, () => {
+    expect(SETTLE_TIMEOUT_MS).toBe(3_000)
   })
 })
 
@@ -1477,6 +1523,13 @@ export function invalidateMealOps(queryClient: QueryClient, mealId: string) {
   ])
 }
 
+/** 성공 뒤 현황 재조회를 기다리는 한도. 넘으면 버튼을 먼저 풀어 준다 — 5초 폴링이 뒤따라 맞춘다.
+ *  (재조회에는 AbortSignal 이 없어 끊긴 연결에서 수십 초 매달릴 수 있다 — 최종 리뷰) */
+export const SETTLE_TIMEOUT_MS = 3_000
+
+const settleBoard = (queryClient: QueryClient, mealId: string) =>
+  Promise.race([invalidateMealOps(queryClient, mealId), new Promise<void>((resolve) => setTimeout(resolve, SETTLE_TIMEOUT_MS))])
+
 // 서버가 판단한 거부(코드 있음)일 때만 현황을 다시 읽는다 — 통신 실패 때 재조회까지 기다리면 오류 문구가 늦거나(오프라인이면 영영) 안 보인다.
 // 같은 이유로 await 되는 onError 안에서 하므로 "현황을 다시 불러왔어요" 문구가 사실이 된다.
 const makeRefreshBoard = (queryClient: QueryClient, mealId: string) => (err: unknown) =>
@@ -1495,7 +1548,7 @@ export function useCancelIssuance(mealId: string) {
       }
     },
     // promise 를 돌려줘야 재조회가 끝날 때까지 isPending 이 유지된다
-    onSuccess: () => invalidateMealOps(queryClient, mealId),
+    onSuccess: () => settleBoard(queryClient, mealId),
     onError: makeRefreshBoard(queryClient, mealId),
   })
 }
@@ -1511,7 +1564,7 @@ export function useVoidUsage(mealId: string) {
         done()
       }
     },
-    onSuccess: () => invalidateMealOps(queryClient, mealId),
+    onSuccess: () => settleBoard(queryClient, mealId),
     // already_voided·usage_not_found 도 "화면이 낡았다" 는 뜻 — cancel 과 똑같이 현황을 다시 읽는다.
     onError: makeRefreshBoard(queryClient, mealId),
   })
@@ -1547,7 +1600,7 @@ export function useUseTicketAsAdmin(mealId: string) {
         done()
       }
     },
-    onSuccess: () => invalidateMealOps(queryClient, mealId),
+    onSuccess: () => settleBoard(queryClient, mealId),
     onError: makeRefreshBoard(queryClient, mealId),
   })
 }
@@ -2078,7 +2131,7 @@ PR 본문:
 - 마이그레이션 1개(함수만, 테이블 변경 없음). `use_ticket` 은 같은 시그니처로 재정의되어 교인 화면은 바뀌지 않는다.
 
 ## Test Plan
-- [ ] CI 녹색 (pgTAP 392 · Vitest 463 · E2E 5)
+- [ ] CI 녹색 (pgTAP 392 · Vitest 465 · E2E 5)
 - [ ] merge 후 Deploy 성공, 운영에서 관리 › 식사 › 현황 열어 내일 식사의 발급 명단 확인
 - [ ] 실제 폰: 대신 사용 1건 → 교인 홈 잔량 반영 → 무효 → 복구
 
