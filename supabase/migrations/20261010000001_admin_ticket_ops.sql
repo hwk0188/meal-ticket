@@ -135,6 +135,9 @@ grant execute on function public.void_usage(uuid) to authenticated;
 -- p_request_id(선택): 클라이언트가 만든 재시도 키 — 같은 값은 처음 결과를 돌려준다(use_ticket 과 같은 규칙). 없으면 서버가 만든다(멱등 아님).
 -- 코드: not_authenticated | forbidden | person_not_found | family_changed | meal_not_found | no_remaining | duplicate_request
 -- =========================================================
+-- 로컬에서 3인자 버전을 이미 만든 DB 가 있을 수 있다(migration up). 운영에는 간 적 없어 no-op.
+drop function if exists public.use_ticket_as_admin(uuid, uuid, uuid);
+
 create or replace function public.use_ticket_as_admin(
   p_person_id uuid,
   p_meal_id uuid,

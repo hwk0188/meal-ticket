@@ -1,5 +1,5 @@
 begin;
-select plan(43);
+select plan(44);
 
 -- 권한: anon 은 셋 다 실행 불가, authenticated 는 재정의된 use_ticket 을 여전히 실행할 수 있다
 select is(has_function_privilege('anon', 'public.cancel_issuance(uuid,text)', 'EXECUTE'), false, 'anon 은 cancel_issuance 를 실행할 수 없다');
@@ -45,7 +45,7 @@ select throws_ok(format($$ select public.void_usage(%L) $$, gen_random_uuid()), 
 select tests.authenticate_as(:'ghost_uid');
 select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, :'i2'), 'P0001', 'forbidden', '사람 행이 없는 계정은 취소할 수 없다');
 
--- JWT 없이 직접 호출 (세 함수 모두, 090_use_ticket.sql 과 같은 규약)
+-- JWT 없이 직접 호출 (세 함수 모두, 090 의 규약에 set local role authenticated 를 더한 것 — grant 가 빠지면 42501 로 드러난다)
 select tests.clear_auth();
 set local role authenticated;
 select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, :'i2'), 'P0001', 'not_authenticated', 'JWT 가 없으면 cancel_issuance 는 not_authenticated');
@@ -73,13 +73,19 @@ select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'b_pid
 -- 화면이 본 가족(p_family_id)과 사람의 현재 가족이 다르면 거부 — A 의 김철수를 B 가족 블록에서 누른 상황
 select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L) $$, :'a_pid', :'today_meal', :'b_fid'), 'P0001', 'family_changed', '그 사이 가족이 바뀐 사람은 거부');
 select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'kid_pid', :'today_meal'), '자녀 몫으로도 대신 사용 처리할 수 있다 (잔량은 가족 것)');
--- ④ 잠금: 첫 성공 호출이 (가족, 식사) advisory lock 을 트랜잭션 끝까지 쥔다
+-- ④ 잠금: 아직 아무도 잠그지 않은 (B, 지난 식사) 쌍으로 호출 전/후를 비교한다.
+-- 주의: throws_ok 안에서 실패한 호출은 서브트랜잭션이 롤백되며 advisory xact 잠금도 풀린다 — 잠금 단언은 성공한 호출 뒤에만 의미가 있다.
 select is((select count(*) from pg_locks
             where locktype = 'advisory' and objsubid = 2 and pid = pg_backend_pid()
-              and classid::bigint = (hashtext(:'a_fid'::text)::bigint & 4294967295)
-              and objid::bigint   = (hashtext(:'today_meal'::text)::bigint & 4294967295)),
-          1::bigint, 'use_ticket_as_admin 이 (가족, 식사) ④ 잠금을 쥔다');
+              and classid::bigint = (hashtext(:'b_fid'::text)::bigint & 4294967295)
+              and objid::bigint   = (hashtext(:'past_meal'::text)::bigint & 4294967295)),
+          0::bigint, '호출 전에는 (B, 지난 식사) ④ 잠금이 없다');
 select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'b_pid', :'past_meal'), '지난 식사도 대신 사용 처리할 수 있다 (날짜 제한 없음)');
+select is((select count(*) from pg_locks
+            where locktype = 'advisory' and objsubid = 2 and pid = pg_backend_pid()
+              and classid::bigint = (hashtext(:'b_fid'::text)::bigint & 4294967295)
+              and objid::bigint   = (hashtext(:'past_meal'::text)::bigint & 4294967295)),
+          1::bigint, 'use_ticket_as_admin 이 (가족, 식사) ④ 잠금을 쥔다');
 select tests.clear_auth();
 select results_eq(
   format($$ select family_id, person_id, used_via, recorded_by, quantity, voided_at from public.usages where meal_id = %L $$, :'today_meal'),
