@@ -2,7 +2,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { fail, ok } from '../../test/fakeSupabase'
-import { invalidateMealOps, mealOpsErrorMessage, OPS_TIMEOUT_MS, useCancelIssuance, useUseTicketAsAdmin, useVoidUsage } from './useMealOps'
+import {
+  invalidateMealOps,
+  mealOpsErrorMessage,
+  OPS_TIMEOUT_MS,
+  SETTLE_TIMEOUT_MS,
+  useCancelIssuance,
+  useUseTicketAsAdmin,
+  useVoidUsage,
+} from './useMealOps'
 
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn<(fn: string, args?: Record<string, unknown>) => unknown>() }))
 vi.mock('../../lib/supabase', () => ({ supabase: { rpc } }))
@@ -60,6 +68,44 @@ describe('useCancelIssuance', () => {
     await expect(result.current.mutateAsync('i1')).rejects.toThrow('TimeoutError: signal timed out')
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(invalidate).not.toHaveBeenCalled()
+  })
+
+  it(`성공 뒤 재조회가 ${SETTLE_TIMEOUT_MS}ms 안에 끝나지 않아도 버튼을 풀어 준다 (재조회에는 타임아웃이 없다 — 끊긴 연결 대비)`, async () => {
+    rpc.mockReturnValue(ok({ id: 'i1', cancelled_at: '2026-10-10T00:00:00Z' }))
+    const { wrapper, invalidate } = makeWrapper()
+    // 재조회가 영영 끝나지 않는 상황(끊긴 연결)을 흉내 낸다 — useMealDetail 의 queryFn 에는 AbortSignal 이 없다.
+    invalidate.mockReturnValue(new Promise<void>(() => {}))
+    const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
+
+    vi.useFakeTimers()
+    try {
+      act(() => {
+        void result.current.mutateAsync('i1').catch(() => undefined)
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SETTLE_TIMEOUT_MS - 1)
+      })
+      // 재조회가 끝나지 않았으니 아직 처리 중이어야 한다
+      expect(result.current.isPending).toBe(true)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      // react-query 의 성공 알림(notifyManager 의 setTimeout(0))은 바로 위 타이머가 끝난 뒤에 걸리는 또 다른
+      // setTimeout(0) 라, advanceTimersByTimeAsync 한 번만으로는 전부 못 흘려보낼 때가 있다 (★ 타임아웃 테스트와 같은 사정).
+      await act(async () => {
+        await vi.runAllTimersAsync()
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+    // 한도를 넘으면 재조회가 안 끝났어도 성공으로 풀어 준다 — 5초 폴링이 뒤따라 맞춘다
+    await waitFor(() => expect(result.current.isPending).toBe(false))
+    expect(result.current.isSuccess).toBe(true)
+  })
+
+  it(`SETTLE_TIMEOUT_MS 는 ${SETTLE_TIMEOUT_MS}ms`, () => {
+    expect(SETTLE_TIMEOUT_MS).toBe(3_000)
   })
 })
 

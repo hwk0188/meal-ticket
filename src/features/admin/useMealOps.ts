@@ -25,6 +25,13 @@ export function invalidateMealOps(queryClient: QueryClient, mealId: string) {
   ])
 }
 
+/** 성공 뒤 현황 재조회를 기다리는 한도. 넘으면 버튼을 먼저 풀어 준다 — 5초 폴링이 뒤따라 맞춘다.
+ *  (재조회에는 AbortSignal 이 없어 끊긴 연결에서 수십 초 매달릴 수 있다 — 최종 리뷰) */
+export const SETTLE_TIMEOUT_MS = 3_000
+
+const settleBoard = (queryClient: QueryClient, mealId: string) =>
+  Promise.race([invalidateMealOps(queryClient, mealId), new Promise<void>((resolve) => setTimeout(resolve, SETTLE_TIMEOUT_MS))])
+
 // 서버가 판단한 거부(코드 있음)일 때만 현황을 다시 읽는다 — 통신 실패 때 재조회까지 기다리면 오류 문구가 늦거나(오프라인이면 영영) 안 보인다.
 // 같은 이유로 await 되는 onError 안에서 하므로 "현황을 다시 불러왔어요" 문구가 사실이 된다.
 const makeRefreshBoard = (queryClient: QueryClient, mealId: string) => (err: unknown) =>
@@ -43,7 +50,7 @@ export function useCancelIssuance(mealId: string) {
       }
     },
     // promise 를 돌려줘야 재조회가 끝날 때까지 isPending 이 유지된다
-    onSuccess: () => invalidateMealOps(queryClient, mealId),
+    onSuccess: () => settleBoard(queryClient, mealId),
     onError: makeRefreshBoard(queryClient, mealId),
   })
 }
@@ -59,7 +66,7 @@ export function useVoidUsage(mealId: string) {
         done()
       }
     },
-    onSuccess: () => invalidateMealOps(queryClient, mealId),
+    onSuccess: () => settleBoard(queryClient, mealId),
     // already_voided·usage_not_found 도 "화면이 낡았다" 는 뜻 — cancel 과 똑같이 현황을 다시 읽는다.
     onError: makeRefreshBoard(queryClient, mealId),
   })
@@ -95,7 +102,7 @@ export function useUseTicketAsAdmin(mealId: string) {
         done()
       }
     },
-    onSuccess: () => invalidateMealOps(queryClient, mealId),
+    onSuccess: () => settleBoard(queryClient, mealId),
     onError: makeRefreshBoard(queryClient, mealId),
   })
 }
