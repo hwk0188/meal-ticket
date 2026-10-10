@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { formatMealDate, todaySeoul } from '../src/lib/dates.ts'
+import { formatMealDate, formatShortDate, todaySeoul } from '../src/lib/dates.ts'
 import { formatPhone } from '../src/lib/phone.ts'
 import { adminCreateTodayMeal, adminIssue, adminLogin, uniqueDigits } from './helpers.ts'
 
@@ -20,6 +20,8 @@ test('관리자 사람 탭: 중복 합치기 → 이력 합산 → 취소 사유
   const name = `중복테스트${digits.slice(-5)}`
   const mealTitle = `E2E 사람 ${digits}`
   const mealLabel = `${formatMealDate(todaySeoul())} · ${mealTitle}`
+  // 합칠 후보 줄·확인 문구는 AdminPeoplePage 와 같은 꼬리표(번호 · 등록일)를 쓴다 — 두 사람 다 오늘 새로 등록했다.
+  const todayLabel = `등록 ${formatShortDate(todaySeoul())}`
 
   await test.step('관리자: 오늘 식사 + 같은 이름 두 사람에게 발급(2장·1장)', async () => {
     await adminLogin(page)
@@ -45,11 +47,14 @@ test('관리자 사람 탭: 중복 합치기 → 이력 합산 → 취소 사유
   await test.step('중복 합치기: 방향을 확인하고 합치면 이력이 합쳐진다', async () => {
     await page.getByRole('button', { name: '중복 사람 합치기' }).click()
     await page.getByLabel('합칠 사람 찾기').fill(phoneB.slice(-4))
-    // 선택 버튼의 접근성 이름은 '이름(번호) 선택' — 번호까지 붙여야 찾는다
-    await page.getByRole('button', { name: `${name}(${formatPhone(phoneB)}) 선택` }).click()
+    // 선택 버튼의 접근성 이름은 '이름(번호 · 등록일) 선택' — 번호 없는 동명이인도 갈리게 AdminPeoplePage 와 같은 꼬리표를 쓴다
+    await page.getByRole('button', { name: `${name}(${formatPhone(phoneB)} · ${todayLabel}) 선택` }).click()
     // 방향이 분명해야 한다: 고른 쪽(B)이 익명 처리되고 보고 있던 쪽(A)이 남는다
-    await expect(page.getByText(new RegExp(`${name}\\(${formatPhone(phoneB)}\\) 의 기록·자녀·계정을 ${name}\\(${formatPhone(phoneA)}\\) 로 옮기고`))).toBeVisible()
-    await page.getByRole('button', { name: '합치기' }).click()
+    await expect(
+      page.getByText(new RegExp(`${name}\\(${formatPhone(phoneB)} · ${todayLabel}\\) 의 기록·자녀·계정을 ${name}\\(${formatPhone(phoneA)}\\) 로 옮기고`)),
+    ).toBeVisible()
+    // exact: 확인 화면의 "그만두기" 접근성 이름이 "합치기 그만두기" 라 부분 일치로는 둘 다 걸린다
+    await page.getByRole('button', { name: '합치기', exact: true }).click()
     await expect(page.getByText(`${name} 님으로 합쳤어요`)).toBeVisible()
     const history = page.getByRole('list', { name: '발급·사용 이력' }).getByRole('listitem')
     await expect(history).toHaveCount(2)
@@ -79,7 +84,8 @@ test('관리자 사람 탭: 중복 합치기 → 이력 합산 → 취소 사유
   })
 
   await test.step('사람 초기화: 목록에서 사라지고 상세는 기록만 남는다', async () => {
-    await page.getByRole('button', { name: '사람 초기화' }).click()
+    // 트리거 버튼의 접근성 이름은 "이름 사람 초기화" — sr-only 로 이름을 앞에 붙인다 (누구를 초기화하는지 분명하게)
+    await page.getByRole('button', { name: `${name} 사람 초기화` }).click()
     await page.getByRole('button', { name: '초기화', exact: true }).click()
     await expect(page.getByText(`${name} 님을 초기화했어요`)).toBeVisible()
     await expect(page.getByText('초기화·합쳐진 사람이에요. 기록만 남아 있어요.')).toBeVisible()

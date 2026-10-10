@@ -27,8 +27,23 @@ vi.mock('../../features/admin/PersonEditForm', () => ({
     </div>
   ),
 }))
-vi.mock('../../features/admin/PersonMergePanel', () => ({ PersonMergePanel: () => <p>합치기 패널</p> }))
-vi.mock('../../features/admin/PersonDangerZone', () => ({ PersonDangerZone: () => <p>위험 구역</p> }))
+// editing·onStart 를 그대로 드러내는 가짜 패널 — 페이지가 두 패널에 신호를 제대로 넘기는지 확인한다.
+vi.mock('../../features/admin/PersonMergePanel', () => ({
+  PersonMergePanel: ({ editing, onStart }: { editing?: boolean; onStart?: () => void }) => (
+    <div>
+      <p>합치기 패널{editing ? ' (편집 중)' : ''}</p>
+      <button type="button" onClick={() => onStart?.()}>합치기 시작</button>
+    </div>
+  ),
+}))
+vi.mock('../../features/admin/PersonDangerZone', () => ({
+  PersonDangerZone: ({ editing, onStart }: { editing?: boolean; onStart?: () => void }) => (
+    <div>
+      <p>위험 구역{editing ? ' (편집 중)' : ''}</p>
+      <button type="button" onClick={() => onStart?.()}>위험 시작</button>
+    </div>
+  ),
+}))
 
 const PID = '00000000-0000-4000-8000-000000000001'
 const person = {
@@ -95,16 +110,66 @@ describe('PersonDetailPage', () => {
     expect(screen.getByText('김철수 님 정보를 저장했어요')).toBeInTheDocument()
   })
 
+  it('"수정" 폼의 "폼취소" 를 누르면 폼이 닫히고 안내는 그대로다', async () => {
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: '수정' }))
+    await userEvent.click(screen.getByRole('button', { name: '폼취소' }))
+    expect(screen.queryByText('정보 수정 폼')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '수정' })).toBeInTheDocument()
+  })
+
   it('합치기 패널과 위험 구역이 있다', () => {
     renderPage()
     expect(screen.getByText('합치기 패널')).toBeInTheDocument()
     expect(screen.getByText('위험 구역')).toBeInTheDocument()
   })
 
+  it('"수정" 을 누르면 두 패널에 편집 신호(editing)가 전달된다', async () => {
+    renderPage()
+    expect(screen.getByText('합치기 패널')).toBeInTheDocument() // editing=false 일 때는 꼬리표가 없다
+    await userEvent.click(screen.getByRole('button', { name: '수정' }))
+    expect(screen.getByText('합치기 패널 (편집 중)')).toBeInTheDocument()
+    expect(screen.getByText('위험 구역 (편집 중)')).toBeInTheDocument()
+  })
+
+  it('패널에서 onStart 가 오면 지난 성공 알림을 지운다 (성공 알림 위에 무관한 패널 오류가 남지 않게)', async () => {
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: '수정' }))
+    await userEvent.click(screen.getByRole('button', { name: '폼저장' }))
+    expect(screen.getByText('김철수 님 정보를 저장했어요')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '합치기 시작' }))
+    expect(screen.queryByText('김철수 님 정보를 저장했어요')).not.toBeInTheDocument()
+  })
+
+  it('알림이 뜬 채 "수정" 을 다시 열면 지난 알림이 바로 지워진다 (패널 쪽 onStart 와 무관하게)', async () => {
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: '수정' }))
+    await userEvent.click(screen.getByRole('button', { name: '폼저장' }))
+    expect(screen.getByText('김철수 님 정보를 저장했어요')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '수정' }))
+    expect(screen.queryByText('김철수 님 정보를 저장했어요')).not.toBeInTheDocument()
+  })
+
+  it('미성년자는 합치기 패널·위험 구역을 숨긴다 (서버만 막는 동작이라 힌트를 먼저 준다)', () => {
+    usePersonDetail.mockReturnValue({ status: 'success', data: { ...detail, person: { ...person, is_minor: true } }, refetch: vi.fn<() => void>() })
+    renderPage()
+    expect(screen.queryByText('합치기 패널')).not.toBeInTheDocument()
+    expect(screen.queryByText('위험 구역')).not.toBeInTheDocument()
+  })
+
   it('이력이 없으면 안내', () => {
     usePersonLedger.mockReturnValue({ status: 'success', data: [], refetch: vi.fn<() => void>() })
     renderPage()
     expect(screen.getByText('아직 발급·사용 기록이 없어요')).toBeInTheDocument()
+  })
+
+  it('이력을 못 불러오면(실패) 안내, 불러오는 중이면 스피너', () => {
+    usePersonLedger.mockReturnValue({ status: 'error', refetch: vi.fn<() => void>() })
+    const { rerender } = renderPage()
+    expect(screen.getByText('이력을 받지 못했어요')).toBeInTheDocument()
+    usePersonLedger.mockReturnValue({ status: 'pending', refetch: vi.fn<() => void>() })
+    rerender(page())
+    expect(screen.getByText('불러오는 중…')).toBeInTheDocument()
   })
 
   it('익명화된 사람은 초기화됨 안내와 함께 수정·합치기·위험 구역을 숨긴다', () => {
@@ -118,6 +183,41 @@ describe('PersonDetailPage', () => {
     expect(screen.queryByRole('button', { name: '수정' })).not.toBeInTheDocument()
     expect(screen.queryByText('합치기 패널')).not.toBeInTheDocument()
     expect(screen.queryByText('위험 구역')).not.toBeInTheDocument()
+  })
+
+  it('초기화된 사람의 머리말은 "미가입" 이 아니라 "초기화됨" 이다 (auth_user_id 가 없어도)', () => {
+    usePersonDetail.mockReturnValue({
+      status: 'success',
+      data: { person: { ...person, phone: null, auth_user_id: null, deleted_at: '2026-10-11T00:00:00Z' }, family: [] },
+      refetch: vi.fn<() => void>(),
+    })
+    renderPage()
+    const intro = screen.getByText(/초기화됨/)
+    expect(intro).toHaveTextContent('초기화됨')
+    expect(intro).not.toHaveTextContent('미가입')
+  })
+
+  it('머리말에 관리자·자녀 태그가 보이고, 자녀는 계정이 없어도 "미가입" 이 아니다', () => {
+    usePersonDetail.mockReturnValue({
+      status: 'success',
+      data: { person: { ...person, role: 'admin', is_minor: true, auth_user_id: null }, family: [] },
+      refetch: vi.fn<() => void>(),
+    })
+    renderPage()
+    const intro = screen.getByText(/010-1234-5678/)
+    expect(intro).toHaveTextContent('관리자')
+    expect(intro).toHaveTextContent('자녀')
+    expect(intro).not.toHaveTextContent('미가입')
+  })
+
+  it('계정 없는 비자녀 어른은 머리말에 "미가입" 이 보인다', () => {
+    usePersonDetail.mockReturnValue({
+      status: 'success',
+      data: { person: { ...person, role: 'member', is_minor: false, auth_user_id: null }, family: [] },
+      refetch: vi.fn<() => void>(),
+    })
+    renderPage()
+    expect(screen.getByText(/010-1234-5678/)).toHaveTextContent('미가입')
   })
 
   it('없는 사람은 안내만', () => {
@@ -142,5 +242,12 @@ describe('PersonDetailPage', () => {
     rerender(page())
     await userEvent.click(screen.getByRole('button', { name: '다시 시도' }))
     expect(refetch).toHaveBeenCalled()
+  })
+
+  it('데이터가 있는 채 재조회가 실패하면 작은 안내만 덧붙인다 (data 로 분기)', () => {
+    usePersonDetail.mockReturnValue({ status: 'error', data: detail, refetch: vi.fn<() => void>() })
+    renderPage()
+    expect(screen.getByText('최신 정보를 받지 못했어요')).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: '가족 구성원' })).toBeInTheDocument()
   })
 })

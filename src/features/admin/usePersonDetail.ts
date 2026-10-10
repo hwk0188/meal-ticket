@@ -3,7 +3,9 @@ import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
 import type { Person } from '../auth/usePerson'
 
-export const personDetailQueryKey = (personId: string) => ['person-detail', personId] as const
+/** 사람을 모를 때(합치기 뒤 상대편 상세가 캐시에 남아 있을 수 있다) 전부 무효화하는 접두사 — usePersonOps 가 쓴다. */
+export const PERSON_DETAIL_QUERY_KEY = ['person-detail'] as const
+export const personDetailQueryKey = (personId: string) => [...PERSON_DETAIL_QUERY_KEY, personId] as const
 
 /** 손으로 고친 주소(#/admin/people/zzz)는 PostgREST 22P02(400) 가 되므로 미리 "없는 사람" 으로 본다 (4a useMealDetail 과 같은 가드). */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

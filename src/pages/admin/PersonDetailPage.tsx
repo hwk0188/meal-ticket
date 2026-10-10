@@ -47,7 +47,8 @@ export function PersonDetailPage() {
                 {person.phone ? formatPhone(person.phone) : '번호 없음'}
                 {person.role === 'admin' ? ' · 관리자' : ''}
                 {person.is_minor ? ' · 자녀' : ''}
-                {!person.is_minor && !person.auth_user_id ? ' · 미가입' : ''}
+                {/* 초기화된 사람은 auth_user_id 가 항상 비어 있다(people_deleted_is_anonymized) — "미가입" 이 아니라 "초기화됨" 으로. */}
+                {anonymized ? ' · 초기화됨' : !person.is_minor && !person.auth_user_id ? ' · 미가입' : ''}
               </p>
             </div>
             {detail.status === 'error' && <p role="status" className="text-center text-xs text-gray-500">최신 정보를 받지 못했어요</p>}
@@ -87,10 +88,11 @@ export function PersonDetailPage() {
               )}
             </section>
 
-            {!anonymized && (
+            {/* 미성년자는 두 동작 모두 서버가 거부한다(minor_not_allowed) — 화면에도 아예 띄우지 않는다. */}
+            {!anonymized && !person.is_minor && (
               <>
-                <PersonMergePanel person={person} onDone={done} />
-                <PersonDangerZone person={person} onDone={done} />
+                <PersonMergePanel person={person} editing={editing} onDone={done} onStart={() => setNotice(null)} />
+                <PersonDangerZone person={person} editing={editing} onDone={done} onStart={() => setNotice(null)} />
               </>
             )}
           </>
