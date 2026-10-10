@@ -29,7 +29,7 @@
 ## 구현 결과와 계획의 차이 (실행 중 리뷰로 바뀐 것)
 
 - **Task 5** (동작): 품질 리뷰(프로브 테스트로 검증)로 ① 페이지가 `mealOpsErrorMessage` 를 쓴다(Task 4 의 관리자 맥락 문구), ② 행별 접근성 이름을 고유하게 — 발급 `"<발급 시각> <구매자> N장"`, 사용 `"<누구> <시각> 사용"` (같은 사람 1장 두 번·같은 분 사용 두 건이 겹치던 것; Task 6 선택자는 정규식 `$` 일치), ③ 알림·오류를 `sticky` 로 위에 고정하고 **포커스를 옮긴다**(누른 버튼이 성공 뒤 사라지면 포커스가 body 로 떨어진다), ④ 취소 불가 안내에 "먼저 사용을 무효 처리해 주세요", ⑤ 무효 알림에 대상(`"<누구> 사용을 무효 처리했어요"`), ⑥ `break-words`, `NO_NAME` export, `startAction` → `clearFeedback`, ⑦ 테스트: 공허하던 '무효' 개수 단언에 무효 처리된 사용 줄 추가, 처리 중 버튼 수 7 고정, buyerId null 안내, 알림이 다음 동작에서 사라짐, `no_remaining` 관리자 문구, 포커스 이동. 미룸(5단계 a11y·레이아웃): 조건부 마운트 라이브 리전(iOS VoiceOver), 32px 탭 영역, 열린 확인 프롬프트가 행 안에서 좁게 접히는 것, 행 안 피드백.
-- **Task 4** (뮤테이션): 품질 리뷰로 ① `onError` 의 현황 재조회는 **서버가 판단한 거부(코드 있음)일 때만**(통신 실패 때 재조회를 기다리면 오류 문구가 늦거나 오프라인이면 안 보인다 — `rpcCodeOf` 게이트), ② `useVoidUsage` 도 `onError` 재조회(`already_voided` 는 낡은 화면), ③ 세 RPC 에 `withTimeout`(`OPS_TIMEOUT_MS` 8초 — 매달린 요청이 모든 버튼을 '처리 중…' 에 가두지 않게), ④ `mealOpsErrorMessage`: `no_remaining` 을 관리자 맥락("남은 식권이 없어요")으로 — 교인 폰 문구 "방금 다른 폰에서 사용되었어요" 는 관리자에게 오해를 준다(Task 5 페이지가 쓴다), ⑤ 문구: `*_not_found` 는 "현황을 다시 불러왔어요", `would_go_negative` 는 "먼저 사용 기록을 무효 처리해 주세요". 리뷰어 메모(미룸): `use_ticket_as_admin` 은 request_id 를 서버가 만들어 **멱등이 아니다** — 매달린 요청 뒤 새로고침·재시도가 두 번 깎을 수 있다(현재 완화는 `pending` 잠금뿐). 4b 에서 클라이언트 `p_request_id` 를 받는 쪽으로 검토; Task 6 E2E 는 한 번 누름 → 사용 1건을 단언한다. 계획대로. `invalidateMealOps` 단독 테스트는 단언이 헬퍼 안에만 있어 oxlint `vitest/expect-expect` 가 경고하므로 그 `it` 위에 `oxlint-disable-next-line` 을 둔다(스니펫 반영).
+- **Task 4** (뮤테이션): 품질 리뷰로 ① `onError` 의 현황 재조회는 **서버가 판단한 거부(코드 있음)일 때만**(통신 실패 때 재조회를 기다리면 오류 문구가 늦거나 오프라인이면 안 보인다 — `rpcCodeOf` 게이트), ② `useVoidUsage` 도 `onError` 재조회(`already_voided` 는 낡은 화면), ③ 세 RPC 에 `withTimeout`(`OPS_TIMEOUT_MS` 8초 — 매달린 요청이 모든 버튼을 '처리 중…' 에 가두지 않게), ④ `mealOpsErrorMessage`: `no_remaining` 을 관리자 맥락("남은 식권이 없어요")으로 — 교인 폰 문구 "방금 다른 폰에서 사용되었어요" 는 관리자에게 오해를 준다(Task 5 페이지가 쓴다), ⑤ 문구: `*_not_found` 는 "현황을 다시 불러왔어요", `would_go_negative` 는 "먼저 사용 기록을 무효 처리해 주세요". ⑥ (Task 3 리뷰 뒤) `use_ticket_as_admin` 이 `p_request_id` 를 받게 되어 훅이 **재시도 키**를 보낸다 — `useUseTicket` 과 같은 규칙으로 대상(사람·가족)별로 키를 쥐고 있다가 서버가 판단한 응답(성공·코드 있는 오류)이 오면 버리고 통신 실패·타임아웃이면 남겨 재사용한다(새로고침 뒤에는 새 키 — 메모리 ref). Task 6 E2E 는 한 번 누름 → 사용 1건을 단언한다. 위 스니펫은 반영본. `invalidateMealOps` 단독 테스트는 단언이 헬퍼 안에만 있어 oxlint `vitest/expect-expect` 가 경고하므로 그 `it` 위에 `oxlint-disable-next-line` 을 둔다(스니펫 반영).
 - **Task 3** (DB): 품질 리뷰(두 세션 psql 로 잠금 실험 — 역순이면 실제 40P01, 구현 순서는 교착 없음; `use_ticket` 재정의가 합류 중 새 가족에 기록함을 확인; `db push` 는 함수·권한만 건드림)로 ① ④ 뒤 재조회에 `not found` 가드(행이 사라지면 NULL 행을 돌려주던 틈), ② **`use_ticket_as_admin` 에 `p_request_id`(선택) 멱등** — 운영에 올라간 뒤 기본값 인자를 더하려면 `drop function` 이 필요해(`20261009000002:39`) 지금 넣었다; 시그니처 `(uuid, uuid, uuid, uuid)`, `duplicate_request` 코드, ③ 헤더에 재잠금 경로의 이론상 상호 합류 교착이 앱 경로로는 닿지 않음을 기록, ④ pgTAP +11(not_authenticated ×3, `pg_locks` ④ 키 고정, 가족 일치 happy path, 멱등 ×4) → 140 = 43, 총 391. 위 Task 3 스니펫은 반영본. 리뷰어 메모: 가족 블록의 `ticket_balances` 행이 사라질 수 있다(마지막 발급 취소 + 사용 없음) — `groupMealLedger` 가 0 으로 채운다(Task 1 테스트).
 - **Task 2** (화면): 품질 리뷰 + 로컬 실데이터 스모크(관리자 발급 → 현황 → 명단·검색·없는 식사·비관리자 리다이렉트·로그아웃 상태, PostgREST 임베딩 200 확인). 반영: ① 발급이 없는 식사(내일 식사를 미리 연 경우)는 "찾는 가족이 없어요" 대신 **"아직 발급이 없어요"**(`searching` 로 분기), ② 없는 식사(`null`)는 폴링 중지(`refetchInterval` 콜백), ③ 정렬 보조 키 `.order('id')`, ④ 내역 목록 `aria-label`, 가족 제목 `title`, 현황 링크 탭 영역 확대, ⑤ 테스트는 스피너를 `getByText('불러오는 중…')` 로(Task 5 의 ConfirmButton 프롬프트가 `role="status"`). 위 Task 1·2 스니펫은 반영본. 미룬 것: `text-gray-500` 의 바탕색 대비(4.44:1, 기존 화면과 동일 → 5단계 a11y 일괄), 로딩·오류 상태의 h1 부재, 음수 잔량 표시 강조(Task 5 이후), 가상 스크롤(가족 수백 규모에서만).
 - **Task 1** (조회): 계획 초안의 라벨 계산이 최근 발급부터 이름을 나열해 테스트의 기대(`'김철수 · 이영희'` — 먼저 산 사람 먼저)와 어긋났다. 구현은 `buyerId` 는 최근 활성 발급에서, 라벨은 오래된 발급부터(활성 → 취소 순)로 계산한다. 품질 리뷰로 ① `FamilyRow` → **`FamilyGroup`**(이후 Task 는 이 이름을 쓴다), ② 두 표 읽기에 `.order(…, desc)` 고정(ms 동률이 폴링마다 뒤바뀌어 `buyerId` 가 바뀌는 것 방지), ③ uuid 가 아닌 주소는 조회 없이 `null`(손으로 고친 `#/admin/meals/zzz` 가 22P02 → 영원한 '다시 시도' 가 되던 것), ④ 임베딩에 `deleted_at` 을 더해 **`buyerId` 는 탈퇴자를 건너뛰고** 산 사람(없으면 이 가족에서 쓴 산 사람)을 고른다 — `use_ticket_as_admin` 이 탈퇴자를 거부하므로, ⑤ 검색어 NFC 정규화, 이름 없는 가족은 맨 뒤, 사용만 남은 가족의 라벨도 오래된 순, ⑥ 오류 경로 테스트. 네 요청이 각자 스냅샷이라 합계와 줄이 잠깐 어긋날 수 있는 것은 5초 폴링으로 두고(조작 판단은 서버), 조작이 거부되면 현황을 바로 다시 읽는다(Task 4 `onError`). Task 1 스니펫은 리뷰 전 버전(이름만 `FamilyGroup` 으로 바꿔 둠). 재리뷰가 찾은 것: 장부의 `family_id` 는 발급 시점 스냅샷이고 `use_ticket_as_admin` 은 사람의 **현재** 가족에서 깎으므로, 가족을 옮긴 구매자를 옛 가족 블록에서 누르면 새 가족 풀이 깎인다 → ⑦ 임베딩에 `family_id` 를 더해 `buyerId` 는 **이 블록 가족에 아직 속한** 산 사람만 고르고(Task 1 후속 커밋; 테스트 픽스처의 `buyer`/`person` 에 `family_id` 가 들어간다), Task 3 의 `use_ticket_as_admin` 이 `p_family_id` 를 받아 `family_changed` 로 거부한다(5초 창도 닫음). 타입 이름은 `PersonRef`(name·deleted_at·family_id)·`NameRef`(name) 로 정리.
@@ -1257,7 +1257,7 @@ describe('useVoidUsage', () => {
 })
 
 describe('useUseTicketAsAdmin', () => {
-  it('use_ticket_as_admin 을 사람·식사 id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+  it('use_ticket_as_admin 을 사람·식사 id 와 새 request_id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
     const q = ok({ id: 'u9', used_via: 'admin' })
     rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
@@ -1265,9 +1265,68 @@ describe('useUseTicketAsAdmin', () => {
     await act(async () => {
       await result.current.mutateAsync({ personId: 'p1', familyId: 'f1' })
     })
-    expect(rpc).toHaveBeenCalledWith('use_ticket_as_admin', { p_person_id: 'p1', p_meal_id: 'm1', p_family_id: 'f1' })
+    expect(rpc).toHaveBeenCalledWith(
+      'use_ticket_as_admin',
+      expect.objectContaining({ p_person_id: 'p1', p_meal_id: 'm1', p_family_id: 'f1', p_request_id: expect.stringMatching(/^[0-9a-f-]{36}$/) }),
+    )
     expect(q.has('abortSignal')).toBe(true)
     expectExactInvalidation(invalidate)
+  })
+
+  it('통신 오류(코드 없음) 뒤 같은 대상 재시도는 같은 request_id 를 쓴다 (서버 멱등 → 이중 차감 없음)', async () => {
+    rpc.mockReturnValueOnce(fail('TimeoutError: signal timed out', '')).mockReturnValueOnce(ok({ id: 'u9', used_via: 'admin' }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await expect(result.current.mutateAsync({ personId: 'p1', familyId: 'f1' })).rejects.toThrow('TimeoutError: signal timed out')
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }))
+
+    const firstArgs = rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined
+    const secondArgs = rpc.mock.calls[1]?.[1] as { p_request_id?: string } | undefined
+    expect(firstArgs?.p_request_id).toBe(secondArgs?.p_request_id)
+    expect(firstArgs?.p_request_id).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  it('서버가 판정한 오류(코드 있음) 뒤에는 같은 대상이라도 새 request_id', async () => {
+    rpc.mockReturnValueOnce(fail('no_remaining')).mockReturnValueOnce(ok({ id: 'u9', used_via: 'admin' }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await expect(result.current.mutateAsync({ personId: 'p1', familyId: 'f1' })).rejects.toThrow('no_remaining')
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }))
+
+    const firstArgs = rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined
+    const secondArgs = rpc.mock.calls[1]?.[1] as { p_request_id?: string } | undefined
+    expect(firstArgs?.p_request_id).not.toBe(secondArgs?.p_request_id)
+  })
+
+  it('성공 뒤 같은 대상을 다시 쓰면 새 request_id', async () => {
+    rpc.mockReturnValue(ok({ id: 'u9', used_via: 'admin' }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }))
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }))
+
+    const firstArgs = rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined
+    const secondArgs = rpc.mock.calls[1]?.[1] as { p_request_id?: string } | undefined
+    expect(firstArgs?.p_request_id).not.toBe(secondArgs?.p_request_id)
+  })
+
+  it('통신 오류 뒤 다른 대상(가족이 다름)을 쓰면 새 request_id (키가 다르다)', async () => {
+    rpc.mockReturnValueOnce(fail('TimeoutError: signal timed out', '')).mockReturnValueOnce(ok({ id: 'u9', used_via: 'admin' }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await expect(result.current.mutateAsync({ personId: 'p1', familyId: 'f1' })).rejects.toThrow('TimeoutError: signal timed out')
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f2' }))
+
+    const firstArgs = rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined
+    const secondArgs = rpc.mock.calls[1]?.[1] as { p_request_id?: string } | undefined
+    expect(firstArgs?.p_request_id).not.toBe(secondArgs?.p_request_id)
   })
 })
 
@@ -1322,6 +1381,7 @@ Expected: 모듈 없음 · 문구 없음(폴백 문구가 나온다).
 
 ```ts
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useRef } from 'react'
 import { rpcCodeOf, toUserMessage } from '../../lib/errors'
 import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
@@ -1392,13 +1452,26 @@ export type AdminUseArgs = { personId: string; familyId: string }
 /** 담당자가 교인 폰 없이 1장 사용 처리. personId 는 "누구 몫"(가족 블록의 산 사람), familyId 는 화면이 본 가족 — 그 사이 옮겼으면 서버가 family_changed 로 거부한다. */
 export function useUseTicketAsAdmin(mealId: string) {
   const queryClient = useQueryClient()
+  // 재시도 키: 같은 대상(사람·가족)에 대한 재시도는 같은 request_id 를 보낸다 — 응답을 잃은 뒤 다시 눌러도 두 번 깎이지 않는다(use_ticket 과 같은 규칙).
+  // 서버가 판단한 응답(성공 또는 코드 있는 오류)이 오면 버린다; 통신 실패·타임아웃이면 남겨 둔다.
+  const retry = useRef<{ key: string; id: string } | null>(null)
   return useMutation({
     mutationFn: async ({ personId, familyId }: AdminUseArgs) => {
+      const key = `${personId}:${familyId}`
+      const requestId = retry.current?.key === key ? retry.current.id : crypto.randomUUID()
+      retry.current = { key, id: requestId }
       const { signal, done } = withTimeout(OPS_TIMEOUT_MS)
       try {
-        return unwrap(
-          await supabase.rpc('use_ticket_as_admin', { p_person_id: personId, p_meal_id: mealId, p_family_id: familyId }).abortSignal(signal),
+        const row = unwrap(
+          await supabase
+            .rpc('use_ticket_as_admin', { p_person_id: personId, p_meal_id: mealId, p_family_id: familyId, p_request_id: requestId })
+            .abortSignal(signal),
         )
+        retry.current = null
+        return row
+      } catch (err) {
+        if (rpcCodeOf(err)) retry.current = null
+        throw err
       } finally {
         done()
       }
@@ -1930,7 +2003,7 @@ PR 은 사용자가 merge 한다.
 ## 다음 계획(4b·4c)으로 넘기는 것
 
 - **4b 사람 탭**: `merge_people(from, into)`(대상 보호자 행 `for update` — 3단계 인계), `link_person`, `admin_reset_person`, 번호 수정, 가족 보기, 발급·사용 이력, 필터 칩. 취소 **사유 입력 칸**(DB 는 `p_reason` 을 이미 받는다)과 "취소 내역 보기" 는 이력 화면과 함께. `admin_reset_person` 이 생기면 README 운영 체크리스트의 "자녀 삭제·탈퇴 대신 처리 SQL" 을 지운다.
-- **4b 또는 4c**: `use_ticket_as_admin` 에 클라이언트 `p_request_id`(선택)를 받아 멱등으로 만들고(`use_ticket` 과 같은 규칙), 발급의 60초 중복 확인 창과 같은 완화를 대신 사용에도 둔다. 지금은 `pending` 잠금 + 8초 타임아웃뿐이다.
+- **4b 또는 4c**: 대신 사용의 재시도 키는 메모리에만 있다(새로고침하면 새 키). 발급의 60초 중복 확인 창과 같은 완화를 대신 사용에도 둘지 검토.
 - **4c 통계**: 월 선택 → 발급·금액·사용 → 식사별 → 교인별, CSV(취소·무효 행 포함), Web Share. 식사 상세의 이름 검색은 지금 클라이언트 필터다 — 명단이 수백 가족이 되면 서버 검색으로.
 - 식사 상세의 가족 블록은 `aria-label` 로 가족을 식별한다. 같은 이름 조합의 가족이 둘이면 E2E `getByRole('listitem', { name })` 이 strict 모드에 걸린다 — 그때 `data-family-id` 로.
 - 3단계 계획이 넘긴 나머지(ConfirmButton 터치 영역, 포커스 복귀, `maxLength` NFD, 두 초록 알림 합치기, E2E 헬퍼 분해)는 그대로 4b/4c 또는 5단계로.
