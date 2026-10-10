@@ -90,20 +90,7 @@ update public.people set role = 'admin' where phone = '01012345678' and deleted_
 - Supabase **Redirect URLs** 에 GitHub Pages 주소(`https://<github-user>.github.io/<repo>/`)가 등록되어 있는지 확인한다.
 - 3단계 배포 뒤 Supabase **Authentication › Sign In / Providers › Anonymous** 가 켜져 있는지 확인한다. pg_cron 은 마이그레이션이 켠다 — 콘솔에서 미리 켜지 말고, 특히 공식 문서의 `grant … on schema cron to postgres` 스니펫은 실행하지 않는다. 확인은 SQL Editor 에서 `select jobname, schedule, active from cron.job;`(3건) 과 `select * from cron.job_run_details order by start_time desc limit 10;` 로 한다(Integrations › Cron 화면은 대시보드 통합을 켰을 때만 보이고, 작업은 그와 무관하게 돈다).
 - 자녀 삭제·탈퇴는 화면에서 본인(보호자)이 한다. 관리자가 대신 처리해야 하면(권사님 요청) 4단계 `admin_reset_person` 전까지는 SQL 로: `update public.people set name = '탈퇴한 사용자', phone = null, auth_user_id = null, deleted_at = now() where id = '<사람 id>';`
-
-#### 발급 실수 정정 (4단계 전 임시 절차)
-
-화면에 취소 기능이 들어오기 전까지는 개발자가 Supabase SQL 편집기에서 처리한다. 장부는 지우지 않고 취소 표시만 한다.
-
-```sql
--- 1) 잘못된 발급 찾기
-select i.id, p.name, m.served_on, m.title, i.quantity, i.unit_price, i.issued_at
-  from public.issuances i join public.people p on p.id = i.person_id join public.meals m on m.id = i.meal_id
- where i.cancelled_at is null order by i.issued_at desc limit 20;
--- 2) 취소 표시 (이미 사용된 장수보다 적게 남지 않는지 ticket_balances 로 먼저 확인)
-update public.issuances set cancelled_at = now(), cancelled_by = (select id from public.people where auth_user_id = '<정정하는 관리자의 auth 사용자 id>'), cancel_reason = '관리자 요청'
- where id = '<발급 id>';
-```
+- 발급 실수 정정은 **관리 › 식사 › 현황** 에서 한다: 발급 취소(가족 남은 장수 안에서만 — 이미 쓴 장수가 있으면 먼저 "무효" 로 되돌린다), 담당자 "1장 대신 사용", 사용 "무효". 모두 기록이 남고 지워지지 않는다. SQL 로 직접 고치지 않는다.
 
 ### 6. 절대 운영에 실행하면 안 되는 명령
 

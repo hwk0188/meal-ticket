@@ -36,6 +36,14 @@ const MESSAGES = {
   anonymous_provider_disabled: '아이 계정 시작이 꺼져 있어요. 권사님께 문의해 주세요.',
   // 익명 로그인은 기본 30회/시간/IP 로 제한된다 — 교회 와이파이는 IP 를 같이 쓴다.
   over_request_rate_limit: '지금은 요청이 많아요. 잠시 뒤 다시 시도해 주세요.',
+  // 4a단계 · 관리자 식권 조작
+  issuance_not_found: '발급 기록을 찾을 수 없어요. 현황을 다시 불러왔어요.',
+  already_cancelled: '이미 취소된 발급이에요.',
+  invalid_reason: '취소 사유는 100자까지예요.',
+  would_go_negative: '이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 먼저 사용 기록을 무효 처리해 주세요.',
+  usage_not_found: '사용 기록을 찾을 수 없어요. 현황을 다시 불러왔어요.',
+  already_voided: '이미 무효 처리된 기록이에요.',
+  family_changed: '그 사이 이 분의 가족이 바뀌었어요. 현황을 다시 불러왔어요.',
 } as const satisfies Record<string, string>
 
 /** MESSAGES 에 문구가 있는 오류 코드. 호출하는 쪽에서 오타를 막는 데 쓴다. */

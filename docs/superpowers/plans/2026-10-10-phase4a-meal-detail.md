@@ -18,7 +18,7 @@
 
 | 영역 | 이 계획에서 하는 것 |
 |---|---|
-| DB | `cancel_issuance(id, reason)` · `use_ticket_as_admin(person_id, meal_id)` · `void_usage(id)` 신설(잠금 규칙 적용, 코드 목록은 각 함수 헤더). `use_ticket` 재정의(사람 행 `for update`, `lock_family_meal`). pgTAP `140_admin_ticket_ops.sql`(32). 타입 재생성 |
+| DB | `cancel_issuance(id, reason)` · `use_ticket_as_admin(person_id, meal_id)` · `void_usage(id)` 신설(잠금 규칙 적용, 코드 목록은 각 함수 헤더). `use_ticket` 재정의(사람 행 `for update`, `lock_family_meal`). pgTAP `140_admin_ticket_ops.sql`(44). 타입 재생성 |
 | 관리자 화면 | 식사 카드에 "현황" 링크 → `#/admin/meals/:mealId` 식사 상세: 발급·사용·남음·금액 한 줄, 이름 검색, 가족별 블록(구매자 이름 · "N장 중 M장 사용" · 발급 줄 · 사용 줄), 5초 폴링. 행 동작: 발급 줄 "발급 취소"(남은 장수보다 많으면 비활성 + 안내), 사용 줄 "무효", 가족 블록 "1장 대신 사용" — 모두 `ConfirmButton` 두 단계 확인 |
 | 공통 | 오류 문구 7개. E2E `admin.spec.ts`(현황판 → 대신 사용 → 무효 → 취소). README 임시 SQL 절차 제거, 설계 §7.3·§8.3·§14·§15 동기화 |
 
@@ -28,6 +28,12 @@
 
 ## 구현 결과와 계획의 차이 (실행 중 리뷰로 바뀐 것)
 
+- **Task 7** (문서·검증): 전체 검증 녹색(아래 완료 기준의 측정값). 설계 문서는 계획이 적은 §7.3·§8.3·§9·§12·§14·§15 외에 **머리말 "상태" 줄**도 고쳤다 — §14 가 4a 완료를 적는데 머리말이 "1·2·3단계 구현 완료" 로 남으면 어긋난다. §7.3 의 `use_ticket_as_admin` 은 계획 초안의 2인자·코드 5개가 아니라 **마이그레이션 헤더의 권위 목록**을 그대로 옮겼다(4인자 `(person_id, meal_id, family_id, request_id)`, 코드 7개 — `family_changed`·`duplicate_request` 포함). §15 의 "취소된 발급이 있는 식사의 삭제 정책" 은 4a 가 정하지 않아 그대로 남긴다.
+- **최종 리뷰** (브랜치 전체, Task 3~6): "머지 가능". 운영 안전성은 실험으로 확인 — 운영 전 상태를 로컬에 재현해 마이그레이션을 두 번 적용(두 번째는 카탈로그 무변화), `use_ticket` 재정의가 oid·인자·반환·권한까지 동일하고 본문만 바뀜, 2단계 인라인 잠금 키와 `lock_family_meal` 의 키가 수치로 동일, **구 본문 세션과 신 본문 세션이 겹쳐도 초과 사용이 없음**(두 세션 재현), `create or replace` 가 사용 중에도 0.1초 미만, 3인자 `drop` 은 운영에서 no-op. 보안도 확인(익명·교인·anon 모두 `forbidden`/`permission denied`, `duplicate_request` 로 남의 행이 새지 않음, 020 의 anon 불변식 유지). 반영한 것: ① **성공 뒤 재조회 대기에 한도**(`SETTLE_TIMEOUT_MS` 3초) — 재조회에는 AbortSignal 이 없어 끊긴 연결에서 버튼이 '처리 중…' 에 갇히고 성공 알림도 뜨지 않던 문제. 남긴 것(4b/5단계): sticky 알림이 열린 확인 프롬프트를 가릴 수 있음(알림은 비대화형이라 탭이 먹히지 않는 선에서 안전; `clearFeedback` 을 프롬프트 열 때도 부르거나 몇 초 뒤 자동 닫기), `cancel_issuance` 가 `p_reason` 길이를 행 조회보다 먼저 보는 순서(4a 에 사유 입력이 없어 닿지 않음), 멱등 재시도가 그 사이 무효 처리된 행을 돌려줄 수 있음(`use_ticket` 과 같은 의미), 새 DB 코드와 문구가 다른 커밋에 나뉘었던 점(최종 트리는 모두 포함).
+- **Task 6** (E2E): 계획대로 통과(4회 연속 녹색, admin 2.4~2.9초). 리뷰 메모: `/담당자 처리$/` 의 `$` 는 ConfirmButton 의 sr-only 접두사(`… 10/11 12:40 사용`)를 제외하는 핵심이라 지우면 2건이 된다 — 더 튼튼하게는 줄 본문 전체를 `^…$` 로 묶는다. `getByRole('listitem', { name: … })` 는 `exact` 없이도 1건이다(중첩 `li` 는 접근성 이름이 없다) — `exact: true` 는 가족 라벨이 `김철수 · 이영희` 로 늘었을 때 조용히 통과하지 않게 하는 안전장치. 같은 사람 몫을 같은 분(分)에 두 번 대신 사용하면 `/사용 무효$/` 가 2건이 되어 strict mode 위반(이 스펙은 하지 않는다). 5초 폴링은 이 스펙에서 한 번도 돌지 않으므로 폴링 경합은 **검증된 바 없다**. 가족이 많은 화면에서는 `sticky` 피드백 상자가 아래 행의 탭을 가로챌 수 있다(4b 에서 다가족 E2E 를 쓸 때 주의).
+- **Task 5** (동작): 품질 리뷰(프로브 테스트로 검증)로 ① 페이지가 `mealOpsErrorMessage` 를 쓴다(Task 4 의 관리자 맥락 문구), ② 행별 접근성 이름을 고유하게 — 발급 `"<발급 시각> <구매자> N장"`, 사용 `"<누구> <시각> 사용"` (같은 사람 1장 두 번·같은 분 사용 두 건이 겹치던 것; Task 6 선택자는 정규식 `$` 일치), ③ 알림·오류를 `sticky` 로 위에 고정하고 **포커스를 옮긴다**(누른 버튼이 성공 뒤 사라지면 포커스가 body 로 떨어진다), ④ 취소 불가 안내에 "먼저 사용을 무효 처리해 주세요", ⑤ 무효 알림에 대상(`"<누구> 사용을 무효 처리했어요"`), ⑥ `break-words`, `NO_NAME` export, `startAction` → `clearFeedback`, ⑦ 테스트: 공허하던 '무효' 개수 단언에 무효 처리된 사용 줄 추가, 처리 중 버튼 수 7 고정, buyerId null 안내, 알림이 다음 동작에서 사라짐, `no_remaining` 관리자 문구, 포커스 이동. 재리뷰로 피드백 상자에 바탕색·포커스 링(스크롤 시 오류 문구가 행에 가려지던 것). 남는 것(기록): 같은 사람 몫을 같은 분(分)에 두 번 대신 사용하면 두 사용 줄의 접근성 이름이 같다 — 기능상 동일한 두 줄이라 그대로 둔다(E2E 는 이름 고유성을 가정하지 말 것; 필요하면 초 단위나 가족 내 순번). 미룸(5단계 a11y·레이아웃): 조건부 마운트 라이브 리전(iOS VoiceOver), 32px 탭 영역, 열린 확인 프롬프트가 행 안에서 좁게 접히는 것, 행 안 피드백, 포커스가 위로 점프한 뒤 Tab 순서.
+- **Task 4** (뮤테이션): 품질 리뷰로 ① `onError` 의 현황 재조회는 **서버가 판단한 거부(코드 있음)일 때만**(통신 실패 때 재조회를 기다리면 오류 문구가 늦거나 오프라인이면 안 보인다 — `rpcCodeOf` 게이트), ② `useVoidUsage` 도 `onError` 재조회(`already_voided` 는 낡은 화면), ③ 세 RPC 에 `withTimeout`(`OPS_TIMEOUT_MS` 8초 — 매달린 요청이 모든 버튼을 '처리 중…' 에 가두지 않게), ④ `mealOpsErrorMessage`: `no_remaining` 을 관리자 맥락("남은 식권이 없어요")으로 — 교인 폰 문구 "방금 다른 폰에서 사용되었어요" 는 관리자에게 오해를 준다(Task 5 페이지가 쓴다), ⑤ 문구: `*_not_found` 는 "현황을 다시 불러왔어요", `would_go_negative` 는 "먼저 사용 기록을 무효 처리해 주세요". ⑥ (Task 3 리뷰 뒤) `use_ticket_as_admin` 이 `p_request_id` 를 받게 되어 훅이 **재시도 키**를 보낸다 — `useUseTicket` 과 같은 규칙으로 대상(사람·가족)별로 키를 쥐고 있다가 서버가 판단한 응답(성공·코드 있는 오류)이 오면 버리고 통신 실패·타임아웃이면 남겨 재사용한다(새로고침 뒤에는 새 키 — 메모리 ref). 재리뷰로 키를 **대상별 Map**(`식사:사람:가족`)으로 — 한 칸짜리 ref 는 다른 가족을 누르는 순간 첫 대상의 키를 버려 재탭이 두 번 깎을 수 있었다. Task 6 E2E 는 한 번 누름 → 사용 1건을 단언한다. 위 스니펫은 반영본. `invalidateMealOps` 단독 테스트는 단언이 헬퍼 안에만 있어 oxlint `vitest/expect-expect` 가 경고하므로 그 `it` 위에 `oxlint-disable-next-line` 을 둔다(스니펫 반영).
+- **Task 3** (DB): 품질 리뷰(두 세션 psql 로 잠금 실험 — 역순이면 실제 40P01, 구현 순서는 교착 없음; `use_ticket` 재정의가 합류 중 새 가족에 기록함을 확인; `db push` 는 함수·권한만 건드림)로 ① ④ 뒤 재조회에 `not found` 가드(행이 사라지면 NULL 행을 돌려주던 틈), ② **`use_ticket_as_admin` 에 `p_request_id`(선택) 멱등** — 운영에 올라간 뒤 기본값 인자를 더하려면 `drop function` 이 필요해(`20261009000002:39`) 지금 넣었다; 시그니처 `(uuid, uuid, uuid, uuid)`, `duplicate_request` 코드, ③ 헤더에 재잠금 경로의 이론상 상호 합류 교착이 앱 경로로는 닿지 않음을 기록, ④ pgTAP +11(not_authenticated ×3 — `set local role authenticated` 로 grant 누락도 드러나게, `pg_locks` ④ 키 고정, 가족 일치 happy path, 멱등 ×4) → 140 = 43; 재리뷰로 ④ 단언을 **잠긴 적 없는 (B, 지난 식사) 쌍의 호출 전/후 비교**로 바꿈(앞선 성공 호출이 같은 키를 이미 쥐고 있어 공허하던 단언; `throws_ok` 안의 실패 호출은 서브트랜잭션 롤백으로 잠금이 풀린다) → 140 = 44, 총 392. 옛 3인자 overload 는 `drop function if exists` 로 정리(로컬 `migration up` 전용, 운영 no-op). 위 Task 3 스니펫은 반영본. 리뷰어 메모: 가족 블록의 `ticket_balances` 행이 사라질 수 있다(마지막 발급 취소 + 사용 없음) — `groupMealLedger` 가 0 으로 채운다(Task 1 테스트).
 - **Task 2** (화면): 품질 리뷰 + 로컬 실데이터 스모크(관리자 발급 → 현황 → 명단·검색·없는 식사·비관리자 리다이렉트·로그아웃 상태, PostgREST 임베딩 200 확인). 반영: ① 발급이 없는 식사(내일 식사를 미리 연 경우)는 "찾는 가족이 없어요" 대신 **"아직 발급이 없어요"**(`searching` 로 분기), ② 없는 식사(`null`)는 폴링 중지(`refetchInterval` 콜백), ③ 정렬 보조 키 `.order('id')`, ④ 내역 목록 `aria-label`, 가족 제목 `title`, 현황 링크 탭 영역 확대, ⑤ 테스트는 스피너를 `getByText('불러오는 중…')` 로(Task 5 의 ConfirmButton 프롬프트가 `role="status"`). 위 Task 1·2 스니펫은 반영본. 미룬 것: `text-gray-500` 의 바탕색 대비(4.44:1, 기존 화면과 동일 → 5단계 a11y 일괄), 로딩·오류 상태의 h1 부재, 음수 잔량 표시 강조(Task 5 이후), 가상 스크롤(가족 수백 규모에서만).
 - **Task 1** (조회): 계획 초안의 라벨 계산이 최근 발급부터 이름을 나열해 테스트의 기대(`'김철수 · 이영희'` — 먼저 산 사람 먼저)와 어긋났다. 구현은 `buyerId` 는 최근 활성 발급에서, 라벨은 오래된 발급부터(활성 → 취소 순)로 계산한다. 품질 리뷰로 ① `FamilyRow` → **`FamilyGroup`**(이후 Task 는 이 이름을 쓴다), ② 두 표 읽기에 `.order(…, desc)` 고정(ms 동률이 폴링마다 뒤바뀌어 `buyerId` 가 바뀌는 것 방지), ③ uuid 가 아닌 주소는 조회 없이 `null`(손으로 고친 `#/admin/meals/zzz` 가 22P02 → 영원한 '다시 시도' 가 되던 것), ④ 임베딩에 `deleted_at` 을 더해 **`buyerId` 는 탈퇴자를 건너뛰고** 산 사람(없으면 이 가족에서 쓴 산 사람)을 고른다 — `use_ticket_as_admin` 이 탈퇴자를 거부하므로, ⑤ 검색어 NFC 정규화, 이름 없는 가족은 맨 뒤, 사용만 남은 가족의 라벨도 오래된 순, ⑥ 오류 경로 테스트. 네 요청이 각자 스냅샷이라 합계와 줄이 잠깐 어긋날 수 있는 것은 5초 폴링으로 두고(조작 판단은 서버), 조작이 거부되면 현황을 바로 다시 읽는다(Task 4 `onError`). Task 1 스니펫은 리뷰 전 버전(이름만 `FamilyGroup` 으로 바꿔 둠). 재리뷰가 찾은 것: 장부의 `family_id` 는 발급 시점 스냅샷이고 `use_ticket_as_admin` 은 사람의 **현재** 가족에서 깎으므로, 가족을 옮긴 구매자를 옛 가족 블록에서 누르면 새 가족 풀이 깎인다 → ⑦ 임베딩에 `family_id` 를 더해 `buyerId` 는 **이 블록 가족에 아직 속한** 산 사람만 고르고(Task 1 후속 커밋; 테스트 픽스처의 `buyer`/`person` 에 `family_id` 가 들어간다), Task 3 의 `use_ticket_as_admin` 이 `p_family_id` 를 받아 `family_changed` 로 거부한다(5초 창도 닫음). 타입 이름은 `PersonRef`(name·deleted_at·family_id)·`NameRef`(name) 로 정리.
 
@@ -36,7 +42,7 @@
 | 파일 | 책임 |
 |---|---|
 | `supabase/migrations/20261010000001_admin_ticket_ops.sql` | `cancel_issuance` · `use_ticket_as_admin` · `void_usage` + `use_ticket` 재정의 |
-| `supabase/tests/database/140_admin_ticket_ops.sql` | 위 네 함수 pgTAP (32) |
+| `supabase/tests/database/140_admin_ticket_ops.sql` | 위 네 함수 pgTAP (44) |
 | `src/lib/database.types.ts` (재생성) | RPC 3개 추가 |
 | `src/features/admin/groupMealLedger.ts` (+test) | 순수: 식사 하나의 발급·사용·잔량 행 → 합계 + 가족별 블록, 이름 필터 |
 | `src/features/admin/useMealDetail.ts` (+test) | 식사·발급·사용·잔량 네 조회 → `groupMealLedger`. 5초 폴링. 키 `['meal-detail', mealId]` |
@@ -55,7 +61,8 @@
 - pgTAP 에서 `issuances`·`usages`·`ticket_balances` 를 **직접 읽기 전에 `tests.clear_auth()`**, RPC 를 부르기 전에 다시 `tests.authenticate_as(...)`. 테스트 식사 제목은 `'테스트 점심 140'` 처럼 파일 번호를 박는다.
 - 프론트: 조회 화면은 `data` 로 분기(`data !== undefined` — 이 화면은 `null` 이 "식사 없음" 이라는 정상 값이다). 뮤테이션 오류는 다음 동작 시작 때 `reset()`. `onSuccess` 는 무효화 promise 를 return. 무효화 테스트는 훅마다 새 QueryClient + 키 목록 전체 단언. 알림은 `getByText`. `vi.fn<…>()` 타입 인자 필수. 컴포넌트 파일은 컴포넌트만 export.
 - `ConfirmButton` 계약: `label`(바쁘면 `'처리 중…'`), `message`, `confirmLabel`, `onConfirm`, `disabled`, `context`(같은 라벨이 여러 줄일 때 sr-only 접두사). **동작 라벨에 '취소' 를 단독으로 쓰지 않는다** — ConfirmButton 의 그만두기 버튼이 '취소' 다. 이 계획의 라벨: `발급 취소`/`취소하기`, `무효`/`무효 처리`, `1장 대신 사용`/`사용 처리`.
-- 커밋 메시지 `<type>: <설명>` + `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`. 작업 브랜치 `feat/phase4a-meal-detail`. `main` 직접 커밋 금지. PR 은 사용자가 merge 한다(merge 가 운영 마이그레이션을 실행한다).
+- **새 DB 오류 코드는 같은 커밋에서 `src/lib/errors.ts` 에 문구를 더한다.** 훅의 "서버가 판단한 거부" 판별(`rpcCodeOf`)이 MESSAGES 소속 여부로 돌아가므로, 문구가 빠진 코드는 일반 문구로 떨어질 뿐 아니라 현황 재조회·재시도 키 폐기도 건너뛴다(Task 4 리뷰).
+- 커밋 메시지 `<type>: <설명>` + 세션이 지정한 attribution 트레일러(2026-10-10 부터 `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`; 그 전 커밋은 `Claude Fable 5.1` — 과거 기록은 고치지 않는다). 작업 브랜치 `feat/phase4a-meal-detail`. `main` 직접 커밋 금지. PR 은 사용자가 merge 한다(merge 가 운영 마이그레이션을 실행한다).
 
 ```bash
 cd /Users/hong-wongi/Dev/sample/meal-ticket
@@ -73,7 +80,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/features/admin/groupMealLedger.ts`, `src/features/admin/groupMealLedger.test.ts`
 - Create: `src/features/admin/useMealDetail.ts`, `src/features/admin/useMealDetail.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/admin/groupMealLedger.test.ts`:
 
@@ -212,12 +219,12 @@ describe('useMealDetail', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/admin/groupMealLedger src/features/admin/useMealDetail`
 Expected: 모듈 없음.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/admin/groupMealLedger.ts`:
 
@@ -273,7 +280,7 @@ export type FamilyGroup = {
 export type MealTotals = { issued: number; used: number; remaining: number; amount: number }
 export type MealLedger = { totals: MealTotals; families: FamilyGroup[] }
 
-const NO_NAME = '(이름 없음)'
+export const NO_NAME = '(이름 없음)'
 const byTimeDesc = (a: string, b: string) => Date.parse(b) - Date.parse(a)
 
 /** 식사 하나의 발급·사용·잔량 행을 가족별 블록과 합계로 묶는다. 이름이 가려진 행(RLS·탈퇴)은 빈 이름으로 둔다. */
@@ -377,12 +384,12 @@ export function useMealDetail(mealId: string) {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test -- src/features/admin && npm run lint && npx tsc -b`
 Expected: 전부 통과. (`tsc` 가 임베딩 행 타입을 `MealIssuanceRow` 에 맞추지 못하면 select 문자열의 열 이름을 다시 확인한다 — `useFamilyLedger.ts` 의 문자열과 같은 규칙이다.)
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/features/admin/groupMealLedger.ts src/features/admin/groupMealLedger.test.ts src/features/admin/useMealDetail.ts src/features/admin/useMealDetail.test.tsx
@@ -399,7 +406,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `src/pages/admin/AdminMealsPage.tsx` (카드에 링크), `src/pages/admin/AdminMealsPage.test.tsx` (단언 1개 추가)
 - Modify: `src/App.tsx` (라우트)
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/pages/admin/MealDetailPage.test.tsx`:
 
@@ -540,12 +547,12 @@ describe('MealDetailPage', () => {
 
 (파일 상단 import 를 `import { render, screen, within } from '@testing-library/react'` 로 바꾼다.)
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/pages/admin`
 Expected: `MealDetailPage` 모듈 없음, AdminMealsPage 링크 단언 실패.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/pages/admin/MealDetailPage.tsx`:
 
@@ -670,16 +677,16 @@ function UsageLine({ usage: u }: { usage: MealUsage }) {
               <Route path="/admin/meals/:mealId" element={<RequireAdmin><MealDetailPage /></RequireAdmin>} />
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과. (`PersonShell` 은 `/admin/` 접두사로 관리자 탭을 고르고, `TabBar` 의 "식사" 탭은 `end` 가 아니라 `/admin/meals/:id` 에서도 활성이다 — 별도 수정 없음.)
 
-- [ ] **Step 5: 수동 확인 (로컬)**
+- [x] **Step 5: 수동 확인 (로컬)**
 
 Run: `npm run dev`. 개발 로그인 `e2e-admin@test.local` → 관리 › 식사 › 카드의 "현황" → 네 숫자·가족 블록·검색 확인. (Task 6 의 E2E 가 같은 흐름을 자동화한다.)
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add src/pages/admin/MealDetailPage.tsx src/pages/admin/MealDetailPage.test.tsx src/pages/admin/AdminMealsPage.tsx src/pages/admin/AdminMealsPage.test.tsx src/App.tsx
@@ -698,17 +705,17 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `supabase/tests/database/140_admin_ticket_ops.sql`
 - Regenerate: `src/lib/database.types.ts`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `supabase/tests/database/140_admin_ticket_ops.sql`:
 
 ```sql
 begin;
-select plan(32);
+select plan(44);
 
 -- 권한: anon 은 셋 다 실행 불가, authenticated 는 재정의된 use_ticket 을 여전히 실행할 수 있다
 select is(has_function_privilege('anon', 'public.cancel_issuance(uuid,text)', 'EXECUTE'), false, 'anon 은 cancel_issuance 를 실행할 수 없다');
-select is(has_function_privilege('anon', 'public.use_ticket_as_admin(uuid,uuid,uuid)', 'EXECUTE'), false, 'anon 은 use_ticket_as_admin 을 실행할 수 없다');
+select is(has_function_privilege('anon', 'public.use_ticket_as_admin(uuid,uuid,uuid,uuid)', 'EXECUTE'), false, 'anon 은 use_ticket_as_admin 을 실행할 수 없다');
 select is(has_function_privilege('anon', 'public.void_usage(uuid)', 'EXECUTE'), false, 'anon 은 void_usage 를 실행할 수 없다');
 select is(has_function_privilege('authenticated', 'public.use_ticket(uuid,uuid)', 'EXECUTE'), true, '재정의된 use_ticket 은 authenticated 가 실행할 수 있다');
 
@@ -750,6 +757,14 @@ select throws_ok(format($$ select public.void_usage(%L) $$, gen_random_uuid()), 
 select tests.authenticate_as(:'ghost_uid');
 select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, :'i2'), 'P0001', 'forbidden', '사람 행이 없는 계정은 취소할 수 없다');
 
+-- JWT 없이 직접 호출 (세 함수 모두, 090 의 규약에 set local role authenticated 를 더한 것 — grant 가 빠지면 42501 로 드러난다)
+select tests.clear_auth();
+set local role authenticated;
+select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, :'i2'), 'P0001', 'not_authenticated', 'JWT 가 없으면 cancel_issuance 는 not_authenticated');
+select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'a_pid', :'today_meal'), 'P0001', 'not_authenticated', 'JWT 가 없으면 use_ticket_as_admin 은 not_authenticated');
+select throws_ok(format($$ select public.void_usage(%L) $$, gen_random_uuid()), 'P0001', 'not_authenticated', 'JWT 가 없으면 void_usage 는 not_authenticated');
+reset role;
+
 -- 관리자: 취소
 select tests.authenticate_as(:'admin_uid');
 select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, gen_random_uuid()), 'P0001', 'issuance_not_found', '없는 발급은 거부');
@@ -770,7 +785,19 @@ select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'b_pid
 -- 화면이 본 가족(p_family_id)과 사람의 현재 가족이 다르면 거부 — A 의 김철수를 B 가족 블록에서 누른 상황
 select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L) $$, :'a_pid', :'today_meal', :'b_fid'), 'P0001', 'family_changed', '그 사이 가족이 바뀐 사람은 거부');
 select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'kid_pid', :'today_meal'), '자녀 몫으로도 대신 사용 처리할 수 있다 (잔량은 가족 것)');
+-- ④ 잠금: 아직 아무도 잠그지 않은 (B, 지난 식사) 쌍으로 호출 전/후를 비교한다.
+-- 주의: throws_ok 안에서 실패한 호출은 서브트랜잭션이 롤백되며 advisory xact 잠금도 풀린다 — 잠금 단언은 성공한 호출 뒤에만 의미가 있다.
+select is((select count(*) from pg_locks
+            where locktype = 'advisory' and objsubid = 2 and pid = pg_backend_pid()
+              and classid::bigint = (hashtext(:'b_fid'::text)::bigint & 4294967295)
+              and objid::bigint   = (hashtext(:'past_meal'::text)::bigint & 4294967295)),
+          0::bigint, '호출 전에는 (B, 지난 식사) ④ 잠금이 없다');
 select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'b_pid', :'past_meal'), '지난 식사도 대신 사용 처리할 수 있다 (날짜 제한 없음)');
+select is((select count(*) from pg_locks
+            where locktype = 'advisory' and objsubid = 2 and pid = pg_backend_pid()
+              and classid::bigint = (hashtext(:'b_fid'::text)::bigint & 4294967295)
+              and objid::bigint   = (hashtext(:'past_meal'::text)::bigint & 4294967295)),
+          1::bigint, 'use_ticket_as_admin 이 (가족, 식사) ④ 잠금을 쥔다');
 select tests.clear_auth();
 select results_eq(
   format($$ select family_id, person_id, used_via, recorded_by, quantity, voided_at from public.usages where meal_id = %L $$, :'today_meal'),
@@ -779,15 +806,33 @@ select results_eq(
 select is((select remaining from public.ticket_balances where family_id = :'a_fid' and meal_id = :'today_meal'), 2, '대신 사용 뒤 A 가족 남은 장수는 2');
 select id as admin_usage from public.usages where meal_id = :'today_meal' and used_via = 'admin' \gset
 
+-- 정상 경로: 화면이 본 가족이 지금 가족과 같으면(p_family_id 일치) 그대로 처리된다
+select tests.authenticate_as(:'admin_uid');
+select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L) $$, :'a_pid', :'today_meal', :'a_fid'), '화면이 본 가족이 지금 가족과 같으면 대신 사용할 수 있다 (정상 경로)');
+select tests.clear_auth();
+select id as a_usage from public.usages where meal_id = :'today_meal' and used_via = 'admin' and person_id = :'a_pid' \gset
+select is((select remaining from public.ticket_balances where family_id = :'a_fid' and meal_id = :'today_meal'), 1, '정상 경로 사용 뒤 A 가족 남은 장수는 1');
+
 -- 관리자: 무효
 select tests.authenticate_as(:'admin_uid');
 select throws_ok(format($$ select public.void_usage(%L) $$, gen_random_uuid()), 'P0001', 'usage_not_found', '없는 사용 기록은 거부');
 select lives_ok(format($$ select public.void_usage(%L) $$, :'admin_usage'), '관리자는 사용 기록을 무효 처리할 수 있다');
+select lives_ok(format($$ select public.void_usage(%L) $$, :'a_usage'), '정상 경로로 쓴 사용 기록도 무효 처리할 수 있다 (상쇄)');
 select tests.clear_auth();
 select is((select voided_by from public.usages where id = :'admin_usage'), :'admin_pid'::uuid, '무효 처리한 관리자가 기록된다');
 select is((select remaining from public.ticket_balances where family_id = :'a_fid' and meal_id = :'today_meal'), 3, '무효 처리된 사용은 잔량에서 빠진다');
 select tests.authenticate_as(:'admin_uid');
 select throws_ok(format($$ select public.void_usage(%L) $$, :'admin_usage'), 'P0001', 'already_voided', '이미 무효인 기록은 다시 무효 처리할 수 없다');
+
+-- 관리자: 대신 사용 멱등(p_request_id) — 같은 값은 처음 결과를 돌려준다(use_ticket 과 같은 규칙)
+select tests.authenticate_as(:'admin_uid');
+select gen_random_uuid() as rid \gset
+select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L, %L) $$, :'kid_pid', :'today_meal', :'a_fid', :'rid'), '같은 request_id 로 첫 호출은 기록된다');
+select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L, %L) $$, :'kid_pid', :'today_meal', :'a_fid', :'rid'), '같은 request_id 로 다시 호출해도 살아 있다 (멱등)');
+select tests.clear_auth();
+select is((select count(*)::integer from public.usages where request_id = :'rid'), 1, '같은 request_id 는 한 건만');
+select tests.authenticate_as(:'admin_uid');
+select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L, %L) $$, :'b_pid', :'past_meal', :'b_fid', :'rid'), 'P0001', 'duplicate_request', '다른 사람·식사에 같은 request_id 를 재사용하면 거부');
 
 -- 재정의된 use_ticket: 교인이 그대로 쓸 수 있고, 그 뒤 잔량보다 큰 발급의 취소는 would_go_negative
 select tests.authenticate_as(:'a_uid');
@@ -795,19 +840,19 @@ select lives_ok(format($$ select public.use_ticket(%L, %L) $$, :'today_meal', ge
 select tests.clear_auth();
 select is((select count(*)::integer from public.usages where meal_id = :'today_meal' and used_via = 'self' and voided_at is null), 1, 'self 사용 1건이 남는다');
 select tests.authenticate_as(:'admin_uid');
--- A 오늘: 발급 3(i1), 사용 1 → i1(3장)을 취소하면 잔량 -1
+-- A 오늘: 발급 3(i1), 이미 쓴 장수(멱등 대신 사용 1 + self 1)가 있어 i1(3장) 전체 취소는 잔량을 음수로 만든다
 select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, :'i1'), 'P0001', 'would_go_negative', '이미 사용된 장수가 있어 잔량이 음수가 되는 취소는 거부');
 
 select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm run db:test`
 Expected: `140` 이 함수 없음으로 실패 (010~130 은 통과).
 
-- [ ] **Step 3: 마이그레이션**
+- [x] **Step 3: 마이그레이션**
 
 `supabase/migrations/20261010000001_admin_ticket_ops.sql`:
 
@@ -819,6 +864,9 @@ Expected: `140` 이 함수 없음으로 실패 (010~130 은 통과).
 --   합류(add_family_member)는 ③ → ④ → 장부 update 순이라, 장부 행을 먼저 잠그고 ④ 를 기다리면 40P01 이 난다.
 --   그래서 cancel_issuance·void_usage 는 행을 잠그지 않고 읽어 (family, meal) 을 알아낸 뒤 ④ → 행 for update 재조회 순으로 간다.
 --   과거 식사는 합류가 ④ 를 잡지 않아 그 사이 family_id 가 바뀔 수 있다 → 재조회한 가족이 다르면 그 쌍도 잠근다.
+--   (이론상 두 세션이 서로 다른 가족의 재조회에서 서로를 기다리는 상호 합류 40P01 도 생각해 볼 수 있지만, 앱에서는
+--   합류의 도착 가족이 항상 호출자 자신의 가족이고 leave_family 는 새 가족을 만들 뿐이라 이 경로로는 닿지 않는다 —
+--   혹시 나타나면 40P01 은 그대로 일반 오류 문구로 보여도 된다.)
 -- use_ticket: 2단계 파일(20261008000004)은 운영에 적용됐으므로 고치지 않고 여기서 같은 시그니처로 재정의한다.
 --   바뀐 점 = 사람 행 for update(합류 중이면 끝날 때까지 기다려 새 family_id 를 읽는다 — 3단계 최종 리뷰가 넘긴 틈) +
 --   잠금을 lock_family_meal 헬퍼로(키는 100_pairing_codes.sql 이 같음을 고정). 멱등·당일·잔량 규칙은 그대로.
@@ -859,6 +907,9 @@ begin
   perform public.lock_family_meal(v_row.family_id, v_row.meal_id);
   v_locked_family := v_row.family_id;
   select * into v_row from public.issuances where id = p_issuance_id for update;
+  if not found then
+    raise exception 'issuance_not_found';
+  end if;
   if v_row.family_id <> v_locked_family then
     perform public.lock_family_meal(v_row.family_id, v_row.meal_id);
   end if;
@@ -917,6 +968,9 @@ begin
   perform public.lock_family_meal(v_row.family_id, v_row.meal_id);
   v_locked_family := v_row.family_id;
   select * into v_row from public.usages where id = p_usage_id for update;
+  if not found then
+    raise exception 'usage_not_found';
+  end if;
   if v_row.family_id <> v_locked_family then
     perform public.lock_family_meal(v_row.family_id, v_row.meal_id);
   end if;
@@ -937,9 +991,18 @@ grant execute on function public.void_usage(uuid) to authenticated;
 -- 대신 사용: 담당자가 교인 폰 없이 1장을 사용 처리한다(사후 기록 포함 — 날짜 제한 없음). 자녀 몫도 허용(잔량은 가족 것).
 -- p_family_id(선택): 화면이 본 가족. 그 사이 사람이 가족을 옮겼으면(가족 나가기·합류) family_changed 로 거부한다 — 옛 가족 블록에서 눌렀는데
 -- 새 가족 풀에서 깎이는 것을 막는다(장부의 family_id 는 발급 시점 스냅샷, 함수는 현재 가족으로 깎는다 — Task 1 리뷰).
--- 코드: not_authenticated | forbidden | person_not_found | family_changed | meal_not_found | no_remaining
+-- p_request_id(선택): 클라이언트가 만든 재시도 키 — 같은 값은 처음 결과를 돌려준다(use_ticket 과 같은 규칙). 없으면 서버가 만든다(멱등 아님).
+-- 코드: not_authenticated | forbidden | person_not_found | family_changed | meal_not_found | no_remaining | duplicate_request
 -- =========================================================
-create or replace function public.use_ticket_as_admin(p_person_id uuid, p_meal_id uuid, p_family_id uuid default null)
+-- 로컬에서 3인자 버전을 이미 만든 DB 가 있을 수 있다(migration up). 운영에는 간 적 없어 no-op.
+drop function if exists public.use_ticket_as_admin(uuid, uuid, uuid);
+
+create or replace function public.use_ticket_as_admin(
+  p_person_id uuid,
+  p_meal_id uuid,
+  p_family_id uuid default null,
+  p_request_id uuid default null
+)
 returns public.usages
 language plpgsql
 security definer
@@ -972,6 +1035,17 @@ begin
 
   -- ④
   perform public.lock_family_meal(v_person.family_id, p_meal_id);
+
+  if p_request_id is not null then
+    select * into v_row from public.usages where request_id = p_request_id;
+    if found then
+      if v_row.person_id <> v_person.id or v_row.meal_id <> p_meal_id then
+        raise exception 'duplicate_request';
+      end if;
+      return v_row;
+    end if;
+  end if;
+
   select coalesce(sum(i.quantity), 0)
          - (select coalesce(sum(u.quantity), 0) from public.usages u
              where u.family_id = v_person.family_id and u.meal_id = p_meal_id and u.voided_at is null)
@@ -982,16 +1056,23 @@ begin
     raise exception 'no_remaining';
   end if;
 
-  insert into public.usages (family_id, person_id, meal_id, quantity, used_via, recorded_by, request_id)
-  values (v_person.family_id, v_person.id, p_meal_id, 1, 'admin', v_admin, gen_random_uuid())
-  returning * into v_row;
+  begin
+    insert into public.usages (family_id, person_id, meal_id, quantity, used_via, recorded_by, request_id)
+    values (v_person.family_id, v_person.id, p_meal_id, 1, 'admin', v_admin, coalesce(p_request_id, gen_random_uuid()))
+    returning * into v_row;
+  exception when unique_violation then
+    select * into v_row from public.usages where request_id = p_request_id;
+    if not found or v_row.person_id <> v_person.id or v_row.meal_id <> p_meal_id then
+      raise exception 'duplicate_request';
+    end if;
+  end;
   return v_row;
 end
 $$;
 
-comment on function public.use_ticket_as_admin(uuid, uuid, uuid) is '관리자 대신 사용 처리(날짜 제한 없음, ② 사람 행 → ④, 가족 확인). 오류 코드는 파일 헤더 참고.';
-revoke execute on function public.use_ticket_as_admin(uuid, uuid, uuid) from public, anon;
-grant execute on function public.use_ticket_as_admin(uuid, uuid, uuid) to authenticated;
+comment on function public.use_ticket_as_admin(uuid, uuid, uuid, uuid) is '관리자 대신 사용 처리(날짜 제한 없음, ② 사람 행 → ④, 가족 확인, p_request_id 로 멱등). 오류 코드는 파일 헤더 참고.';
+revoke execute on function public.use_ticket_as_admin(uuid, uuid, uuid, uuid) from public, anon;
+grant execute on function public.use_ticket_as_admin(uuid, uuid, uuid, uuid) to authenticated;
 
 -- =========================================================
 -- use_ticket 재정의 (시그니처·동작 동일, 잠금만 보강). 원본 설명은 20261008000004_use_ticket.sql 참고.
@@ -1069,15 +1150,15 @@ revoke execute on function public.use_ticket(uuid, uuid) from public, anon;
 grant execute on function public.use_ticket(uuid, uuid) to authenticated;
 ```
 
-- [ ] **Step 4: 통과 확인 · 타입 재생성**
+- [x] **Step 4: 통과 확인 · 타입 재생성**
 
 Run: `npm run db:reset && npm run db:test`
-Expected: `Files=14, Tests=380, Result: PASS` (348 + 32). `090_use_ticket.sql` 22건이 재정의 뒤에도 그대로 통과한다(동작 동일의 증거).
+Expected: `Files=14, Tests=392, Result: PASS` (348 + 44). `090_use_ticket.sql` 22건이 재정의 뒤에도 그대로 통과한다(동작 동일의 증거).
 
 Run: `npm run db:types && git diff --stat src/lib/database.types.ts`
-Expected: `Functions` 에 `cancel_issuance`(`p_issuance_id: string; p_reason?: string`), `use_ticket_as_admin`(`p_family_id?: string`), `void_usage` 추가.
+Expected: `Functions` 에 `cancel_issuance`(`p_issuance_id: string; p_reason?: string`), `use_ticket_as_admin`(`p_family_id?: string`, `p_request_id?: string`), `void_usage` 추가.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add supabase/migrations/20261010000001_admin_ticket_ops.sql supabase/tests/database/140_admin_ticket_ops.sql src/lib/database.types.ts
@@ -1094,7 +1175,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/features/admin/useMealOps.ts`, `src/features/admin/useMealOps.test.tsx`
 - Modify: `src/lib/errors.ts`, `src/lib/errors.test.ts`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/admin/useMealOps.test.tsx`:
 
@@ -1102,8 +1183,16 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { ok } from '../../test/fakeSupabase'
-import { invalidateMealOps, useCancelIssuance, useUseTicketAsAdmin, useVoidUsage } from './useMealOps'
+import { fail, ok } from '../../test/fakeSupabase'
+import {
+  invalidateMealOps,
+  mealOpsErrorMessage,
+  OPS_TIMEOUT_MS,
+  SETTLE_TIMEOUT_MS,
+  useCancelIssuance,
+  useUseTicketAsAdmin,
+  useVoidUsage,
+} from './useMealOps'
 
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn<(fn: string, args?: Record<string, unknown>) => unknown>() }))
 vi.mock('../../lib/supabase', () => ({ supabase: { rpc } }))
@@ -1117,11 +1206,12 @@ function makeWrapper() {
   return { client, wrapper, invalidate }
 }
 // 키 목록 전체를 정확히 — 스파이를 여러 훅이 공유하면 한 훅의 onSuccess 가 빠져도 통과한다 (공통 규약)
-function expectExactInvalidation(invalidate: { mock: { calls: unknown[][] } }) {
-  expect(invalidate.mock.calls.map((c) => (c[0] as { queryKey?: unknown } | undefined)?.queryKey)).toEqual(OPS_KEYS)
+function expectExactInvalidation(invalidate: ReturnType<typeof makeWrapper>['invalidate']) {
+  expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual(OPS_KEYS)
 }
 
 describe('invalidateMealOps', () => {
+  // oxlint-disable-next-line vitest/expect-expect -- 단언은 expectExactInvalidation 안의 expect() 가 한다
   it('식사 현황·관리자 합계·식권·내역을 무효화한다', async () => {
     const { client, invalidate } = makeWrapper()
     await invalidateMealOps(client, 'm1')
@@ -1130,51 +1220,241 @@ describe('invalidateMealOps', () => {
 })
 
 describe('useCancelIssuance', () => {
-  it('cancel_issuance 를 발급 id 로 부르고 성공 시 네 키를 무효화한다', async () => {
-    rpc.mockReturnValue(ok({ id: 'i1', cancelled_at: '2026-10-10T00:00:00Z' }))
+  it('cancel_issuance 를 발급 id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+    const q = ok({ id: 'i1', cancelled_at: '2026-10-10T00:00:00Z' })
+    rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
     await act(async () => {
       await result.current.mutateAsync('i1')
     })
     expect(rpc).toHaveBeenCalledWith('cancel_issuance', { p_issuance_id: 'i1' })
+    expect(q.has('abortSignal')).toBe(true)
     expectExactInvalidation(invalidate)
   })
 
-  it('RPC 오류는 코드를 보존한 Error 로 던진다', async () => {
-    rpc.mockReturnValue({ then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: null, error: { code: 'P0001', message: 'would_go_negative', details: '', hint: '', name: 'PostgrestError' } }).then(resolve) })
+  it('서버가 거부하면(코드 있음) 코드를 보존한 Error 로 던지고 현황만 다시 읽는다', async () => {
+    rpc.mockReturnValue(fail('would_go_negative'))
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
     await expect(result.current.mutateAsync('i1')).rejects.toMatchObject({ message: 'would_go_negative', code: 'P0001' })
     await waitFor(() => expect(result.current.isError).toBe(true))
     // 거부되면 화면의 잔량이 낡았을 수 있다 → 현황만 다시 읽는다
-    expect(invalidate.mock.calls.map((c) => (c[0] as { queryKey?: unknown } | undefined)?.queryKey)).toEqual([['meal-detail', 'm1']])
+    expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual([['meal-detail', 'm1']])
+  })
+
+  it('통신 오류(코드 없음)는 현황을 다시 읽지 않는다 — 오류 토스트가 재조회를 기다리지 않게', async () => {
+    rpc.mockReturnValue(fail('TimeoutError: signal timed out', ''))
+    const { wrapper, invalidate } = makeWrapper()
+    const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
+    await expect(result.current.mutateAsync('i1')).rejects.toThrow('TimeoutError: signal timed out')
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(invalidate).not.toHaveBeenCalled()
+  })
+
+  it(`성공 뒤 재조회가 ${SETTLE_TIMEOUT_MS}ms 안에 끝나지 않아도 버튼을 풀어 준다 (재조회에는 타임아웃이 없다 — 끊긴 연결 대비)`, async () => {
+    rpc.mockReturnValue(ok({ id: 'i1', cancelled_at: '2026-10-10T00:00:00Z' }))
+    const { wrapper, invalidate } = makeWrapper()
+    // 재조회가 영영 끝나지 않는 상황(끊긴 연결)을 흉내 낸다 — useMealDetail 의 queryFn 에는 AbortSignal 이 없다.
+    invalidate.mockReturnValue(new Promise<void>(() => {}))
+    const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
+
+    vi.useFakeTimers()
+    try {
+      act(() => {
+        void result.current.mutateAsync('i1').catch(() => undefined)
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SETTLE_TIMEOUT_MS - 1)
+      })
+      // 재조회가 끝나지 않았으니 아직 처리 중이어야 한다
+      expect(result.current.isPending).toBe(true)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      // react-query 의 성공 알림(notifyManager 의 setTimeout(0))은 바로 위 타이머가 끝난 뒤에 걸리는 또 다른
+      // setTimeout(0) 라, advanceTimersByTimeAsync 한 번만으로는 전부 못 흘려보낼 때가 있다 (★ 타임아웃 테스트와 같은 사정).
+      await act(async () => {
+        await vi.runAllTimersAsync()
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+    // 한도를 넘으면 재조회가 안 끝났어도 성공으로 풀어 준다 — 5초 폴링이 뒤따라 맞춘다
+    await waitFor(() => expect(result.current.isPending).toBe(false))
+    expect(result.current.isSuccess).toBe(true)
+  })
+
+  it(`SETTLE_TIMEOUT_MS 는 ${SETTLE_TIMEOUT_MS}ms`, () => {
+    expect(SETTLE_TIMEOUT_MS).toBe(3_000)
   })
 })
 
 describe('useVoidUsage', () => {
-  it('void_usage 를 사용 id 로 부르고 성공 시 네 키를 무효화한다', async () => {
-    rpc.mockReturnValue(ok({ id: 'u1', voided_at: '2026-10-10T00:00:00Z' }))
+  it('void_usage 를 사용 id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+    const q = ok({ id: 'u1', voided_at: '2026-10-10T00:00:00Z' })
+    rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useVoidUsage('m1'), { wrapper })
     await act(async () => {
       await result.current.mutateAsync('u1')
     })
     expect(rpc).toHaveBeenCalledWith('void_usage', { p_usage_id: 'u1' })
+    expect(q.has('abortSignal')).toBe(true)
     expectExactInvalidation(invalidate)
+  })
+
+  it('서버가 거부하면(코드 있음) 현황만 다시 읽는다', async () => {
+    rpc.mockReturnValue(fail('already_voided'))
+    const { wrapper, invalidate } = makeWrapper()
+    const { result } = renderHook(() => useVoidUsage('m1'), { wrapper })
+    await expect(result.current.mutateAsync('u1')).rejects.toMatchObject({ message: 'already_voided', code: 'P0001' })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual([['meal-detail', 'm1']])
   })
 })
 
 describe('useUseTicketAsAdmin', () => {
-  it('use_ticket_as_admin 을 사람·식사 id 로 부르고 성공 시 네 키를 무효화한다', async () => {
-    rpc.mockReturnValue(ok({ id: 'u9', used_via: 'admin' }))
+  it('use_ticket_as_admin 을 사람·식사 id 와 새 request_id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+    const q = ok({ id: 'u9', used_via: 'admin' })
+    rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
     await act(async () => {
       await result.current.mutateAsync({ personId: 'p1', familyId: 'f1' })
     })
-    expect(rpc).toHaveBeenCalledWith('use_ticket_as_admin', { p_person_id: 'p1', p_meal_id: 'm1', p_family_id: 'f1' })
+    expect(rpc).toHaveBeenCalledWith(
+      'use_ticket_as_admin',
+      expect.objectContaining({ p_person_id: 'p1', p_meal_id: 'm1', p_family_id: 'f1', p_request_id: expect.stringMatching(/^[0-9a-f-]{36}$/) }),
+    )
+    expect(q.has('abortSignal')).toBe(true)
     expectExactInvalidation(invalidate)
+  })
+
+  it('통신 오류(코드 없음) 뒤 같은 대상 재시도는 같은 request_id 를 쓴다 (서버 멱등 → 이중 차감 없음)', async () => {
+    rpc.mockReturnValueOnce(fail('TimeoutError: signal timed out', '')).mockReturnValueOnce(ok({ id: 'u9', used_via: 'admin' }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await expect(result.current.mutateAsync({ personId: 'p1', familyId: 'f1' })).rejects.toThrow('TimeoutError: signal timed out')
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }))
+
+    const firstArgs = rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined
+    const secondArgs = rpc.mock.calls[1]?.[1] as { p_request_id?: string } | undefined
+    expect(firstArgs?.p_request_id).toBe(secondArgs?.p_request_id)
+    expect(firstArgs?.p_request_id).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  it('서버가 판정한 오류(코드 있음) 뒤에는 같은 대상이라도 새 request_id', async () => {
+    rpc.mockReturnValueOnce(fail('no_remaining')).mockReturnValueOnce(ok({ id: 'u9', used_via: 'admin' }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await expect(result.current.mutateAsync({ personId: 'p1', familyId: 'f1' })).rejects.toThrow('no_remaining')
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }))
+
+    const firstArgs = rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined
+    const secondArgs = rpc.mock.calls[1]?.[1] as { p_request_id?: string } | undefined
+    expect(firstArgs?.p_request_id).not.toBe(secondArgs?.p_request_id)
+  })
+
+  it('성공 뒤 같은 대상을 다시 쓰면 새 request_id', async () => {
+    rpc.mockReturnValue(ok({ id: 'u9', used_via: 'admin' }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }))
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }))
+
+    const firstArgs = rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined
+    const secondArgs = rpc.mock.calls[1]?.[1] as { p_request_id?: string } | undefined
+    expect(firstArgs?.p_request_id).not.toBe(secondArgs?.p_request_id)
+  })
+
+  it('통신 오류 뒤 다른 대상(가족이 다름)을 쓰면 새 request_id (키가 다르다)', async () => {
+    rpc.mockReturnValueOnce(fail('TimeoutError: signal timed out', '')).mockReturnValueOnce(ok({ id: 'u9', used_via: 'admin' }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await expect(result.current.mutateAsync({ personId: 'p1', familyId: 'f1' })).rejects.toThrow('TimeoutError: signal timed out')
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f2' }))
+
+    const firstArgs = rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined
+    const secondArgs = rpc.mock.calls[1]?.[1] as { p_request_id?: string } | undefined
+    expect(firstArgs?.p_request_id).not.toBe(secondArgs?.p_request_id)
+  })
+
+  it('대상 A 가 타임아웃으로 재시도 id 를 들고 있는 동안 대상 B 를 처리해도 A 의 슬롯을 덮어쓰지 않는다', async () => {
+    rpc.mockReturnValueOnce(fail('TimeoutError: signal timed out', '')) // A 1차: 통신 오류
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await expect(result.current.mutateAsync({ personId: 'pA', familyId: 'fA' })).rejects.toThrow('TimeoutError: signal timed out')
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    const idA = (rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined)?.p_request_id
+
+    rpc.mockReturnValueOnce(ok({ id: 'u-b', used_via: 'admin' })) // B: 다른 대상, 성공
+    await act(() => result.current.mutateAsync({ personId: 'pB', familyId: 'fB' }))
+
+    rpc.mockReturnValueOnce(ok({ id: 'u-a', used_via: 'admin' })) // A 재시도: 1차와 같은 id 를 보내야 한다
+    await act(() => result.current.mutateAsync({ personId: 'pA', familyId: 'fA' }))
+
+    const idARetry = (rpc.mock.calls[2]?.[1] as { p_request_id?: string } | undefined)?.p_request_id
+    expect(idARetry).toBe(idA)
+    expect(idA).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  it(`OPS_TIMEOUT_MS(${OPS_TIMEOUT_MS}ms) 안에 응답이 없으면 요청을 끊는다`, async () => {
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    vi.useFakeTimers()
+    try {
+      const pending = {
+        signal: undefined as AbortSignal | undefined,
+        abortSignal(s: AbortSignal) {
+          this.signal = s
+          return this
+        },
+        then(resolve: (value: unknown) => void) {
+          this.signal?.addEventListener('abort', () => resolve({ data: null, error: { message: 'TimeoutError: signal timed out', code: '' } }))
+        },
+      }
+      rpc.mockReturnValue(pending)
+
+      act(() => {
+        void result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }).catch(() => undefined)
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(OPS_TIMEOUT_MS)
+      })
+
+      expect(pending.signal?.aborted).toBe(true)
+      expect((pending.signal?.reason as { name?: string } | undefined)?.name).toBe('TimeoutError')
+
+      await act(async () => {
+        await vi.runAllTimersAsync()
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+    await waitFor(() => expect(result.current.isError).toBe(true))
+  })
+})
+
+describe('mealOpsErrorMessage', () => {
+  it('no_remaining 은 관리자 맥락 문구로 바꾼다', () => {
+    expect(mealOpsErrorMessage(new Error('no_remaining'))).toBe('남은 식권이 없어요. 현황을 다시 불러왔어요.')
+  })
+
+  it('그 외 코드는 toUserMessage 그대로', () => {
+    expect(mealOpsErrorMessage(new Error('would_go_negative'))).toBe(
+      '이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 먼저 사용 기록을 무효 처리해 주세요.',
+    )
   })
 })
 ```
@@ -1183,32 +1463,32 @@ describe('useUseTicketAsAdmin', () => {
 
 ```ts
   it('4a단계 관리자 식권 조작 코드에 문구가 있다', () => {
-    expect(toUserMessage(new Error('issuance_not_found'))).toBe('발급 기록을 찾을 수 없어요. 목록을 새로고침해 주세요.')
+    expect(toUserMessage(new Error('issuance_not_found'))).toBe('발급 기록을 찾을 수 없어요. 현황을 다시 불러왔어요.')
     expect(toUserMessage(new Error('already_cancelled'))).toBe('이미 취소된 발급이에요.')
     expect(toUserMessage(new Error('invalid_reason'))).toBe('취소 사유는 100자까지예요.')
-    expect(toUserMessage(new Error('would_go_negative'))).toBe('이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 남은 장수를 확인해 주세요.')
-    expect(toUserMessage(new Error('usage_not_found'))).toBe('사용 기록을 찾을 수 없어요. 목록을 새로고침해 주세요.')
+    expect(toUserMessage(new Error('would_go_negative'))).toBe('이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 먼저 사용 기록을 무효 처리해 주세요.')
+    expect(toUserMessage(new Error('usage_not_found'))).toBe('사용 기록을 찾을 수 없어요. 현황을 다시 불러왔어요.')
     expect(toUserMessage(new Error('already_voided'))).toBe('이미 무효 처리된 기록이에요.')
     expect(toUserMessage(new Error('family_changed'))).toBe('그 사이 이 분의 가족이 바뀌었어요. 현황을 다시 불러왔어요.')
   })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/admin/useMealOps src/lib/errors`
 Expected: 모듈 없음 · 문구 없음(폴백 문구가 나온다).
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/lib/errors.ts` 의 `MESSAGES` 에 `over_request_rate_limit` 줄 다음에 추가:
 
 ```ts
   // 4a단계 · 관리자 식권 조작
-  issuance_not_found: '발급 기록을 찾을 수 없어요. 목록을 새로고침해 주세요.',
+  issuance_not_found: '발급 기록을 찾을 수 없어요. 현황을 다시 불러왔어요.',
   already_cancelled: '이미 취소된 발급이에요.',
   invalid_reason: '취소 사유는 100자까지예요.',
-  would_go_negative: '이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 남은 장수를 확인해 주세요.',
-  usage_not_found: '사용 기록을 찾을 수 없어요. 목록을 새로고침해 주세요.',
+  would_go_negative: '이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 먼저 사용 기록을 무효 처리해 주세요.',
+  usage_not_found: '사용 기록을 찾을 수 없어요. 현황을 다시 불러왔어요.',
   already_voided: '이미 무효 처리된 기록이에요.',
   family_changed: '그 사이 이 분의 가족이 바뀌었어요. 현황을 다시 불러왔어요.',
 ```
@@ -1217,12 +1497,18 @@ Expected: 모듈 없음 · 문구 없음(폴백 문구가 나온다).
 
 ```ts
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useRef } from 'react'
+import { rpcCodeOf, toUserMessage } from '../../lib/errors'
 import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
+import { withTimeout } from '../../lib/timeout'
 import { ledgerQueryKey } from '../history/useFamilyLedger'
 import { ticketsQueryKey } from '../tickets/useFamilyTickets'
 import { mealDetailQueryKey } from './useMealDetail'
 import { adminBalancesQueryKey } from './useMeals'
+
+/** RPC 응답 대기 한계. 넘기면 요청을 끊어 버튼이 영원히 '처리 중…' 에 머무르지 않게 한다 (useUseTicket 과 같은 패턴, 다른 값). */
+export const OPS_TIMEOUT_MS = 8_000
 
 /**
  * 식권 조작 뒤 다시 읽어야 하는 것 전부: 이 식사의 현황, 관리자 식사 카드 합계,
@@ -1237,26 +1523,50 @@ export function invalidateMealOps(queryClient: QueryClient, mealId: string) {
   ])
 }
 
-// 네 조회가 각자 스냅샷이라 화면의 남은 장수가 잠깐 낡을 수 있다 → 서버가 거부하면(would_go_negative·no_remaining 등)
-// 현황을 바로 다시 읽어 버튼 잠금이 실제 잔량을 따르게 한다 (Task 1 리뷰).
-const refreshBoard = (queryClient: QueryClient, mealId: string) => () => queryClient.invalidateQueries({ queryKey: mealDetailQueryKey(mealId) })
+/** 성공 뒤 현황 재조회를 기다리는 한도. 넘으면 버튼을 먼저 풀어 준다 — 5초 폴링이 뒤따라 맞춘다.
+ *  (재조회에는 AbortSignal 이 없어 끊긴 연결에서 수십 초 매달릴 수 있다 — 최종 리뷰) */
+export const SETTLE_TIMEOUT_MS = 3_000
+
+const settleBoard = (queryClient: QueryClient, mealId: string) =>
+  Promise.race([invalidateMealOps(queryClient, mealId), new Promise<void>((resolve) => setTimeout(resolve, SETTLE_TIMEOUT_MS))])
+
+// 서버가 판단한 거부(코드 있음)일 때만 현황을 다시 읽는다 — 통신 실패 때 재조회까지 기다리면 오류 문구가 늦거나(오프라인이면 영영) 안 보인다.
+// 같은 이유로 await 되는 onError 안에서 하므로 "현황을 다시 불러왔어요" 문구가 사실이 된다.
+const makeRefreshBoard = (queryClient: QueryClient, mealId: string) => (err: unknown) =>
+  rpcCodeOf(err) ? queryClient.invalidateQueries({ queryKey: mealDetailQueryKey(mealId) }) : undefined
 
 /** 발급 한 건 취소. 사유 입력 칸은 4a 에 두지 않는다(DB 의 p_reason 은 선택 인자). */
 export function useCancelIssuance(mealId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (issuanceId: string) => unwrap(await supabase.rpc('cancel_issuance', { p_issuance_id: issuanceId })),
+    mutationFn: async (issuanceId: string) => {
+      const { signal, done } = withTimeout(OPS_TIMEOUT_MS)
+      try {
+        return unwrap(await supabase.rpc('cancel_issuance', { p_issuance_id: issuanceId }).abortSignal(signal))
+      } finally {
+        done()
+      }
+    },
     // promise 를 돌려줘야 재조회가 끝날 때까지 isPending 이 유지된다
-    onSuccess: () => invalidateMealOps(queryClient, mealId),
-    onError: refreshBoard(queryClient, mealId),
+    onSuccess: () => settleBoard(queryClient, mealId),
+    onError: makeRefreshBoard(queryClient, mealId),
   })
 }
 
 export function useVoidUsage(mealId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (usageId: string) => unwrap(await supabase.rpc('void_usage', { p_usage_id: usageId })),
-    onSuccess: () => invalidateMealOps(queryClient, mealId),
+    mutationFn: async (usageId: string) => {
+      const { signal, done } = withTimeout(OPS_TIMEOUT_MS)
+      try {
+        return unwrap(await supabase.rpc('void_usage', { p_usage_id: usageId }).abortSignal(signal))
+      } finally {
+        done()
+      }
+    },
+    onSuccess: () => settleBoard(queryClient, mealId),
+    // already_voided·usage_not_found 도 "화면이 낡았다" 는 뜻 — cancel 과 똑같이 현황을 다시 읽는다.
+    onError: makeRefreshBoard(queryClient, mealId),
   })
 }
 
@@ -1265,21 +1575,48 @@ export type AdminUseArgs = { personId: string; familyId: string }
 /** 담당자가 교인 폰 없이 1장 사용 처리. personId 는 "누구 몫"(가족 블록의 산 사람), familyId 는 화면이 본 가족 — 그 사이 옮겼으면 서버가 family_changed 로 거부한다. */
 export function useUseTicketAsAdmin(mealId: string) {
   const queryClient = useQueryClient()
+  // 재시도 키: 대상(식사·사람·가족)마다 하나씩 들고 있는다(한 훅 인스턴스가 여러 가족 블록을 처리하므로, 슬롯 하나였다면
+  // 다른 대상을 처리하는 사이 먼저 걸려 있던 재시도 id 를 덮어써 버린다). 서버가 판단한 응답(성공 또는 코드 있는 오류)이
+  // 오면 그 대상의 id 를 버린다; 통신 실패·타임아웃이면 남겨 둔다(use_ticket 과 같은 규칙).
+  const retry = useRef(new Map<string, string>())
   return useMutation({
-    mutationFn: async ({ personId, familyId }: AdminUseArgs) =>
-      unwrap(await supabase.rpc('use_ticket_as_admin', { p_person_id: personId, p_meal_id: mealId, p_family_id: familyId })),
-    onSuccess: () => invalidateMealOps(queryClient, mealId),
-    onError: refreshBoard(queryClient, mealId),
+    mutationFn: async ({ personId, familyId }: AdminUseArgs) => {
+      const key = `${mealId}:${personId}:${familyId}`
+      const requestId = retry.current.get(key) ?? crypto.randomUUID()
+      retry.current.set(key, requestId)
+      const { signal, done } = withTimeout(OPS_TIMEOUT_MS)
+      try {
+        const row = unwrap(
+          await supabase
+            .rpc('use_ticket_as_admin', { p_person_id: personId, p_meal_id: mealId, p_family_id: familyId, p_request_id: requestId })
+            .abortSignal(signal),
+        )
+        retry.current.delete(key)
+        return row
+      } catch (err) {
+        if (rpcCodeOf(err)) retry.current.delete(key)
+        throw err
+      } finally {
+        done()
+      }
+    },
+    onSuccess: () => settleBoard(queryClient, mealId),
+    onError: makeRefreshBoard(queryClient, mealId),
   })
+}
+
+/** 현황판 동작 오류 문구. no_remaining 은 교인 폰 문구("방금 다른 폰에서…")가 아니라 관리자 맥락으로. */
+export function mealOpsErrorMessage(err: unknown): string {
+  return rpcCodeOf(err) === 'no_remaining' ? '남은 식권이 없어요. 현황을 다시 불러왔어요.' : toUserMessage(err)
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/features/admin/useMealOps.ts src/features/admin/useMealOps.test.tsx src/lib/errors.ts src/lib/errors.test.ts
@@ -1294,7 +1631,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Files:**
 - Modify: `src/pages/admin/MealDetailPage.tsx`, `src/pages/admin/MealDetailPage.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/pages/admin/MealDetailPage.test.tsx` 에 목과 테스트를 추가한다. 상단 `vi.mock` 들 다음에:
 
@@ -1305,7 +1642,12 @@ const { useCancelIssuance, useVoidUsage, useUseTicketAsAdmin } = vi.hoisted(() =
   useVoidUsage: vi.fn<(mealId: string) => M>(),
   useUseTicketAsAdmin: vi.fn<(mealId: string) => M>(),
 }))
-vi.mock('../../features/admin/useMealOps', () => ({ useCancelIssuance, useVoidUsage, useUseTicketAsAdmin }))
+vi.mock('../../features/admin/useMealOps', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../features/admin/useMealOps')>()),
+  useCancelIssuance,
+  useVoidUsage,
+  useUseTicketAsAdmin,
+}))
 const idle = (): M => ({ isPending: false, isError: false, mutate: vi.fn<M['mutate']>(), reset: vi.fn<() => void>() })
 ```
 
@@ -1383,7 +1725,7 @@ const idle = (): M => ({ isPending: false, isError: false, mutate: vi.fn<M['muta
     useCancelIssuance.mockReturnValue(cancel)
     useVoidUsage.mockReturnValue(voidUsage)
     renderPage()
-    expect(screen.getByRole('alert')).toHaveTextContent('이미 사용된 장수가 있어 이 발급은 취소할 수 없어요')
+    expect(screen.getByRole('alert')).toHaveTextContent('이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 먼저 사용 기록을 무효 처리해 주세요.')
     await userEvent.click(screen.getByRole('button', { name: '10/11 12:40 사용 무효' }))
     await userEvent.click(screen.getByRole('button', { name: '무효 처리' }))
     expect(cancel.reset).toHaveBeenCalled()
@@ -1391,25 +1733,24 @@ const idle = (): M => ({ isPending: false, isError: false, mutate: vi.fn<M['muta
   })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/pages/admin/MealDetailPage`
 Expected: 버튼 없음으로 새 테스트 실패, Task 2 테스트는 통과.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/pages/admin/MealDetailPage.tsx` 를 아래처럼 바꾼다 (Task 2 코드에 동작을 더한 전체):
 
 ```tsx
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { Spinner, TextField } from '../../components/ui'
-import { filterFamilies, type FamilyGroup, type MealIssuance, type MealUsage } from '../../features/admin/groupMealLedger'
+import { filterFamilies, NO_NAME, type FamilyGroup, type MealIssuance, type MealUsage } from '../../features/admin/groupMealLedger'
 import { useMealDetail } from '../../features/admin/useMealDetail'
-import { useCancelIssuance, useUseTicketAsAdmin, useVoidUsage } from '../../features/admin/useMealOps'
+import { mealOpsErrorMessage, useCancelIssuance, useUseTicketAsAdmin, useVoidUsage } from '../../features/admin/useMealOps'
 import { formatDateTime, formatMealDate } from '../../lib/dates'
-import { toUserMessage } from '../../lib/errors'
 import { formatWon } from '../../lib/money'
 
 type Actions = {
@@ -1417,6 +1758,11 @@ type Actions = {
   onCancel: (issuance: MealIssuance) => void
   onVoid: (usage: MealUsage) => void
   onUseAsAdmin: (family: FamilyGroup) => void
+}
+
+// 사용 줄과 알림에 공통으로 쓰는 "누구 몫으로/어느 폰에서" 문구. admin 이면 담당자가 대신 처리했다는 뜻.
+function usageWho(u: MealUsage): string {
+  return u.via === 'admin' ? `${u.person || '가족'} 몫 · 담당자 처리` : `${u.person || '가족'} 폰`
 }
 
 /** `#/admin/meals/:mealId` — 식사 하나의 현황판 (설계 §8.3). 발급·사용·남음·금액, 이름 검색, 가족별 명단 + 취소·대신 사용·무효. 5초 폴링은 훅이 한다. */
@@ -1428,12 +1774,25 @@ export function MealDetailPage() {
   const useAsAdmin = useUseTicketAsAdmin(mealId)
   const [query, setQuery] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
+  const feedbackRef = useRef<HTMLDivElement>(null)
 
   const pending = cancel.isPending || voidUsage.isPending || useAsAdmin.isPending
-  const opsError = cancel.isError ? toUserMessage(cancel.error) : voidUsage.isError ? toUserMessage(voidUsage.error) : useAsAdmin.isError ? toUserMessage(useAsAdmin.error) : null
+  // 관리자 맥락 문구(no_remaining 은 교인 폰 문구가 아니라 "남은 식권이 없어요")
+  const opsError = cancel.isError
+    ? mealOpsErrorMessage(cancel.error)
+    : voidUsage.isError
+      ? mealOpsErrorMessage(voidUsage.error)
+      : useAsAdmin.isError
+        ? mealOpsErrorMessage(useAsAdmin.error)
+        : null
+
+  // 피드백(성공 알림·오류)이 생기면 그 영역으로 포커스를 옮긴다 — 눌렸던 버튼이 성공으로 사라질 때 포커스를 잃지 않게 한다.
+  useEffect(() => {
+    if (notice || opsError) feedbackRef.current?.focus()
+  }, [notice, opsError])
 
   // 다음 동작이 시작되면 이전 동작의 오류·알림을 지운다 (공통 규약)
-  function startAction() {
+  function clearFeedback() {
     cancel.reset()
     voidUsage.reset()
     useAsAdmin.reset()
@@ -1442,16 +1801,16 @@ export function MealDetailPage() {
   const actions: Actions = {
     pending,
     onCancel: (i) => {
-      startAction()
-      cancel.mutate(i.id, { onSuccess: () => setNotice(`${i.buyer || '(이름 없음)'} 님 ${i.quantity}장 발급을 취소했어요`) })
+      clearFeedback()
+      cancel.mutate(i.id, { onSuccess: () => setNotice(`${i.buyer ? `${i.buyer} 님` : NO_NAME} ${i.quantity}장 발급을 취소했어요`) })
     },
     onVoid: (u) => {
-      startAction()
-      voidUsage.mutate(u.id, { onSuccess: () => setNotice('사용 기록을 무효 처리했어요') })
+      clearFeedback()
+      voidUsage.mutate(u.id, { onSuccess: () => setNotice(`${usageWho(u)} 사용을 무효 처리했어요`) })
     },
     onUseAsAdmin: (f) => {
-      if (!f.buyerId) return
-      startAction()
+      if (!f.buyerId) return // 버튼이 이미 잠겨 있어 도달하지 않는다 (타입 좁히기용)
+      clearFeedback()
       useAsAdmin.mutate({ personId: f.buyerId, familyId: f.familyId }, { onSuccess: () => setNotice(`${f.label} 가족 식권 1장을 사용 처리했어요`) })
     },
   }
@@ -1476,8 +1835,16 @@ export function MealDetailPage() {
             <p className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold">
               발급 {detail.data.ledger.totals.issued}장 · 사용 {detail.data.ledger.totals.used}장 · 남음 {detail.data.ledger.totals.remaining}장 · {formatWon(detail.data.ledger.totals.amount)}
             </p>
-            {notice && <p role="status" className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-700">{notice}</p>}
-            {opsError && <p role="alert" className="text-sm text-red-600">{opsError}</p>}
+            {(notice || opsError) && (
+              <div
+                ref={feedbackRef}
+                tabIndex={-1}
+                className="sticky top-0 z-10 flex flex-col gap-2 bg-[#f5f5f7] py-1 outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+              >
+                {notice && <p role="status" className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-700">{notice}</p>}
+                {opsError && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{opsError}</p>}
+              </div>
+            )}
             <TextField label="이름으로 찾기" name="query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="구매자·사용자 이름" autoComplete="off" />
             <FamilyList families={filterFamilies(detail.data.ledger.families, query)} searching={query.trim() !== ''} actions={actions} />
           </>
@@ -1535,21 +1902,21 @@ function FamilyBlock({ family, actions }: { family: FamilyGroup; actions: Action
 }
 
 function IssuanceLine({ issuance: i, remaining, actions }: { issuance: MealIssuance; remaining: number; actions: Actions }) {
-  const buyer = i.buyer || '(이름 없음)'
+  const buyer = i.buyer || NO_NAME
   // 발급 단위 취소라, 이 발급 장수가 가족 남은 장수보다 많으면 DB 가 would_go_negative 로 거부한다 → 미리 잠그고 이유를 적는다 (설계 §9)
   const blocked = !i.cancelled && i.quantity > remaining
   return (
     <li className={`flex items-start justify-between gap-2 ${i.cancelled ? 'text-gray-500' : ''}`}>
-      <div className="min-w-0">
+      <div className="min-w-0 break-words">
         <div className={i.cancelled ? 'line-through' : ''}>발급 {i.quantity}장 · {buyer} · {formatWon(i.amount)}</div>
         <div className="text-xs text-gray-500">{formatDateTime(i.issuedAt)} · {i.issuer}{i.memo ? ` · ${i.memo}` : ''}</div>
         {i.cancelled && <div className="text-xs font-bold">취소됨{i.cancelReason ? ` · ${i.cancelReason}` : ''}</div>}
-        {blocked && <div className="text-xs text-gray-500">남은 장수({remaining})보다 많아 취소할 수 없어요</div>}
+        {blocked && <div className="text-xs text-gray-500">남은 장수({remaining})보다 많아 취소할 수 없어요 — 먼저 사용을 무효 처리해 주세요</div>}
       </div>
       {!i.cancelled && (
         <ConfirmButton
           label={actions.pending ? '처리 중…' : '발급 취소'}
-          context={`${buyer} ${i.quantity}장`}
+          context={`${formatDateTime(i.issuedAt)} ${buyer} ${i.quantity}장`}
           message={`${buyer} 님의 ${i.quantity}장 발급을 취소할까요? 가족 잔량이 ${i.quantity}장 줄어요.`}
           confirmLabel="취소하기"
           onConfirm={() => actions.onCancel(i)}
@@ -1562,11 +1929,11 @@ function IssuanceLine({ issuance: i, remaining, actions }: { issuance: MealIssua
 
 function UsageLine({ usage: u, actions }: { usage: MealUsage; actions: Actions }) {
   // admin 이면 person 은 "누구 몫으로", self 면 "어느 폰에서". 이름이 가려졌으면(탈퇴) 자리를 비우지 않는다.
-  const who = u.via === 'admin' ? `${u.person || '가족'} 몫 · 담당자 처리` : `${u.person || '가족'} 폰`
+  const who = usageWho(u)
   const when = formatDateTime(u.usedAt)
   return (
     <li className={`flex items-start justify-between gap-2 ${u.voided ? 'text-gray-500' : ''}`}>
-      <div className="min-w-0">
+      <div className="min-w-0 break-words">
         <div className={u.voided ? 'line-through' : ''}>사용 1장 · {who}</div>
         <div className="text-xs text-gray-500">{when}</div>
         {u.voided && <div className="text-xs font-bold">무효</div>}
@@ -1574,7 +1941,7 @@ function UsageLine({ usage: u, actions }: { usage: MealUsage; actions: Actions }
       {!u.voided && (
         <ConfirmButton
           label={actions.pending ? '처리 중…' : '무효'}
-          context={`${when} 사용`}
+          context={`${who} ${when} 사용`}
           message="이 사용 기록을 무효 처리할까요? 가족 잔량이 1장 늘어요."
           confirmLabel="무효 처리"
           onConfirm={() => actions.onVoid(u)}
@@ -1586,16 +1953,16 @@ function UsageLine({ usage: u, actions }: { usage: MealUsage; actions: Actions }
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과.
 
-- [ ] **Step 5: 수동 확인 (로컬)**
+- [x] **Step 5: 수동 확인 (로컬)**
 
 Run: `npm run dev`. 관리자로 현황 화면에서 대신 사용 → 2장 중 1장 → 무효 → 다시 0 → 발급 취소(남은 장수 안) → 취소됨. 홈(내 식권)에 관리자 본인 가족이면 즉시 반영. (Task 6 이 자동화.)
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add src/pages/admin/MealDetailPage.tsx src/pages/admin/MealDetailPage.test.tsx
@@ -1611,7 +1978,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Files:**
 - Create: `e2e/admin.spec.ts`
 
-- [ ] **Step 1: 스펙 작성**
+- [x] **Step 1: 스펙 작성**
 
 `e2e/admin.spec.ts`:
 
@@ -1654,27 +2021,32 @@ test('관리자 식사 현황판: 발급 명단 → 1장 대신 사용 → 무�
 
   await test.step('1장 대신 사용 → 2장 중 1장, 취소 불가 안내', async () => {
     await page.getByRole('button', { name: '김철수 1장 대신 사용' }).click()
-    await page.getByRole('button', { name: '사용 처리' }).click()
+    await page.getByRole('button', { name: '사용 처리', exact: true }).click()
     await expect(page.getByText('김철수 가족 식권 1장을 사용 처리했어요')).toBeVisible()
     await expect(page.getByText('발급 2장 · 사용 1장 · 남음 1장 · 10,000원')).toBeVisible()
     await expect(page.getByRole('listitem', { name: '김철수', exact: true })).toContainText('김철수 몫 · 담당자 처리')
+    // 한 번 눌렀으니 사용 줄도 하나 (대신 사용은 멱등이 아니다 — Task 4 리뷰)
+    // ConfirmButton 의 sr-only 접두사에도 같은 글자가 있어 행 안 getByText 는 '$' 로 줄 본문만 맞춘다 (Task 5 리뷰)
+    await expect(page.getByRole('listitem', { name: '김철수', exact: true }).getByText(/담당자 처리$/)).toHaveCount(1)
     // 남은 1장 < 발급 2장 → 이 발급은 취소할 수 없다
-    await expect(page.getByRole('button', { name: '김철수 2장 발급 취소' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: /김철수 2장 발급 취소$/ })).toBeDisabled() // 접근성 이름은 '<발급 시각> 김철수 2장 발급 취소'
     await expect(page.getByText('남은 장수(1)보다 많아 취소할 수 없어요')).toBeVisible()
   })
 
   await test.step('무효 처리 → 다시 2장 남음', async () => {
     await page.getByRole('button', { name: /사용 무효$/ }).click()
-    await page.getByRole('button', { name: '무효 처리' }).click()
-    await expect(page.getByText('사용 기록을 무효 처리했어요')).toBeVisible()
+    await page.getByRole('button', { name: '무효 처리', exact: true }).click()
+    await expect(page.getByText('김철수 몫 · 담당자 처리 사용을 무효 처리했어요')).toBeVisible()
     await expect(page.getByText('발급 2장 · 사용 0장 · 남음 2장 · 10,000원')).toBeVisible()
-    await expect(page.getByRole('listitem', { name: '김철수', exact: true })).toContainText('무효')
-    await expect(page.getByRole('button', { name: '김철수 2장 발급 취소' })).toBeEnabled()
+    // '무효' 글자는 버튼 이름에도 있으므로, 버튼이 사라지고 줄이 남는 것으로 확인한다
+    await expect(page.getByRole('button', { name: /사용 무효$/ })).toHaveCount(0)
+    await expect(page.getByRole('listitem', { name: '김철수', exact: true })).toContainText('사용 1장 · 김철수 몫 · 담당자 처리')
+    await expect(page.getByRole('button', { name: /김철수 2장 발급 취소$/ })).toBeEnabled()
   })
 
   await test.step('발급 취소 → 0장', async () => {
-    await page.getByRole('button', { name: '김철수 2장 발급 취소' }).click()
-    await page.getByRole('button', { name: '취소하기' }).click()
+    await page.getByRole('button', { name: /김철수 2장 발급 취소$/ }).click()
+    await page.getByRole('button', { name: '취소하기', exact: true }).click()
     await expect(page.getByText('김철수 님 2장 발급을 취소했어요')).toBeVisible()
     await expect(page.getByText('발급 0장 · 사용 0장 · 남음 0장 · 0원')).toBeVisible()
     await expect(page.getByRole('listitem', { name: '김철수', exact: true })).toContainText('취소됨')
@@ -1682,12 +2054,12 @@ test('관리자 식사 현황판: 발급 명단 → 1장 대신 사용 → 무�
 })
 ```
 
-- [ ] **Step 2: 실행**
+- [x] **Step 2: 실행**
 
 Run: `npm run e2e`
-Expected: **5 passed** (admin 1 · family 1 · onboarding 2 · tickets 1). 실패하면 `test-results/` 의 오류·스크린샷을 본다. 흔한 원인: (1) `getByRole('listitem', { name: '김철수' })` 가 여러 개 — 가족 라벨은 `aria-label` 이라 `exact: true` 로 좁혔다; (2) ConfirmButton 의 접근성 이름은 `context + ' ' + label` 이다(`김철수 1장 대신 사용`); (3) 폴링(5초)과 무효화가 겹쳐 숫자가 잠깐 전 값 — 모두 재시도 단언(`toBeVisible`)이라 기다린다.
+Expected: **5 passed** (admin 1 · family 1 · onboarding 2 · tickets 1). 실패하면 `test-results/` 의 오류·스크린샷을 본다. 흔한 원인: (1) 가족 라벨은 `aria-label` 이라 `exact: true` 로 좁혔다(중첩 `li` 는 이름이 없어 `exact` 없이도 1건이지만, 라벨이 여러 구매자로 늘면 조용히 통과하지 않게 둔다); (2) ConfirmButton 의 접근성 이름은 `context + ' ' + label` 이다(`김철수 1장 대신 사용`); (3) 폴링(5초)과 무효화가 겹쳐 숫자가 잠깐 전 값 — 모두 재시도 단언(`toBeVisible`)이라 기다린다.
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add e2e/admin.spec.ts
@@ -1705,7 +2077,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md`
 - Modify: `docs/superpowers/plans/2026-10-10-phase4a-meal-detail.md` (이 파일)
 
-- [ ] **Step 1: README**
+- [x] **Step 1: README**
 
 "### 5. 운영 체크리스트" 의 하위 절 `#### 발급 실수 정정 (4단계 전 임시 절차)` 와 그 SQL 블록을 지우고, 체크리스트 목록 끝에 한 줄을 넣는다:
 
@@ -1713,36 +2085,36 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - 발급 실수 정정은 **관리 › 식사 › 현황** 에서 한다: 발급 취소(가족 남은 장수 안에서만 — 이미 쓴 장수가 있으면 먼저 "무효" 로 되돌린다), 담당자 "1장 대신 사용", 사용 "무효". 모두 기록이 남고 지워지지 않는다. SQL 로 직접 고치지 않는다.
 ```
 
-- [ ] **Step 2: 설계 문서**
+- [x] **Step 2: 설계 문서**
 
-- §7.3 표: `cancel_issuance(id, reason)` 행 — "발급 한 건 통째로 취소. 취소 뒤 가족 잔량이 음수면 `would_go_negative`. 코드: `not_authenticated \| forbidden \| invalid_reason \| issuance_not_found \| already_cancelled \| would_go_negative`". `use_ticket_as_admin(person_id, meal_id)` 행 — "날짜 제한 없음. 자녀 몫도 허용(잔량은 가족 것). `used_via='admin'`, `recorded_by`=관리자, `request_id` 는 서버 생성. 코드: `not_authenticated \| forbidden \| person_not_found \| meal_not_found \| no_remaining`". `void_usage(id)` 행 — "코드: `not_authenticated \| forbidden \| usage_not_found \| already_voided`". `use_ticket` 행 끝에 "4a 에서 재정의: 사람 행 `for update` + `lock_family_meal`". 잠금 순서 문단에 "장부 행(issuances·usages) 잠금은 ④ 뒤에 — 합류의 장부 이동과 같은 순서" 한 줄.
+- §7.3 표: 행 이름을 실제 시그니처로 — `cancel_issuance(id, reason)`, `use_ticket_as_admin(person_id, meal_id, family_id, request_id)`(둘 다 선택; `family_id` 가 다르면 `family_changed`, `request_id` 는 재시도 키 — 같은 값은 처음 결과를 돌려주고 다른 대상에 재사용하면 `duplicate_request`), `void_usage(id)`. `cancel_issuance(id, reason)` 행 — "발급 한 건 통째로 취소. 취소 뒤 가족 잔량이 음수면 `would_go_negative`. 코드: `not_authenticated \| forbidden \| invalid_reason \| issuance_not_found \| already_cancelled \| would_go_negative`". `use_ticket_as_admin(person_id, meal_id)` 행 — "날짜 제한 없음. 자녀 몫도 허용(잔량은 가족 것). `used_via='admin'`, `recorded_by`=관리자, `request_id` 는 서버 생성. 코드: `not_authenticated \| forbidden \| person_not_found \| meal_not_found \| no_remaining`". `void_usage(id)` 행 — "코드: `not_authenticated \| forbidden \| usage_not_found \| already_voided`". `use_ticket` 행 끝에 "4a 에서 재정의: 사람 행 `for update` + `lock_family_meal`". 잠금 순서 문단에 "장부 행(issuances·usages) 잠금은 ④ 뒤에 — 합류의 장부 이동과 같은 순서" 한 줄.
 - §8.3 **식사 상세(현황판)**: 구현대로 — "네 숫자 한 줄, 이름 검색(구매자·사용자), 가족 블록(구매자 이름들 · N장 중 M장 사용 · 남음·금액 · 발급 줄 · 사용 줄). 동작은 ⋯ 메뉴가 아니라 줄마다 작은 두 단계 확인 버튼: 가족 블록 '1장 대신 사용'(활성 발급의 최근 구매자 몫), 발급 줄 '발급 취소'(가족 남은 장수보다 많으면 잠기고 이유 표시), 사용 줄 '무효'. 취소 사유 입력 칸은 두지 않는다(DB 는 받는다). 5초 폴링."
 - §9 발급: "취소 불가" 문구를 "남은 장수(N)보다 많아 취소할 수 없어요 — 먼저 사용을 무효 처리" 로.
-- §12 item 4 에 `e2e/admin.spec.ts`(현황판 흐름) 추가.
+- §12 item 1 의 `cancel_issuance` 항목에 "대신 사용 멱등(request_id)·가족 확인·④ 잠금 키 고정" 을, item 3 의 "식사 상세 ⋯ 메뉴" 를 "식사 상세 행 버튼(취소·대신 사용·무효, 두 단계 확인)" 으로, item 4 에 `e2e/admin.spec.ts`(현황판 흐름) 추가.
 - §14: 4단계를 "4a 식사 상세 현황판·식권 조작·`use_ticket` 재정의 (완료, 2026-10-10) · 4b 사람 탭 · 4c 통계·CSV·공유" 로 (완료일은 merge 날짜로 맞춘다).
-- §15: "그때 `use_ticket` 도 재정의해 사람 행을 `for update` 로 읽는다 …" 문장을 "(4a 에서 완료)" 로.
+- §15: "4단계에서 잔량을 바꾸는 함수(…)는 … `lock_family_meal` 을 통해 잠근다 … 그때 `use_ticket` 도 재정의해 …" 항목 전체를 "(4a 에서 완료 — `cancel_issuance`·`void_usage`·`use_ticket_as_admin` 이 `lock_family_meal` 로 잠그고 `use_ticket` 은 사람 행 `for update` 로 재정의됨)" 로 줄이고, `would_go_negative` 항목도 "(4a 에서 구현)" 표시. 새 항목: "대신 사용의 재시도 키는 메모리에만 있다(새로고침 뒤 새 키) — 발급과 같은 60초 중복 확인은 4b/4c 검토".
 
-- [ ] **Step 3: 이 계획 파일**
+- [x] **Step 3: 이 계획 파일**
 
 "구현 결과와 계획의 차이" 절을 범위 절 다음에 만들어 Task 별로 실제 바뀐 것을 적고, 완료 기준의 수치를 실제 값으로. 모든 Step 체크박스를 `[x]` 로(PR 본문의 Test Plan 세 항목은 그대로 둔다).
 
-- [ ] **Step 4: 전체 검증**
+- [x] **Step 4: 전체 검증**
 
 ```bash
-npm run db:reset && npm run db:test        # pgTAP 380
+npm run db:reset && npm run db:test        # pgTAP 392
 npm run lint && npx tsc -b
 npm run test:coverage                      # 임계값(80/80/70/80) 통과
 npm run build && VITE_BASE_PATH=/meal-ticket/ npm run build && grep -q '/meal-ticket/assets/' dist/index.html
 npm run e2e                                # 5 passed
 ```
 
-- [ ] **Step 5: 커밋 · push · PR** (push·PR 은 컨트롤러가 한다)
+- [x] **Step 5: 커밋 · push · PR** (push·PR 은 컨트롤러가 한다)
 
 ```bash
 git add README.md docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md docs/superpowers/plans/2026-10-10-phase4a-meal-detail.md
 git commit -m "docs: 4a단계 문서 동기화 — README 정정 절차, 설계 §7.3·§8.3·§9·§12·§14·§15, 계획 차이·수치
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push -u origin feat/phase4a-meal-detail
 gh pr create --title "4a단계: 식사 상세 현황판 — 발급 명단, 취소·대신 사용·무효, use_ticket 재정의" --body-file <PR 본문 파일>
 ```
@@ -1752,14 +2124,14 @@ PR 본문:
 ```markdown
 ## Summary
 - 관리자 식사 탭 카드 → **현황**: 발급·사용·남음·금액, 이름 검색, 가족별 발급·사용 명단(5초 폴링). 줄마다 두 단계 확인으로 **발급 취소**(가족 남은 장수 안에서만) · **1장 대신 사용** · **사용 무효**.
-- DB: `cancel_issuance` · `use_ticket_as_admin` · `void_usage` 신설(잠금 규칙 ②→④→장부 행), `use_ticket` 재정의(사람 행 `for update` + `lock_family_meal` — 3단계 최종 리뷰 인계). pgTAP +32 (총 380).
+- DB: `cancel_issuance` · `use_ticket_as_admin` · `void_usage` 신설(잠금 규칙 ②→④→장부 행), `use_ticket` 재정의(사람 행 `for update` + `lock_family_meal` — 3단계 최종 리뷰 인계). pgTAP +44 (총 392).
 - E2E `admin.spec.ts`(현황판 흐름). README 의 임시 SQL 정정 절차 제거.
 
 ## 운영 (merge 전 확인)
 - 마이그레이션 1개(함수만, 테이블 변경 없음). `use_ticket` 은 같은 시그니처로 재정의되어 교인 화면은 바뀌지 않는다.
 
 ## Test Plan
-- [ ] CI 녹색 (pgTAP 380 · vitest · E2E 5)
+- [ ] CI 녹색 (pgTAP 392 · Vitest 465 · E2E 5)
 - [ ] merge 후 Deploy 성공, 운영에서 관리 › 식사 › 현황 열어 내일 식사의 발급 명단 확인
 - [ ] 실제 폰: 대신 사용 1건 → 교인 홈 잔량 반영 → 무효 → 복구
 
@@ -1770,17 +2142,18 @@ PR 은 사용자가 merge 한다.
 
 ---
 
-## 완료 기준
+## 완료 기준 (Task 7 측정값, 2026-10-10)
 
-- pgTAP: 010~140 전부 통과, 총 380 (140 = 32).
-- Vitest 전부 통과, 커버리지 임계값 통과.
-- `npm run lint` · `npx tsc -b` · `npm run build` · 하위 경로 빌드 통과.
-- Playwright: 5 passed (admin 1 · family 1 · onboarding 2 · tickets 1).
-- 운영: merge 뒤 Deploy 성공, 관리 › 식사 › 현황에서 명단이 보인다.
+- pgTAP: `Files=14, Tests=392, Result: PASS` — 010~140 전부 통과(140 = 44). ✅
+- Vitest: `Test Files 62 passed (62) / Tests 463 passed (463)`. 커버리지 임계값(`vite.config.ts` lines 80 · functions 80 · branches 70 · statements 80) 통과 — 측정 **stmts 97.64 · branch 91.45 · funcs 96.88 · lines 98.9**. ✅
+- `npm run lint`(oxlint `--deny-warnings`) 0 · `npx tsc -b` 0 · `npm run build` · 하위 경로 빌드(`VITE_BASE_PATH=/meal-ticket/` → `dist/index.html` 에 `/meal-ticket/assets/`) 전부 통과. ✅
+- Playwright: **5 passed (16.5s)** — admin 1 · family 1 · onboarding 2 · tickets 1. ✅
+- 운영: merge 뒤 Deploy 성공, 관리 › 식사 › 현황에서 명단이 보인다. (merge 후 확인 — PR Test Plan)
 
 ## 다음 계획(4b·4c)으로 넘기는 것
 
 - **4b 사람 탭**: `merge_people(from, into)`(대상 보호자 행 `for update` — 3단계 인계), `link_person`, `admin_reset_person`, 번호 수정, 가족 보기, 발급·사용 이력, 필터 칩. 취소 **사유 입력 칸**(DB 는 `p_reason` 을 이미 받는다)과 "취소 내역 보기" 는 이력 화면과 함께. `admin_reset_person` 이 생기면 README 운영 체크리스트의 "자녀 삭제·탈퇴 대신 처리 SQL" 을 지운다.
+- **4b 또는 4c**: 대신 사용의 재시도 키는 메모리에만 있다(새로고침하면 새 키). 발급의 60초 중복 확인 창과 같은 완화를 대신 사용에도 둘지 검토.
 - **4c 통계**: 월 선택 → 발급·금액·사용 → 식사별 → 교인별, CSV(취소·무효 행 포함), Web Share. 식사 상세의 이름 검색은 지금 클라이언트 필터다 — 명단이 수백 가족이 되면 서버 검색으로.
 - 식사 상세의 가족 블록은 `aria-label` 로 가족을 식별한다. 같은 이름 조합의 가족이 둘이면 E2E `getByRole('listitem', { name })` 이 strict 모드에 걸린다 — 그때 `data-family-id` 로.
 - 3단계 계획이 넘긴 나머지(ConfirmButton 터치 영역, 포커스 복귀, `maxLength` NFD, 두 초록 알림 합치기, E2E 헬퍼 분해)는 그대로 4b/4c 또는 5단계로.
