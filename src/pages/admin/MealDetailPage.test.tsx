@@ -183,7 +183,7 @@ describe('MealDetailPage', () => {
     expect(screen.getByText('대신 사용 처리할 구매자가 없어요 (탈퇴했거나 가족을 옮겼어요)')).toBeInTheDocument()
   })
 
-  it('"발급 취소" 는 남은 장수 안의 발급에만 열리고, 확인을 거쳐 cancel_issuance', async () => {
+  it('"발급 취소" 는 남은 장수 안의 발급에만 열리고, 사유 폼을 거쳐 cancel_issuance', async () => {
     const cancel = idle()
     cancel.mutate = vi.fn<M['mutate']>((_vars, opts) => opts?.onSuccess?.())
     useCancelIssuance.mockReturnValue(cancel)
@@ -192,11 +192,25 @@ describe('MealDetailPage', () => {
     const blocked = screen.getByRole('button', { name: /김철수 2장 발급 취소$/ })
     expect(blocked).toBeDisabled()
     expect(screen.getByText('남은 장수(1)보다 많아 취소할 수 없어요 — 먼저 사용을 무효 처리해 주세요')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /발급 취소$/ })).toHaveLength(3) // i1, i2, f2 의 박민수 4장
+    expect(screen.getAllByRole('button', { name: /발급 취소$/ })).toHaveLength(3)
     await userEvent.click(screen.getByRole('button', { name: /이영희 1장 발급 취소$/ }))
+    expect(cancel.mutate).not.toHaveBeenCalled()
+    await userEvent.type(screen.getByLabelText('취소 사유 (선택)'), '입금 취소')
     await userEvent.click(screen.getByRole('button', { name: '취소하기' }))
-    expect(cancel.mutate).toHaveBeenCalledWith('i2', expect.anything())
+    expect(cancel.mutate).toHaveBeenCalledWith({ issuanceId: 'i2', reason: '입금 취소' }, expect.anything())
     expect(screen.getByText('이영희 님 1장 발급을 취소했어요')).toBeInTheDocument()
+  })
+
+  it('사유 폼은 "그만두기" 로 닫히고 사유는 비워진다', async () => {
+    const cancel = idle()
+    useCancelIssuance.mockReturnValue(cancel)
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /이영희 1장 발급 취소$/ }))
+    await userEvent.type(screen.getByLabelText('취소 사유 (선택)'), '잘못 적음')
+    await userEvent.click(screen.getByRole('button', { name: '그만두기' }))
+    expect(screen.queryByLabelText('취소 사유 (선택)')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /이영희 1장 발급 취소$/ }))
+    expect(screen.getByLabelText('취소 사유 (선택)')).toHaveValue('')
   })
 
   it('"무효" 는 무효 아닌 사용 줄에만 있고, 확인을 거쳐 void_usage. 이미 무효인 줄엔 버튼이 없다', async () => {

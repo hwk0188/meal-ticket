@@ -37,14 +37,21 @@ const settleBoard = (queryClient: QueryClient, mealId: string) =>
 const makeRefreshBoard = (queryClient: QueryClient, mealId: string) => (err: unknown) =>
   rpcCodeOf(err) ? queryClient.invalidateQueries({ queryKey: mealDetailQueryKey(mealId) }) : undefined
 
-/** 발급 한 건 취소. 사유 입력 칸은 4a 에 두지 않는다(DB 의 p_reason 은 선택 인자). */
+export type CancelArgs = { issuanceId: string; reason: string }
+
+/** 발급 한 건 취소. 사유는 선택 — 비면 보내지 않는다(DB 의 p_reason 은 기본값 null). */
 export function useCancelIssuance(mealId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (issuanceId: string) => {
+    mutationFn: async ({ issuanceId, reason }: CancelArgs) => {
+      const trimmed = reason.trim()
       const { signal, done } = withTimeout(OPS_TIMEOUT_MS)
       try {
-        return unwrap(await supabase.rpc('cancel_issuance', { p_issuance_id: issuanceId }).abortSignal(signal))
+        return unwrap(
+          await supabase
+            .rpc('cancel_issuance', trimmed === '' ? { p_issuance_id: issuanceId } : { p_issuance_id: issuanceId, p_reason: trimmed })
+            .abortSignal(signal),
+        )
       } finally {
         done()
       }

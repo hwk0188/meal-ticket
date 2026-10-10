@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ConfirmButton } from '../../components/ConfirmButton'
-import { Spinner, TextField } from '../../components/ui'
+import { Button, Spinner, TextField } from '../../components/ui'
 import { filterFamilies, NO_NAME, type FamilyGroup, type MealIssuance, type MealUsage } from '../../features/admin/groupMealLedger'
 import { useMealDetail } from '../../features/admin/useMealDetail'
 import { mealOpsErrorMessage, useCancelIssuance, useUseTicketAsAdmin, useVoidUsage } from '../../features/admin/useMealOps'
@@ -10,7 +10,11 @@ import { formatWon } from '../../lib/money'
 
 type Actions = {
   pending: boolean
-  onCancel: (issuance: MealIssuance) => void
+  /** 사유를 적는 중인 발급 id (한 줄만 열린다) */
+  cancelingId: string | null
+  onCancelOpen: (issuance: MealIssuance) => void
+  onCancelClose: () => void
+  onCancel: (issuance: MealIssuance, reason: string) => void
   onVoid: (usage: MealUsage) => void
   onUseAsAdmin: (family: FamilyGroup) => void
 }
@@ -29,6 +33,7 @@ export function MealDetailPage() {
   const useAsAdmin = useUseTicketAsAdmin(mealId)
   const [query, setQuery] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
+  const [cancelingId, setCancelingId] = useState<string | null>(null)
   const feedbackRef = useRef<HTMLDivElement>(null)
 
   const pending = cancel.isPending || voidUsage.isPending || useAsAdmin.isPending
@@ -55,9 +60,23 @@ export function MealDetailPage() {
   }
   const actions: Actions = {
     pending,
-    onCancel: (i) => {
+    cancelingId,
+    onCancelOpen: (i) => {
       clearFeedback()
-      cancel.mutate(i.id, { onSuccess: () => setNotice(`${i.buyer ? `${i.buyer} 님` : NO_NAME} ${i.quantity}장 발급을 취소했어요`) })
+      setCancelingId(i.id)
+    },
+    onCancelClose: () => setCancelingId(null),
+    onCancel: (i, reason) => {
+      clearFeedback()
+      cancel.mutate(
+        { issuanceId: i.id, reason },
+        {
+          onSuccess: () => {
+            setCancelingId(null)
+            setNotice(`${i.buyer ? `${i.buyer} 님` : NO_NAME} ${i.quantity}장 발급을 취소했어요`)
+          },
+        },
+      )
     },
     onVoid: (u) => {
       clearFeedback()
@@ -161,24 +180,50 @@ function IssuanceLine({ issuance: i, remaining, actions }: { issuance: MealIssua
   // 발급 단위 취소라, 이 발급 장수가 가족 남은 장수보다 많으면 DB 가 would_go_negative 로 거부한다 → 미리 잠그고 이유를 적는다 (설계 §9)
   const blocked = !i.cancelled && i.quantity > remaining
   return (
-    <li className={`flex items-start justify-between gap-2 ${i.cancelled ? 'text-gray-500' : ''}`}>
-      <div className="min-w-0 break-words">
-        <div className={i.cancelled ? 'line-through' : ''}>발급 {i.quantity}장 · {buyer} · {formatWon(i.amount)}</div>
-        <div className="text-xs text-gray-500">{formatDateTime(i.issuedAt)} · {i.issuer}{i.memo ? ` · ${i.memo}` : ''}</div>
-        {i.cancelled && <div className="text-xs font-bold">취소됨{i.cancelReason ? ` · ${i.cancelReason}` : ''}</div>}
-        {blocked && <div className="text-xs text-gray-500">남은 장수({remaining})보다 많아 취소할 수 없어요 — 먼저 사용을 무효 처리해 주세요</div>}
+    <li className={i.cancelled ? 'text-gray-500' : ''}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 break-words">
+          <div className={i.cancelled ? 'line-through' : ''}>발급 {i.quantity}장 · {buyer} · {formatWon(i.amount)}</div>
+          <div className="text-xs text-gray-500">{formatDateTime(i.issuedAt)} · {i.issuer}{i.memo ? ` · ${i.memo}` : ''}</div>
+          {i.cancelled && <div className="text-xs font-bold">취소됨{i.cancelReason ? ` · ${i.cancelReason}` : ''}</div>}
+          {blocked && <div className="text-xs text-gray-500">남은 장수({remaining})보다 많아 취소할 수 없어요 — 먼저 사용을 무효 처리해 주세요</div>}
+        </div>
+        {!i.cancelled && actions.cancelingId !== i.id && (
+          <button
+            type="button"
+            onClick={() => actions.onCancelOpen(i)}
+            disabled={actions.pending || blocked}
+            className="shrink-0 px-3 py-2 text-xs text-gray-600 underline disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {/* sr-only 접두사로 줄마다 접근성 이름을 다르게 한다 (같은 구매자·장수가 두 줄일 수 있다) */}
+            <span className="sr-only">{formatDateTime(i.issuedAt)} {buyer} {i.quantity}장</span> {actions.pending ? '처리 중…' : '발급 취소'}
+          </button>
+        )}
       </div>
-      {!i.cancelled && (
-        <ConfirmButton
-          label={actions.pending ? '처리 중…' : '발급 취소'}
-          context={`${formatDateTime(i.issuedAt)} ${buyer} ${i.quantity}장`}
-          message={`${buyer} 님의 ${i.quantity}장 발급을 취소할까요? 가족 잔량이 ${i.quantity}장 줄어요.`}
-          confirmLabel="취소하기"
-          onConfirm={() => actions.onCancel(i)}
-          disabled={actions.pending || blocked}
-        />
-      )}
+      {actions.cancelingId === i.id && <CancelReasonForm issuance={i} actions={actions} />}
     </li>
+  )
+}
+
+/** 발급 취소는 두 단계다: 버튼 → 사유 폼(사유는 선택) → 취소하기. ConfirmButton 과 달리 입력 칸이 필요해 폼으로 둔다. */
+function CancelReasonForm({ issuance: i, actions }: { issuance: MealIssuance; actions: Actions }) {
+  const [reason, setReason] = useState('')
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        actions.onCancel(i, reason)
+      }}
+      noValidate
+      className="mt-2 flex flex-col gap-2 rounded-xl border border-gray-200 p-3"
+    >
+      <p className="text-xs text-gray-600">{i.buyer || NO_NAME} 님의 {i.quantity}장 발급을 취소할까요? 가족 잔량이 {i.quantity}장 줄어요.</p>
+      <TextField label="취소 사유 (선택)" name={`cancel-reason-${i.id}`} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={100} placeholder="예) 입금 취소" autoComplete="off" />
+      <div className="flex gap-2">
+        <Button variant="ghost" onClick={actions.onCancelClose} disabled={actions.pending}>그만두기</Button>
+        <Button type="submit" disabled={actions.pending}>{actions.pending ? '처리 중…' : '취소하기'}</Button>
+      </div>
+    </form>
   )
 }
 

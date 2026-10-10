@@ -44,18 +44,29 @@ describe('useCancelIssuance', () => {
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
     await act(async () => {
-      await result.current.mutateAsync('i1')
+      await result.current.mutateAsync({ issuanceId: 'i1', reason: '  입금 취소  ' })
     })
-    expect(rpc).toHaveBeenCalledWith('cancel_issuance', { p_issuance_id: 'i1' })
+    expect(rpc).toHaveBeenCalledWith('cancel_issuance', { p_issuance_id: 'i1', p_reason: '입금 취소' })
     expect(q.has('abortSignal')).toBe(true)
     expectExactInvalidation(invalidate)
+  })
+
+  it('사유가 비면 p_reason 을 보내지 않는다', async () => {
+    const q = ok({ id: 'i1' })
+    rpc.mockReturnValue(q)
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync({ issuanceId: 'i1', reason: '   ' })
+    })
+    expect(rpc).toHaveBeenCalledWith('cancel_issuance', { p_issuance_id: 'i1' })
   })
 
   it('서버가 거부하면(코드 있음) 코드를 보존한 Error 로 던지고 현황만 다시 읽는다', async () => {
     rpc.mockReturnValue(fail('would_go_negative'))
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
-    await expect(result.current.mutateAsync('i1')).rejects.toMatchObject({ message: 'would_go_negative', code: 'P0001' })
+    await expect(result.current.mutateAsync({ issuanceId: 'i1', reason: '' })).rejects.toMatchObject({ message: 'would_go_negative', code: 'P0001' })
     await waitFor(() => expect(result.current.isError).toBe(true))
     // 거부되면 화면의 잔량이 낡았을 수 있다 → 현황만 다시 읽는다
     expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual([['meal-detail', 'm1']])
@@ -65,7 +76,7 @@ describe('useCancelIssuance', () => {
     rpc.mockReturnValue(fail('TimeoutError: signal timed out', ''))
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
-    await expect(result.current.mutateAsync('i1')).rejects.toThrow('TimeoutError: signal timed out')
+    await expect(result.current.mutateAsync({ issuanceId: 'i1', reason: '' })).rejects.toThrow('TimeoutError: signal timed out')
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(invalidate).not.toHaveBeenCalled()
   })
@@ -80,7 +91,7 @@ describe('useCancelIssuance', () => {
     vi.useFakeTimers()
     try {
       act(() => {
-        void result.current.mutateAsync('i1').catch(() => undefined)
+        void result.current.mutateAsync({ issuanceId: 'i1', reason: '' }).catch(() => undefined)
       })
       await act(async () => {
         await vi.advanceTimersByTimeAsync(SETTLE_TIMEOUT_MS - 1)
