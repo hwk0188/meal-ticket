@@ -55,7 +55,7 @@ export type FamilyGroup = {
 export type MealTotals = { issued: number; used: number; remaining: number; amount: number }
 export type MealLedger = { totals: MealTotals; families: FamilyGroup[] }
 
-const NO_NAME = '(이름 없음)'
+export const NO_NAME = '(이름 없음)'
 const byTimeDesc = (a: string, b: string) => Date.parse(b) - Date.parse(a)
 
 /** 식사 하나의 발급·사용·잔량 행을 가족별 블록과 합계로 묶는다. 이름이 가려진 행(RLS·탈퇴)은 빈 이름으로 둔다. */
