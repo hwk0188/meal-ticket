@@ -26,6 +26,10 @@
 
 **중간 배포:** Task 2 커밋 직후 `main` 과 다른 파일을 건드리지 않았으므로 바로 PR 을 만들어 merge 할 수 있다(마이그레이션 없음 → 운영 DB 변화 없음). 사용자가 원하면 그렇게 하고, 나머지 Task 는 같은 브랜치에서 이어 간 뒤 두 번째 PR 로 보낸다.
 
+## 구현 결과와 계획의 차이 (실행 중 리뷰로 바뀐 것)
+
+- **Task 1** (조회): 계획 초안의 라벨 계산이 최근 발급부터 이름을 나열해 테스트의 기대(`'김철수 · 이영희'` — 먼저 산 사람 먼저)와 어긋났다. 구현은 `buyerId` 는 최근 활성 발급에서, 라벨은 오래된 발급부터(활성 → 취소 순)로 계산한다. 위 스니펫은 고친 뒤 버전이다.
+
 ## 파일 구조
 
 | 파일 | 책임 |
@@ -303,12 +307,15 @@ export function groupMealLedger(issuances: readonly MealIssuanceRow[], usages: r
     r.amount = b.amount ?? 0
   }
   for (const r of byFamily.values()) {
-    const active = r.issuances.filter((i) => !i.cancelled)
-    const names = [...active, ...r.issuances.filter((i) => i.cancelled)].map((i) => i.buyer)
+    // r.issuances 는 최근 발급부터(내림차순) — "1장 대신 사용" 버튼은 가장 최근 활성 발급의 구매자를 쓴다.
+    const activeDesc = r.issuances.filter((i) => !i.cancelled)
+    r.buyerId = activeDesc[0]?.personId ?? null
+    // 라벨은 오래된 발급부터 나열한다("먼저 산 사람 먼저") — 활성 발급을 모두 앞세우고, 그 다음 취소된 발급.
+    const ascending = [...r.issuances].toReversed()
+    const names = [...ascending.filter((i) => !i.cancelled), ...ascending.filter((i) => i.cancelled)].map((i) => i.buyer)
     const fallback = r.usages.map((u) => u.person)
     const unique = [...new Set([...names, ...(names.some(Boolean) ? [] : fallback)].filter(Boolean))]
     r.label = unique.length > 0 ? unique.join(' · ') : NO_NAME
-    r.buyerId = active[0]?.personId ?? null
   }
   const families = [...byFamily.values()].toSorted((a, b) => a.label.localeCompare(b.label, 'ko'))
   const totals = families.reduce<MealTotals>(
