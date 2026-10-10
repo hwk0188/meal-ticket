@@ -119,8 +119,7 @@ function FamilyLine({ member, meId }: { member: FamilyMemberRow; meId: string })
           <span key={tag} className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-bold text-gray-600">{tag}</span>
         ))}
       </span>
-      {/* 본인 줄은 위 머리말에 이미 전체 번호가 보이므로 같은 문구를 중복해 보여 주지 않는다 (getByText 단언이 하나만 찾는다). */}
-      <span className="shrink-0 text-xs text-gray-500">{member.id === meId ? '-' : member.phone ? formatPhone(member.phone) : '번호 없음'}</span>
+      <span className="shrink-0 text-xs text-gray-500">{member.phone ? formatPhone(member.phone) : '번호 없음'}</span>
     </li>
   )
 }
