@@ -7,6 +7,7 @@ import { AdminMealsPage } from './pages/admin/AdminMealsPage'
 import { AdminPeoplePage } from './pages/admin/AdminPeoplePage'
 import { IssuePage } from './pages/admin/IssuePage'
 import { MealDetailPage } from './pages/admin/MealDetailPage'
+import { PersonDetailPage } from './pages/admin/PersonDetailPage'
 import { FamilyPage } from './pages/FamilyPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { PairPage } from './pages/PairPage'
@@ -38,8 +39,8 @@ export default function App() {
               <Route path="/admin/meals" element={<RequireAdmin><AdminMealsPage /></RequireAdmin>} />
               <Route path="/admin/meals/:mealId" element={<RequireAdmin><MealDetailPage /></RequireAdmin>} />
               <Route path="/admin/issue" element={<RequireAdmin><IssuePage /></RequireAdmin>} />
-              {/* 상세(/admin/people/:personId)는 Task 5 가 채운다 — 자리만 먼저 잡는다. */}
               <Route path="/admin/people" element={<RequireAdmin><AdminPeoplePage /></RequireAdmin>} />
+              <Route path="/admin/people/:personId" element={<RequireAdmin><PersonDetailPage /></RequireAdmin>} />
             </Route>
             {/* 모르는 주소는 홈 주소로 정리한다 (Gate 를 그대로 띄우면 주소가 그대로 남는다). */}
             <Route path="*" element={<Navigate to="/" replace />} />
