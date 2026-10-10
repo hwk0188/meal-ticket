@@ -37,6 +37,10 @@
 - **Task 1** (DB): 계획 초안의 `merge_people` 은 빈 옛 가족을 지우지 못했다 — 익명화는 `family_id` 를 건드리지 않아 **익명화된 from 행이 옛 가족을 계속 가리키기** 때문이다(`not exists (people)` 가 거짓 → 조용히 0행 삭제; `deleted_at is null` 로 조건만 좁히면 FK 23503). 구현은 장부를 옮긴 뒤 **익명화된 행의 가족도 남는 쪽으로 옮기고** 나서 빈 가족을 지운다. 3단계 `add_family_member` 는 같은 상황에서 빈 껍데기 가족을 남기는데(문서에 "무해하다" 로 기록), 합치기는 "두 행이 같은 사람" 이라 익명화된 행을 남는 쪽 가족에 두는 편이 뜻에 맞고 껍데기도 쌓이지 않는다. 교인 화면에는 영향이 없다(가족 조회는 RLS·쿼리 모두 `deleted_at is null`). 관리자 사람 상세의 가족 목록에는 '초기화됨' 태그로 보인다.
 - **Task 4** (상세 데이터): `IssuanceEntry` 에 `cancelReason` 이 생겨 **교인 내역 화면 테스트**(`src/pages/HistoryPage.test.tsx`)의 `LedgerEntry[]` 픽스처 두 곳에 `cancelReason: null` 을 더해야 했다(계획엔 없던 파일). `useFamilyLedger.test.tsx` 의 픽스처는 `ok(...)` 에 넘기는 무타입 리터럴이라 손댈 필요가 없었다.
 - **Task 1** (테스트): `last_admin` 단언 뒤 관리자 인증 상태에서 `consented_at` 열을 넣으려다 `permission denied` — `authenticated` 에는 `insert (name, phone)` 열 권한만 있다. 그 insert 앞에 `tests.clear_auth()`, 뒤에 `tests.authenticate_as(admin)` 를 넣었다(공통 규약의 "직접 쓰기 전에 clear_auth" 그대로).
+- **Task 5** (상세 화면): 구현이 두 군데서 편법을 썼고 되돌렸다. ① 가족 줄에서 **본인만** 번호 자리에 `'-'` 를 찍었다 — 테스트의 `getByText` 가 머리말과 중복으로 걸려서 생긴 변경인데, 화면에서는 "번호가 없는 사람" 으로 읽힌다. 모든 식구를 같은 모양으로 두고 테스트가 두 자리를 각각 못 박는다. ② `personSchema.test.ts` 의 `if (!r.ok) expect(...)` 세 곳을 `oxlint-disable` 로 덮었다 — `onboardingSchema.test.ts` 가 같은 상황에서 반대 결론을 적어 둔다(조건부 expect 는 검사가 안 돌아도 통과한다). 결과 전체를 `toEqual` 로 비교하면 억제도 필요 없고 기대하지 않은 필드 오류까지 잡힌다. ③ 테스트 헬퍼의 `over.phone ?? 기본값` 이 명시적 `null` 을 기본값으로 덮어써 `phone: null` 경로가 아예 안 돌았다(`=== undefined` 로 고쳤다).
+- **Task 2** (목록 데이터, 리뷰 후속): 뮤테이션 테스트로 빈 자리 세 곳이 드러났다. ① `.order('name')` 에 두 번째 키가 없고 비교자도 동명이인에 0 을 돌려 **조회마다 줄 순서가 바뀔 수 있었다** — 합치기는 되돌릴 수 없고 누르는 순간의 줄이 곧 대상이므로, 서버(`.order('id')`)와 순수 함수(`|| id` 비교) 양쪽에서 고정했다. ② 숫자 **한 자리** 검색이 `010…` 전부에 걸렸다(`'김1'` 같은 오타도 교인 전체를 돌려줬다) — 번호 쪽에만 두 자리 하한을 뒀다. ③ `max_rows = 1000` 천장이 조용했다 — `MAX_PEOPLE` 로 명시하고 `.limit()` 을 붙였다. 더해서 칩 조건이 태그 규칙을 다시 쓰고 있어 태그를 단일 근거로 삼았다(이 중복 때문에 "자녀는 미가입이 아니다" 규칙이 뮤테이션에서 살아남았다). 주석의 근거도 틀렸다 — `auth_user_id` 는 `on delete set null` 이고 3단계에 `relink_child` 가 있으므로 **계정 없는 자녀는 정상 상태다**.
+- **Task 3** (목록 화면, 리뷰 후속): **번호 없는 동명이인 두 줄이 보이는 글자도 읽히는 이름도 완전히 같았다.** `add_child` 는 번호 없이 자녀를 넣고 `people_phone_unique` 는 `where phone is not null` 이라 막아 주지 않는다 — 그 줄을 누르면 합치기·초기화가 걸린다. `decoratePeople` 에 `familyHint`('보호자 김철수' / '같은 가족 김철수')를 더하고, 줄 링크에 `aria-label` 을 직접 줬다(그냥 두면 이름과 첫 태그 사이에 공백 텍스트 노드가 없어 "권사관리자" 로 읽힌다). 합치기 **후보의 선택 버튼**도 같은 문제였다 — 접근성 이름에 번호 꼬리표를 붙였다. 빈 목록 문구를 원인별로 갈랐고(모두 가입한 교회에서 "미가입" 은 좋은 소식이다), 개수 줄에 `role="status"` 를 뒀다.
+- **Task 1** (DB 품질 리뷰 결론): 마이그레이션은 **수정 없이 승인**됐다 — 12개 문장이 모두 `create or replace`/`comment`/`revoke`/`grant` 이고, 한 트랜잭션에서 두 번 재실행해도 `pg_proc` 의 소스·ACL·주석이 0행 차이인 무해한 재생이며, 두 세션 실험으로 ②③④ 잠금 순서와 교착 없음을 확인했다(반대 방향 합치기, `leave_family`·`add_family_member` 와의 경합 모두 40P01 없음). 받는 쪽 ④ 잠금이 불필요한 이유도 확인됐다 — 장부 이동은 목적지 묶음에 행을 **더하기만** 하므로 동시 `use_ticket` 은 보수적으로 적게 셀 뿐 음수가 되지 않는다. 테스트 쪽 빈 자리 세 곳(처리자 네 열의 이동, ③ `lock_family`, 익명화된 사람을 **받는 쪽**으로 삼는 경우)은 후속 커밋으로 채웠고, 전화번호 블록이 110 과 겹친 것도 옮겼다.
 
 ## 파일 구조
 
@@ -2205,7 +2209,7 @@ describe('PersonMergePanel', () => {
   it('본인과 자녀는 후보에서 빠진다', async () => {
     renderPanel()
     await userEvent.click(screen.getByRole('button', { name: '중복 사람 합치기' }))
-    await userEvent.type(screen.getByLabelText('합칠 사람 찾기'), '0')
+    await userEvent.type(screen.getByLabelText('합칠 사람 찾기'), '010')
     const names = within(screen.getByRole('list', { name: '합칠 사람 후보' })).getAllByRole('listitem').map((li) => li.textContent)
     expect(names).toEqual([expect.stringContaining('김철수'), expect.stringContaining('이영희')])
     expect(names.join()).not.toContain('서연')
