@@ -3039,7 +3039,7 @@ PR 본문:
 - 관리자 조작은 교회 전체 범위다(4a 와 같다). 마지막 관리자는 초기화할 수 없고, 합치기는 관리자 권한을 남는 쪽으로 넘긴다.
 
 ## Test Plan
-- [ ] CI 녹색 (pgTAP 446 · Vitest 576 · E2E 6)
+- [ ] CI 녹색 (pgTAP 446 · Vitest 577 · E2E 6)
 - [ ] merge 후 Deploy 성공, 운영에서 관리 › 사람 열어 교인 검색·전체 번호 확인
 - [ ] 실제 폰: 시험용 중복 행 만들어 합치기 → 이력 합산 → 초기화
 
@@ -3053,7 +3053,7 @@ PR 은 사용자가 merge 한다.
 ## 완료 기준
 
 - pgTAP: 010~150 전부 통과, **Files=15, Tests=446** (150 = `plan(54)` — 계획의 48 에 리뷰가 찾은 빈 자리 6개를 더했다).
-- Vitest: **73 파일 576 통과**. 커버리지 — statements **97.85%** (1460/1492) · branches **91.38%** (1050/1149) · functions **97.14%** (510/525) · lines **98.97%** (1254/1267). 임계값(80/80/70/80) 모두 통과.
+- Vitest: **73 파일 577 통과**. 커버리지 — statements **97.85%** (1460/1492) · branches **91.38%** (1050/1149) · functions **97.14%** (510/525) · lines **98.97%** (1254/1267). 임계값(80/80/70/80) 모두 통과.
 - `npm run lint`(oxlint `--deny-warnings`) · `npx tsc -b` · `npm run build` · `VITE_BASE_PATH=/meal-ticket/` 하위 경로 빌드 통과(`dist/index.html` 에 `/meal-ticket/assets/` 확인).
 - Playwright: **6 passed** (admin 1 · family 1 · onboarding 2 · people 1 · tickets 1).
 - 수동: 관리자로 사람 검색 → 상세 → 번호 수정 → 중복 합치기 → 초기화가 화면 문구대로 동작.
