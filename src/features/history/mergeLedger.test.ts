@@ -2,7 +2,7 @@ import { mergeLedger, type IssuanceRow, type UsageRow } from './mergeLedger'
 
 const meal = { title: '주일 점심', served_on: '2026-10-12' }
 const issuance: IssuanceRow = {
-  id: 'i1', issued_at: '2026-10-08T01:00:00Z', quantity: 4, unit_price: 5000, memo: '입금 확인', cancelled_at: null,
+  id: 'i1', issued_at: '2026-10-08T01:00:00Z', quantity: 4, unit_price: 5000, memo: '입금 확인', cancelled_at: null, cancel_reason: null,
   meal, buyer: { name: '김철수' }, issuer: { name: '권사' },
 }
 const usage: UsageRow = { id: 'u1', used_at: '2026-10-12T03:31:00Z', used_via: 'self', voided_at: null, meal, person: { name: '김철수' } }
@@ -35,5 +35,17 @@ describe('mergeLedger', () => {
     const later: UsageRow = { ...usage, id: 'u-later', used_at: '2026-10-12T03:31:00.5+00:00' }
     const entries = mergeLedger([], [earlier, later])
     expect(entries.map((e) => e.id)).toEqual(['u-later', 'u-earlier'])
+  })
+
+  it('취소 사유를 엔트리에 싣는다 (관리자 이력 화면이 쓴다)', () => {
+    const [entry] = mergeLedger(
+      [{
+        id: 'i1', issued_at: '2026-10-09T05:00:00Z', quantity: 2, unit_price: 5000, memo: null,
+        cancelled_at: '2026-10-09T06:00:00Z', cancel_reason: '입금 취소',
+        meal: { title: '주일 점심', served_on: '2026-10-11' }, buyer: { name: '김철수' }, issuer: { name: '권사' },
+      }],
+      [],
+    )
+    expect(entry).toMatchObject({ kind: 'issuance', cancelled: true, cancelReason: '입금 취소' })
   })
 })

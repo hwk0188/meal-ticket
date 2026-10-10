@@ -9,6 +9,8 @@ export type IssuanceRow = {
   unit_price: number
   memo: string | null
   cancelled_at: string | null
+  /** 관리자가 취소할 때 적은 사유. 교인 화면은 쓰지 않는다 (관리자 사람 상세 이력에서 보여 준다). */
+  cancel_reason: string | null
   meal: MealRef
   buyer: NameRef
   issuer: NameRef
@@ -24,7 +26,8 @@ export type UsageRow = {
 
 export type IssuanceEntry = {
   kind: 'issuance'; id: string; at: string; mealTitle: string; servedOn: string
-  quantity: number; amount: number; buyer: string; issuer: string; memo: string | null; cancelled: boolean
+  quantity: number; amount: number; buyer: string; issuer: string; memo: string | null
+  cancelled: boolean; cancelReason: string | null
 }
 export type UsageEntry = {
   kind: 'usage'; id: string; at: string; mealTitle: string; servedOn: string
@@ -45,7 +48,8 @@ export function mergeLedger(issuances: readonly IssuanceRow[], usages: readonly 
     ...issuances.map((i): IssuanceEntry => ({
       kind: 'issuance', id: i.id, at: i.issued_at, ...mealOf(i.meal),
       quantity: i.quantity, amount: i.quantity * i.unit_price,
-      buyer: i.buyer?.name ?? '', issuer: i.issuer?.name ?? '관리자', memo: i.memo, cancelled: i.cancelled_at !== null,
+      buyer: i.buyer?.name ?? '', issuer: i.issuer?.name ?? '관리자', memo: i.memo,
+      cancelled: i.cancelled_at !== null, cancelReason: i.cancel_reason,
     })),
     ...usages.map((u): UsageEntry => ({
       kind: 'usage', id: u.id, at: u.used_at, ...mealOf(u.meal),
