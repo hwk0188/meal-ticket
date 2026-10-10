@@ -88,7 +88,7 @@ describe('useVoidUsage', () => {
 })
 
 describe('useUseTicketAsAdmin', () => {
-  it('use_ticket_as_admin 을 사람·식사 id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+  it('use_ticket_as_admin 을 사람·식사 id 와 새 request_id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
     const q = ok({ id: 'u9', used_via: 'admin' })
     rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
@@ -96,9 +96,68 @@ describe('useUseTicketAsAdmin', () => {
     await act(async () => {
       await result.current.mutateAsync({ personId: 'p1', familyId: 'f1' })
     })
-    expect(rpc).toHaveBeenCalledWith('use_ticket_as_admin', { p_person_id: 'p1', p_meal_id: 'm1', p_family_id: 'f1' })
+    expect(rpc).toHaveBeenCalledWith(
+      'use_ticket_as_admin',
+      expect.objectContaining({ p_person_id: 'p1', p_meal_id: 'm1', p_family_id: 'f1', p_request_id: expect.stringMatching(/^[0-9a-f-]{36}$/) }),
+    )
     expect(q.has('abortSignal')).toBe(true)
     expectExactInvalidation(invalidate)
+  })
+
+  it('통신 오류(코드 없음) 뒤 같은 대상 재시도는 같은 request_id 를 쓴다 (서버 멱등 → 이중 차감 없음)', async () => {
+    rpc.mockReturnValueOnce(fail('TimeoutError: signal timed out', '')).mockReturnValueOnce(ok({ id: 'u9', used_via: 'admin' }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await expect(result.current.mutateAsync({ personId: 'p1', familyId: 'f1' })).rejects.toThrow('TimeoutError: signal timed out')
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }))
+
+    const firstArgs = rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined
+    const secondArgs = rpc.mock.calls[1]?.[1] as { p_request_id?: string } | undefined
+    expect(firstArgs?.p_request_id).toBe(secondArgs?.p_request_id)
+    expect(firstArgs?.p_request_id).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  it('서버가 판정한 오류(코드 있음) 뒤에는 같은 대상이라도 새 request_id', async () => {
+    rpc.mockReturnValueOnce(fail('no_remaining')).mockReturnValueOnce(ok({ id: 'u9', used_via: 'admin' }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await expect(result.current.mutateAsync({ personId: 'p1', familyId: 'f1' })).rejects.toThrow('no_remaining')
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }))
+
+    const firstArgs = rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined
+    const secondArgs = rpc.mock.calls[1]?.[1] as { p_request_id?: string } | undefined
+    expect(firstArgs?.p_request_id).not.toBe(secondArgs?.p_request_id)
+  })
+
+  it('성공 뒤 같은 대상을 다시 쓰면 새 request_id', async () => {
+    rpc.mockReturnValue(ok({ id: 'u9', used_via: 'admin' }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }))
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }))
+
+    const firstArgs = rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined
+    const secondArgs = rpc.mock.calls[1]?.[1] as { p_request_id?: string } | undefined
+    expect(firstArgs?.p_request_id).not.toBe(secondArgs?.p_request_id)
+  })
+
+  it('통신 오류 뒤 다른 대상(가족이 다름)을 쓰면 새 request_id (키가 다르다)', async () => {
+    rpc.mockReturnValueOnce(fail('TimeoutError: signal timed out', '')).mockReturnValueOnce(ok({ id: 'u9', used_via: 'admin' }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await expect(result.current.mutateAsync({ personId: 'p1', familyId: 'f1' })).rejects.toThrow('TimeoutError: signal timed out')
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    await act(() => result.current.mutateAsync({ personId: 'p1', familyId: 'f2' }))
+
+    const firstArgs = rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined
+    const secondArgs = rpc.mock.calls[1]?.[1] as { p_request_id?: string } | undefined
+    expect(firstArgs?.p_request_id).not.toBe(secondArgs?.p_request_id)
   })
 })
 

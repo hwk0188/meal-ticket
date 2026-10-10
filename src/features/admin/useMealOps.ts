@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useRef } from 'react'
 import { rpcCodeOf, toUserMessage } from '../../lib/errors'
 import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
@@ -69,13 +70,26 @@ export type AdminUseArgs = { personId: string; familyId: string }
 /** 담당자가 교인 폰 없이 1장 사용 처리. personId 는 "누구 몫"(가족 블록의 산 사람), familyId 는 화면이 본 가족 — 그 사이 옮겼으면 서버가 family_changed 로 거부한다. */
 export function useUseTicketAsAdmin(mealId: string) {
   const queryClient = useQueryClient()
+  // 재시도 키: 같은 대상(사람·가족)에 대한 재시도는 같은 request_id 를 보낸다 — 응답을 잃은 뒤 다시 눌러도 두 번 깎이지 않는다(use_ticket 과 같은 규칙).
+  // 서버가 판단한 응답(성공 또는 코드 있는 오류)이 오면 버린다; 통신 실패·타임아웃이면 남겨 둔다.
+  const retry = useRef<{ key: string; id: string } | null>(null)
   return useMutation({
     mutationFn: async ({ personId, familyId }: AdminUseArgs) => {
+      const key = `${personId}:${familyId}`
+      const requestId = retry.current?.key === key ? retry.current.id : crypto.randomUUID()
+      retry.current = { key, id: requestId }
       const { signal, done } = withTimeout(OPS_TIMEOUT_MS)
       try {
-        return unwrap(
-          await supabase.rpc('use_ticket_as_admin', { p_person_id: personId, p_meal_id: mealId, p_family_id: familyId }).abortSignal(signal),
+        const row = unwrap(
+          await supabase
+            .rpc('use_ticket_as_admin', { p_person_id: personId, p_meal_id: mealId, p_family_id: familyId, p_request_id: requestId })
+            .abortSignal(signal),
         )
+        retry.current = null
+        return row
+      } catch (err) {
+        if (rpcCodeOf(err)) retry.current = null
+        throw err
       } finally {
         done()
       }
