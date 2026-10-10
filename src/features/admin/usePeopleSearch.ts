@@ -3,6 +3,7 @@ import { codeOf, toUserMessage } from '../../lib/errors'
 import type { Database } from '../../lib/database.types'
 import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
+import { allPeopleQueryKey } from './useAllPeople'
 import type { Person } from '../auth/usePerson'
 
 type PeopleInsert = Database['public']['Tables']['people']['Insert']
@@ -52,7 +53,13 @@ export function useRegisterPerson() {
       if (!row) throw new Error('useRegisterPerson: 등록된 사람을 받지 못했습니다')
       return row
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: peopleSearchQueryKey }),
+    // 사람 목록도 함께 — staleTime 30초라 그 사이 사람 탭·합치기 후보에 새 사람이 안 보이고,
+    // 합치기 패널은 "찾는 사람이 없어요" 라고 말해 같은 사람을 또 등록하게 만든다.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: peopleSearchQueryKey }),
+        queryClient.invalidateQueries({ queryKey: allPeopleQueryKey }),
+      ]),
   })
 }
 

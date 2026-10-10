@@ -116,10 +116,12 @@ export function useLinkPerson(personId: string) {
 }
 
 /**
- * 사람 관리 화면의 오류 문구. 세 코드는 교인 맥락 문구가 이 화면에서 어색하다:
+ * 사람 관리 화면의 오류 문구. 네 코드는 교인 맥락 문구가 이 화면에서 어색하다:
  *  · already_registered  가입 화면에서는 "이미 가입된 계정" 이지만 여기서는 "이 사람에게 계정이 이미 있다" 는 뜻
  *  · consent_required    가입 화면에서는 "동의해 주세요" 지만 여기서는 "그 사람의 동의 기록이 없다"
  *  · last_admin          탈퇴가 아니라 초기화를 막는 맥락
+ *  · has_children        "자녀를 먼저 삭제해 주세요" 는 보호자에게 하는 말이다 — 관리자에게는 할 수 없는 일을 가리킨다
+ *                        (remove_child 는 guardian_id = 본인만 허용한다)
  */
 export function personOpsErrorMessage(err: unknown): string {
   switch (rpcCodeOf(err)) {
@@ -129,6 +131,8 @@ export function personOpsErrorMessage(err: unknown): string {
       return '그 분의 동의 기록이 없어요. 본인이 가입 화면에서 동의해야 연결할 수 있어요.'
     case 'last_admin':
       return '마지막 관리자는 초기화할 수 없어요. 다른 관리자를 먼저 지정해 주세요.'
+    case 'has_children':
+      return '이 분에게 연결된 자녀가 있어요. 보호자 본인이 가족 탭에서 자녀를 먼저 삭제해야 해요.'
     default:
       return toUserMessage(err)
   }

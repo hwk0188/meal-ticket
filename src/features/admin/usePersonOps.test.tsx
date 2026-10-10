@@ -165,8 +165,12 @@ describe('personOpsErrorMessage', () => {
     expect(personOpsErrorMessage(new Error('last_admin'))).toBe('마지막 관리자는 초기화할 수 없어요. 다른 관리자를 먼저 지정해 주세요.')
   })
 
+  it('has_children 도 바꿔 준다 — "자녀를 먼저 삭제해 주세요" 는 관리자가 할 수 없는 일이다', () => {
+    expect(personOpsErrorMessage(new Error('has_children'))).toBe('이 분에게 연결된 자녀가 있어요. 보호자 본인이 가족 탭에서 자녀를 먼저 삭제해야 해요.')
+  })
+
   it('나머지는 공용 문구 그대로', () => {
     expect(personOpsErrorMessage(new Error('both_have_accounts'))).toBe('두 분 모두 카카오 계정이 있어요. 한쪽을 먼저 초기화해 주세요.')
-    expect(personOpsErrorMessage(new Error('has_children'))).toBe('연결된 자녀가 있어요. 자녀를 먼저 삭제해 주세요.')
+    expect(personOpsErrorMessage(new Error('minor_not_allowed'))).toBe('자녀는 가족 탭에서 관리해 주세요.')
   })
 })

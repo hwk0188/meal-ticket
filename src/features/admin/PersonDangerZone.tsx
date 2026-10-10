@@ -62,13 +62,13 @@ export function PersonDangerZone({ person, editing = false, onDone, onStart }: P
       ) : linking ? (
         <form onSubmit={onLink} noValidate className="flex flex-col gap-3 rounded-xl border border-gray-200 p-3">
           <p className="text-xs leading-relaxed text-gray-600">
-            초기화한 사람을 같은 카카오 계정으로 되돌릴 때만 씁니다. 계정 id 는 Supabase 의 Authentication › Users 에서 복사해 주세요.
+            카카오 계정이 사라져 연결이 끊긴 분에게 계정을 다시 붙일 때 씁니다. 초기화한 분은 되돌릴 수 없어요. 계정 id 는 Supabase 의 Authentication › Users 에서 복사해 주세요.
           </p>
           <TextField label="카카오 계정 id" name="auth-user-id" value={authUserId} onChange={(e) => setAuthUserId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" autoComplete="off" error={idError} />
           {link.isError && <p role="alert" className="text-sm text-red-600">{personOpsErrorMessage(link.error)}</p>}
           <div className="flex gap-2">
-            <Button variant="ghost" aria-label="계정 연결 그만두기" onClick={() => { setLinking(false); setIdError(undefined); link.reset() }} disabled={link.isPending}>
-              그만두기
+            <Button variant="ghost" aria-label="계정 연결 취소" onClick={() => { setLinking(false); setIdError(undefined); link.reset() }} disabled={link.isPending}>
+              취소
             </Button>
             <Button type="submit" disabled={link.isPending}>{link.isPending ? '연결 중…' : '연결'}</Button>
           </div>

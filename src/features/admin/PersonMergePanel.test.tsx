@@ -120,22 +120,22 @@ describe('PersonMergePanel', () => {
     expect(onStart).toHaveBeenCalled()
   })
 
-  it('"그만두기" 는 선택만 지우지 않고 오류도 지운다', async () => {
+  it('"취소" 는 선택만 지우지 않고 오류도 지운다', async () => {
     const merge = { ...idle(), isError: true, error: new Error('person_not_found') }
     useMergePeople.mockReturnValue(merge)
     renderPanel()
     await openAndSearch('8888')
     await userEvent.click(screen.getByRole('button', { name: '김철수(010-8888-7777 · 등록 10/7) 선택' }))
     expect(screen.getByRole('alert')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: '합치기 그만두기' }))
+    await userEvent.click(screen.getByRole('button', { name: '합치기 취소' }))
     expect(merge.reset).toHaveBeenCalled()
   })
 
-  it('"그만두기" 의 접근성 이름은 "합치기 그만두기" (위험 구역의 "그만두기" 와 구분)', async () => {
+  it('"취소" 의 접근성 이름은 "합치기 취소" (위험 구역의 "취소" 와 구분)', async () => {
     renderPanel()
     await openAndSearch('8888')
     await userEvent.click(screen.getByRole('button', { name: '김철수(010-8888-7777 · 등록 10/7) 선택' }))
-    expect(screen.getByRole('button', { name: '합치기 그만두기' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '합치기 취소' })).toBeInTheDocument()
   })
 
   it('"수정" 폼이 열리면(editing) 지난 합치기 오류를 지운다', () => {

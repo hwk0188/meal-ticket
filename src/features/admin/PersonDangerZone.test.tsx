@@ -113,10 +113,10 @@ describe('PersonDangerZone · 계정 연결', () => {
     expect(screen.getByText('동의 기록이 없어 연결할 수 없어요. 본인이 가입 화면에서 동의해야 해요.')).toBeInTheDocument()
   })
 
-  it('연결 폼의 "그만두기" 는 합치기 패널의 "그만두기" 와 접근성 이름이 다르다', async () => {
+  it('연결 폼의 "취소" 는 합치기 패널의 "취소" 와 접근성 이름이 다르다', async () => {
     renderZone()
     await userEvent.click(screen.getByRole('button', { name: '계정 연결' }))
-    expect(screen.getByRole('button', { name: '계정 연결 그만두기' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '계정 연결 취소' })).toBeInTheDocument()
   })
 
   it('연결을 시작하면 onStart 를 불러 페이지의 지난 알림을 지운다', async () => {

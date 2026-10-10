@@ -75,8 +75,8 @@ export function PersonMergePanel({ person, editing = false, onDone, onStart }: P
           </p>
           {merge.isError && <p role="alert" className="text-sm text-red-600">{personOpsErrorMessage(merge.error)}</p>}
           <div className="flex gap-2">
-            <Button variant="ghost" aria-label="합치기 그만두기" onClick={() => { setPicked(null); merge.reset() }} disabled={merge.isPending}>
-              그만두기
+            <Button variant="ghost" aria-label="합치기 취소" onClick={() => { setPicked(null); merge.reset() }} disabled={merge.isPending}>
+              취소
             </Button>
             <Button
               onClick={() => {
@@ -102,6 +102,7 @@ export function PersonMergePanel({ person, editing = false, onDone, onStart }: P
             )
           ) : (
             <>
+              {people.status === 'error' && <p role="status" className="text-xs text-gray-500">최신 목록을 받지 못했어요 — 후보가 오래된 것일 수 있어요</p>}
               {/* PostgREST 가 max_rows 에서 조용히 자른다 (AdminPeoplePage 와 같은 안내) — 검색어와 무관하게 보여 준다. */}
               {people.data.length === MAX_PEOPLE && (
                 <p role="status" className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">

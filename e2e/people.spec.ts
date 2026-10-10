@@ -53,7 +53,7 @@ test('관리자 사람 탭: 중복 합치기 → 이력 합산 → 취소 사유
     await expect(
       page.getByText(new RegExp(`${name}\\(${formatPhone(phoneB)} · ${todayLabel}\\) 의 기록·자녀·계정을 ${name}\\(${formatPhone(phoneA)}\\) 로 옮기고`)),
     ).toBeVisible()
-    // exact: 확인 화면의 "그만두기" 접근성 이름이 "합치기 그만두기" 라 부분 일치로는 둘 다 걸린다
+    // exact: 확인 화면의 "취소" 접근성 이름이 "합치기 취소" 라 부분 일치로는 둘 다 걸린다
     await page.getByRole('button', { name: '합치기', exact: true }).click()
     await expect(page.getByText(`${name} 님으로 합쳤어요`)).toBeVisible()
     const history = page.getByRole('list', { name: '발급·사용 이력' }).getByRole('listitem')

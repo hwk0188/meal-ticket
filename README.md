@@ -89,7 +89,8 @@ update public.people set role = 'admin' where phone = '01012345678' and deleted_
 - 운영 Supabase 의 **Email provider 는 반드시 끈다**. 개발용 로그인 코드는 운영 번들에서 제거되지만 서버 쪽 차단이 진짜 경계다.
 - Supabase **Redirect URLs** 에 GitHub Pages 주소(`https://<github-user>.github.io/<repo>/`)가 등록되어 있는지 확인한다.
 - 3단계 배포 뒤 Supabase **Authentication › Sign In / Providers › Anonymous** 가 켜져 있는지 확인한다. pg_cron 은 마이그레이션이 켠다 — 콘솔에서 미리 켜지 말고, 특히 공식 문서의 `grant … on schema cron to postgres` 스니펫은 실행하지 않는다. 확인은 SQL Editor 에서 `select jobname, schedule, active from cron.job;`(3건) 과 `select * from cron.job_run_details order by start_time desc limit 10;` 로 한다(Integrations › Cron 화면은 대시보드 통합을 켰을 때만 보이고, 작업은 그와 무관하게 돈다).
-- 자녀 삭제·탈퇴는 화면에서 본인(보호자)이 한다. 관리자가 대신 정정해야 하면 **관리 › 사람 › 그 사람 › 사람 초기화** 를 쓴다(이름·번호를 지우고 카카오 연결을 끊되 발급·사용 기록은 남는다). SQL 로 직접 고치지 않는다.
+- **자녀 삭제는 보호자 본인만** 가족 탭에서 한다. 관리자 화면에는 자녀를 지우는 길이 **없다** — `admin_reset_person` 은 미성년자를 거부하고(`minor_not_allowed`), 사람 상세에서도 자녀에게는 정정 구역이 아예 안 보인다. 보호자가 요청하면 가족 탭의 위치를 안내해 드린다. SQL 로 직접 고치지 않는다.
+- **어른이 잘못 가입한 경우**의 정정은 **관리 › 사람 › 그 사람 › 사람 초기화** 를 쓴다(이름·번호를 지우고 카카오 연결을 끊되 발급·사용 기록은 남는다). 연결된 자녀가 있으면 거부되므로, 보호자가 먼저 자녀를 지워야 한다.
 - 같은 사람이 두 줄로 들어갔으면(선발급 뒤 이름을 달리 적어 가입한 경우 등) **관리 › 사람 › 남길 사람 › 중복 사람 합치기** 로 합친다. 고른 쪽이 익명 처리되고 기록·자녀·계정·관리자 권한이 남길 쪽으로 옮겨진다. 되돌릴 수 없으니 확인 문구의 두 번호를 꼭 읽는다.
 - 발급 실수 정정은 **관리 › 식사 › 현황** 에서 한다: 발급 취소(가족 남은 장수 안에서만 — 이미 쓴 장수가 있으면 먼저 "무효" 로 되돌린다), 담당자 "1장 대신 사용", 사용 "무효". 모두 기록이 남고 지워지지 않는다. SQL 로 직접 고치지 않는다.
 
