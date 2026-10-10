@@ -41,6 +41,9 @@
 - **Task 2** (목록 데이터, 리뷰 후속): 뮤테이션 테스트로 빈 자리 세 곳이 드러났다. ① `.order('name')` 에 두 번째 키가 없고 비교자도 동명이인에 0 을 돌려 **조회마다 줄 순서가 바뀔 수 있었다** — 합치기는 되돌릴 수 없고 누르는 순간의 줄이 곧 대상이므로, 서버(`.order('id')`)와 순수 함수(`|| id` 비교) 양쪽에서 고정했다. ② 숫자 **한 자리** 검색이 `010…` 전부에 걸렸다(`'김1'` 같은 오타도 교인 전체를 돌려줬다) — 번호 쪽에만 두 자리 하한을 뒀다. ③ `max_rows = 1000` 천장이 조용했다 — `MAX_PEOPLE` 로 명시하고 `.limit()` 을 붙였다. 더해서 칩 조건이 태그 규칙을 다시 쓰고 있어 태그를 단일 근거로 삼았다(이 중복 때문에 "자녀는 미가입이 아니다" 규칙이 뮤테이션에서 살아남았다). 주석의 근거도 틀렸다 — `auth_user_id` 는 `on delete set null` 이고 3단계에 `relink_child` 가 있으므로 **계정 없는 자녀는 정상 상태다**.
 - **Task 3** (목록 화면, 리뷰 후속): **번호 없는 동명이인 두 줄이 보이는 글자도 읽히는 이름도 완전히 같았다.** `add_child` 는 번호 없이 자녀를 넣고 `people_phone_unique` 는 `where phone is not null` 이라 막아 주지 않는다 — 그 줄을 누르면 합치기·초기화가 걸린다. `decoratePeople` 에 `familyHint`('보호자 김철수' / '같은 가족 김철수')를 더하고, 줄 링크에 `aria-label` 을 직접 줬다(그냥 두면 이름과 첫 태그 사이에 공백 텍스트 노드가 없어 "권사관리자" 로 읽힌다). 합치기 **후보의 선택 버튼**도 같은 문제였다 — 접근성 이름에 번호 꼬리표를 붙였다. 빈 목록 문구를 원인별로 갈랐고(모두 가입한 교회에서 "미가입" 은 좋은 소식이다), 개수 줄에 `role="status"` 를 뒀다.
 - **Task 1** (DB 품질 리뷰 결론): 마이그레이션은 **수정 없이 승인**됐다 — 12개 문장이 모두 `create or replace`/`comment`/`revoke`/`grant` 이고, 한 트랜잭션에서 두 번 재실행해도 `pg_proc` 의 소스·ACL·주석이 0행 차이인 무해한 재생이며, 두 세션 실험으로 ②③④ 잠금 순서와 교착 없음을 확인했다(반대 방향 합치기, `leave_family`·`add_family_member` 와의 경합 모두 40P01 없음). 받는 쪽 ④ 잠금이 불필요한 이유도 확인됐다 — 장부 이동은 목적지 묶음에 행을 **더하기만** 하므로 동시 `use_ticket` 은 보수적으로 적게 셀 뿐 음수가 되지 않는다. 테스트 쪽 빈 자리 세 곳(처리자 네 열의 이동, ③ `lock_family`, 익명화된 사람을 **받는 쪽**으로 삼는 경우)은 후속 커밋으로 채웠고, 전화번호 블록이 110 과 겹친 것도 옮겼다.
+- **Task 7** (취소 사유, 리뷰 후속): 막는 결함 셋. ① **잔량 예비 검사가 사유 폼에서 뚫렸다** — `blocked` 이 트리거 버튼만 막고 그 버튼은 폼이 열리면 언마운트된다. 5초 폴링이 도는 동안 가족이 자기 폰에서 한 장을 쓰면 "남은 장수(N)보다 많아 취소할 수 없어요" 가 **켜진 취소하기** 위에 나타나고 그 버튼 문구는 아직 "가족 잔량이 N장 줄어요" 라고 약속한다. `ConfirmButton` 은 `disabled` 가 되는 순간 프롬프트를 닫아 이 상태에 닿지 않았다 — 입력 칸 때문에 폼으로 바꾸면서 그 보호를 잃었다. ② **관리자가 적은 취소 사유가 모든 가족 구성원의 폰으로 갔다** — 교인 화면은 '취소됨' 만 그리지만 값은 교인 브라우저가 받는 JSON 에 담겨 있었다(`issuances` 의 select 권한은 열 단위가 아니라 표 단위다). 교인 쪽 조회에서 열을 빼고, 공용 행 타입에서 선택 필드로 만들고, 한계를 설계 §10 에 적었다 — 열이 '비공개' 가 된 것은 아니므로 입력 칸 아래에 "가족도 볼 수 있어요" 를 둔다. ③ 폼이 열릴 때 **아무 말도 하지 않고 포커스를 잃었다** — 트리거가 언마운트되어 포커스가 body 로 떨어지고 새 질문은 맨 `<p>` 였다. 더해서 "그만두기" 가 취소 오류를 대상 없이 남겼고, `invalidatePeople` 이 가족 식구 목록과 발급 검색을 빼먹었다(초기화된 사람이 가족 탭에 남고 익명화된 사람이 계속 발급 대상으로 떴다).
+- **Task 6** (되돌릴 수 없는 동작, 리뷰 후속): 합치기 **방향은 모든 자리에서 맞았다**(`useMergePeople(person.id)` + `merge.mutate(picked.id)`, `picked` 스냅샷이 재조회에도 id 를 고정, 모든 클라이언트 관문에 서버 관문이 받쳐 준다). 문제는 그 위의 **사람이 읽는 층**이었다. ① 번호 없는 동명이인 후보가 줄·접근성 이름·확인 문구 **네 자리 모두에서 글자까지 같았다** — 이 패널은 애초에 동명이인이 있을 때만 열리고, 둘 중 하나가 다른 생존 교인이면 어느 쪽을 익명화하는지 알 수 없다. 목록 화면이 이미 쓰는 조합(가족 힌트·등록일)을 후보에도 쓴다. ② 초기화 확인 문구가 **누구인지** 말하지 않았다 — 정정 구역은 가족·이력 목록 아래라 폰에서는 이름이 한참 위로 밀려 있다. ③ "그만두기" 가 선택만 지우고 오류는 남겨, 다른 후보의 확인 문구 위에 앞사람 오류가 붙었다. ④ 세 RPC 에 요청 시간 제한이 없어, 연결이 끊기면 **되돌릴 수 없는 동작의 확인 화면에** 오류도 재시도도 없이 갇혔다(4a 가 `withTimeout` 을 넣은 바로 그 이유). 뮤테이션 테스트에서 패널의 한 줄 결함 9개 중 8개가 통과했고, 그중 둘은 **이름 붙은 동작을 전혀 시험하지 않는 테스트**였다.
+- **캐시 무효화가 이 브랜치의 약점이었다** — 같은 종류의 버그가 양방향으로 두 번 나왔다. 발급 취소·무효가 관리자 사람 이력을 무효화하지 않았고(E2E 가 찾았다), 합치기·초기화가 **익명 처리되는 쪽**의 상세·이력과 식사 현황판을 무효화하지 않았다(상대편 id 로 키가 잡히지 않았다). 둘 다 어느 id 인지 몰라도 되게 **접두사 무효화**로 고쳤다.
 
 ## 파일 구조
 
@@ -98,7 +101,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `supabase/tests/database/150_admin_people_ops.sql`
 - Regenerate: `src/lib/database.types.ts`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `supabase/tests/database/150_admin_people_ops.sql`:
 
@@ -275,12 +278,12 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm run db:test`
 Expected: `150` 이 함수 없음으로 실패 (010~140 은 통과).
 
-- [ ] **Step 3: 마이그레이션**
+- [x] **Step 3: 마이그레이션**
 
 `supabase/migrations/20261011000001_admin_people_ops.sql`:
 
@@ -566,7 +569,7 @@ revoke execute on function public.link_person(uuid, uuid) from public, anon;
 grant execute on function public.link_person(uuid, uuid) to authenticated;
 ```
 
-- [ ] **Step 4: 통과 확인 · 타입 재생성**
+- [x] **Step 4: 통과 확인 · 타입 재생성**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: `Files=15, Tests=440, Result: PASS` (392 + 48).
@@ -574,7 +577,7 @@ Expected: `Files=15, Tests=440, Result: PASS` (392 + 48).
 Run: `npm run db:types && git diff --stat src/lib/database.types.ts`
 Expected: `Functions` 에 `merge_people`(`p_from_id`, `p_into_id`), `admin_reset_person`(`p_person_id`), `link_person`(`p_person_id`, `p_auth_user_id`) 추가.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add supabase/migrations/20261011000001_admin_people_ops.sql supabase/tests/database/150_admin_people_ops.sql src/lib/database.types.ts
@@ -590,7 +593,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `src/features/admin/peopleFilter.ts`, `src/features/admin/peopleFilter.test.ts`
 - Create: `src/features/admin/useAllPeople.ts`, `src/features/admin/useAllPeople.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/admin/peopleFilter.test.ts`:
 
@@ -706,12 +709,12 @@ describe('useAllPeople', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/admin/peopleFilter src/features/admin/useAllPeople`
 Expected: 모듈 없음.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/admin/peopleFilter.ts`:
 
@@ -787,12 +790,12 @@ export function useAllPeople() {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test -- src/features/admin && npm run lint && npx tsc -b`
 Expected: 전부 통과.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/features/admin/peopleFilter.ts src/features/admin/peopleFilter.test.ts src/features/admin/useAllPeople.ts src/features/admin/useAllPeople.test.tsx
@@ -810,7 +813,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Modify: `src/components/PersonShell.tsx`, `src/components/PersonShell.test.tsx`
 - Modify: `src/App.tsx`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/pages/admin/AdminPeoplePage.test.tsx`:
 
@@ -939,12 +942,12 @@ describe('AdminPeoplePage', () => {
     expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(['🍚식사', '🎟️발급', '👥사람', '🎫내 식권'])
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/pages/admin/AdminPeoplePage src/components/PersonShell`
 Expected: 모듈 없음 · 탭 배열 불일치.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/pages/admin/AdminPeoplePage.tsx`:
 
@@ -1046,12 +1049,12 @@ const ADMIN_TABS: readonly TabItem[] = [
               <Route path="/admin/people" element={<RequireAdmin><AdminPeoplePage /></RequireAdmin>} />
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과. (`TabBar` 는 `flex-1` 이라 탭 4개도 412px 에서 들어간다.)
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/pages/admin/AdminPeoplePage.tsx src/pages/admin/AdminPeoplePage.test.tsx src/components/PersonShell.tsx src/components/PersonShell.test.tsx src/App.tsx
@@ -1070,7 +1073,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Modify: `src/features/history/useFamilyLedger.ts`
 - Modify: `src/pages/HistoryPage.test.tsx` (`LedgerEntry[]` 로 타입을 박은 픽스처에 `cancelReason: null` — 교인 화면은 그리지 않는다)
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/history/mergeLedger.test.ts` — 기존 테스트는 그대로 두고, 발급 행 픽스처에 `cancel_reason` 을 넣고 엔트리에 실려 오는지 보는 테스트를 더한다. 파일의 발급 행 픽스처(`IssuanceRow`)에 `cancel_reason: null` 을 추가하고(타입이 요구한다), 아래 테스트를 `describe` 안에 더한다:
 
@@ -1208,12 +1211,12 @@ describe('usePersonLedger', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/admin/usePersonDetail src/features/admin/usePersonLedger src/features/history/mergeLedger`
 Expected: 모듈 없음 · `cancelReason` 없음.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/history/mergeLedger.ts` — 발급 행과 엔트리에 취소 사유를 더한다. `IssuanceRow` 에 한 줄, `IssuanceEntry` 에 한 줄, `mergeLedger` 의 발급 매핑에 한 줄:
 
@@ -1330,12 +1333,12 @@ export function usePersonLedger(personId: string) {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과 (교인 내역 화면 테스트도 그대로 — `cancelReason` 은 그리지 않는다).
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/features/admin/usePersonDetail.ts src/features/admin/usePersonDetail.test.tsx src/features/admin/usePersonLedger.ts src/features/admin/usePersonLedger.test.tsx src/features/history/mergeLedger.ts src/features/history/mergeLedger.test.ts src/features/history/useFamilyLedger.ts
@@ -1355,7 +1358,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `src/pages/admin/PersonDetailPage.tsx`, `src/pages/admin/PersonDetailPage.test.tsx`
 - Modify: `src/App.tsx`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/admin/personSchema.test.ts`:
 
@@ -1728,12 +1731,12 @@ describe('PersonDetailPage', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/admin src/pages/admin/PersonDetailPage`
 Expected: 모듈 없음.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/admin/personSchema.ts`:
 
@@ -2062,7 +2065,7 @@ function LedgerLine({ entry }: { entry: LedgerEntry }) {
               <Route path="/admin/people/:personId" element={<RequireAdmin><PersonDetailPage /></RequireAdmin>} />
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과. `PersonMergePanel`·`PersonDangerZone` 은 Task 6 이 채우지만 이 Task 의 페이지가 이미 쓰므로 **자리만 먼저 만든다**. `noUnusedParameters: true` 라 props 이름 앞에 `_` 를 붙인다:
@@ -2087,11 +2090,11 @@ export function PersonDangerZone(_props: { person: Person; onDone: (message: str
 
 (상세 화면 테스트는 두 컴포넌트를 목으로 바꾸므로 자리만 있으면 통과한다.)
 
-- [ ] **Step 5: 수동 확인 (로컬)**
+- [x] **Step 5: 수동 확인 (로컬)**
 
 Run: `npm run dev`. 개발 로그인 `e2e-admin@test.local` → 관리 › 사람 → 검색·필터 → 아무 사람 → 전체 번호·가족·이력 확인 → 수정으로 번호 바꾸고 목록에 반영되는지.
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add src/features/admin/personSchema.ts src/features/admin/personSchema.test.ts src/features/admin/usePersonOps.ts src/features/admin/usePersonOps.test.tsx src/features/admin/PersonEditForm.tsx src/features/admin/PersonEditForm.test.tsx src/features/admin/PersonMergePanel.tsx src/features/admin/PersonDangerZone.tsx src/pages/admin/PersonDetailPage.tsx src/pages/admin/PersonDetailPage.test.tsx src/App.tsx
@@ -2111,7 +2114,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Modify: `src/features/admin/usePersonOps.ts` (문구 매퍼), `src/features/admin/usePersonOps.test.tsx`
 - Modify: `src/lib/errors.ts`, `src/lib/errors.test.ts`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/lib/errors.test.ts` — 새 `it` 하나를 더한다:
 
@@ -2345,12 +2348,12 @@ describe('PersonDangerZone · 계정 연결', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/admin src/lib/errors`
 Expected: 문구 없음 · 두 컴포넌트가 비어 있어(Task 5 의 자리만 있는 상태) 단언 실패.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/lib/errors.ts` 의 `MESSAGES` 에 4a 블록 다음으로 추가:
 
@@ -2564,16 +2567,16 @@ export function PersonDangerZone({ person, onDone }: Props) {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과.
 
-- [ ] **Step 5: 수동 확인 (로컬)**
+- [x] **Step 5: 수동 확인 (로컬)**
 
 Run: `npm run dev`. 관리자 › 발급 › "+ 새로 등록" 으로 같은 이름·다른 번호의 중복 행을 만들고 2장 발급 → 사람 › 그 중복 행이 아닌 본인 → 중복 사람 합치기 → 검색 → 선택 → 합치기 → 이력에 발급이 따라오고 목록에서 중복 행이 사라지는지. 그 다음 아무 미가입 행에서 초기화 → 목록에서 사라지고 상세는 "초기화·합쳐진 사람" 으로 보이는지.
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add src/features/admin/PersonMergePanel.tsx src/features/admin/PersonMergePanel.test.tsx src/features/admin/PersonDangerZone.tsx src/features/admin/PersonDangerZone.test.tsx src/features/admin/usePersonOps.ts src/features/admin/usePersonOps.test.tsx src/lib/errors.ts src/lib/errors.test.ts
@@ -2590,7 +2593,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Modify: `src/features/admin/useMealOps.ts`, `src/features/admin/useMealOps.test.tsx`
 - Modify: `src/pages/admin/MealDetailPage.tsx`, `src/pages/admin/MealDetailPage.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/admin/useMealOps.test.tsx` — `useCancelIssuance` 테스트를 인자 객체로 바꾼다(기존 두 테스트의 `mutateAsync('i1')` 호출과 rpc 단언을 아래로 교체):
 
@@ -2652,12 +2655,12 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/admin/useMealOps src/pages/admin/MealDetailPage`
 Expected: 인자 모양·사유 칸 없음으로 실패.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/admin/useMealOps.ts` — `useCancelIssuance` 가 사유를 받는다:
 
@@ -2779,12 +2782,12 @@ function CancelReasonForm({ issuance: i, actions }: { issuance: MealIssuance; ac
 
 (파일 상단 import 에 `Button`, `TextField` 를 더한다 — `Spinner` 와 같은 `../../components/ui` 에서 온다. `IssuanceLine` 은 `<li className="flex …">` 에서 `<li className="flex flex-col gap-0">` 으로 바꾸지 말고, 기존 좌우 배치를 `<div className="flex items-start justify-between gap-2">` 로 감싸고 그 아래 폼을 둔다.)
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과. E2E 는 Task 8 에서 함께 돌린다 — `e2e/admin.spec.ts` 의 `발급 취소` → `취소하기` 순서는 그대로 통하지만(사유는 선택) Task 8 에서 반드시 재확인한다.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/features/admin/useMealOps.ts src/features/admin/useMealOps.test.tsx src/pages/admin/MealDetailPage.tsx src/pages/admin/MealDetailPage.test.tsx
@@ -2800,7 +2803,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Modify: `e2e/helpers.ts` (관리자 헬퍼 쪼개기 — 4a 인계 항목)
 - Create: `e2e/people.spec.ts`
 
-- [ ] **Step 1: 헬퍼 쪼개기**
+- [x] **Step 1: 헬퍼 쪼개기**
 
 4a 리뷰가 넘긴 대로, 한 덩어리였던 `adminCreateTodayMealAndIssueTwo` 를 셋으로 쪼개고 기존 함수는 그 셋을 부르는 얇은 껍데기로 남긴다(기존 세 스펙은 그대로 통한다). `e2e/helpers.ts` 의 `adminCreateTodayMealAndIssueTwo` 를 아래로 바꾼다:
 
@@ -2854,7 +2857,7 @@ export async function adminCreateTodayMealAndIssueTwo(page: Page, { mealTitle, m
 Run: `npm run e2e`
 Expected: **5 passed** (쪼개기 전과 동작 동일 — admin 1 · family 1 · onboarding 2 · tickets 1).
 
-- [ ] **Step 2: 스펙 작성**
+- [x] **Step 2: 스펙 작성**
 
 `e2e/people.spec.ts`:
 
@@ -2952,12 +2955,12 @@ test('관리자 사람 탭: 중복 합치기 → 이력 합산 → 취소 사유
 })
 ```
 
-- [ ] **Step 3: 실행**
+- [x] **Step 3: 실행**
 
 Run: `npm run e2e`
 Expected: **6 passed** (admin 1 · family 1 · onboarding 2 · people 1 · tickets 1). 실패하면 `test-results/` 의 오류·스크린샷을 본다. 흔한 원인: (1) `getByRole('link', { name: '사람' })` 이 목록 줄 링크와 겹침 — 탭은 `exact: true` 로 좁혔다; (2) 사람 목록 줄의 접근성 이름은 "이름 + 태그 + 번호" 를 모두 이어 붙인 것이라 번호 부분 문자열로 고른다; (3) 합치기 확인 문구의 괄호는 정규식에서 이스케이프해야 한다.
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add e2e/helpers.ts e2e/people.spec.ts
@@ -2975,7 +2978,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Modify: `docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md`
 - Modify: `docs/superpowers/plans/2026-10-11-phase4b-people.md` (이 파일)
 
-- [ ] **Step 1: README**
+- [x] **Step 1: README**
 
 "### 5. 운영 체크리스트" 의 다음 줄을 지운다 (3단계가 넣은 임시 절차 — 이제 화면에서 한다):
 
@@ -2990,7 +2993,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - 같은 사람이 두 줄로 들어갔으면(선발급 뒤 이름을 달리 적어 가입한 경우 등) **관리 › 사람 › 남길 사람 › 중복 사람 합치기** 로 합친다. 고른 쪽이 익명 처리되고 기록·자녀·계정·관리자 권한이 남길 쪽으로 옮겨진다. 되돌릴 수 없으니 확인 문구의 두 번호를 꼭 읽는다.
 ```
 
-- [ ] **Step 2: 설계 문서**
+- [x] **Step 2: 설계 문서**
 
 - **§8.3 사람**: 구현대로 — "검색(이름·번호 뒷자리, 전체를 한 번 읽어 클라이언트에서 좁힌다), 필터 칩(전체·미가입·관리자), 목록(전체 번호, 관리자·자녀·미가입 태그와 가족 수). 상세: 이름·번호 수정, 가족 보기, 발급·사용 이력(취소 사유 포함), 중복 사람 합치기, 사람 초기화, 카카오 계정 수동 연결(복구 경로). 익명화된 사람은 목록에서 빼고 상세는 '기록만 남아 있어요' 로 보여 준다." **"방문자" 태그는 스키마에 근거가 없어 넣지 않았다**는 한 줄도 적는다.
 - **§7.3 표**: `merge_people(from_id, into_id)` 행을 구현대로 — "from 의 장부(구매자·처리자)·자녀·계정·관리자 권한을 into 로 옮기고 from 익명화. 장부의 가족은 옛 가족에 산 사람이 남지 않을 때만 옮긴다. 코드: `not_authenticated \| forbidden \| same_person \| person_not_found \| minor_not_allowed \| both_have_accounts`". `admin_reset_person(person_id)` 행에 코드 목록(`… \| minor_not_allowed \| has_children \| last_admin`)과 "장부 보존". `link_person(person_id, auth_user_id)` 행에 "동의 기록이 있는 계정 없는 어른에게만. 코드: `… \| already_registered \| consent_required \| account_not_found \| anonymous_cannot_claim \| account_taken`".
@@ -2999,11 +3002,11 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - **§14**: 4단계를 "4a(완료, 2026-10-10) · 4b 사람 탭(완료, merge 날짜) · 4c 통계·CSV·공유" 로.
 - **§15**: 새 항목 셋 — "사람 목록은 살아 있는 사람 전체를 한 번 읽는다(수백 명 전제). 수천 명이 되면 서버 검색으로 바꾼다", "`link_person` 은 계정 id 를 손으로 붙여 넣는 복구 경로다. 교인이 스스로 가입하면 자동 연결 또는 합치기로 해결된다", "합치기는 되돌릴 수 없다 — 되돌리기(분리)는 범위 밖이다".
 
-- [ ] **Step 3: 이 계획 파일**
+- [x] **Step 3: 이 계획 파일**
 
 "구현 결과와 계획의 차이" 절을 범위 절 다음에 만들어 Task 별로 실제 바뀐 것을 적고, 완료 기준의 수치를 측정값으로 채운다. 모든 Step 체크박스를 `[x]` 로(PR 본문의 Test Plan 항목은 그대로 둔다).
 
-- [ ] **Step 4: 전체 검증**
+- [x] **Step 4: 전체 검증**
 
 ```bash
 npm run db:reset && npm run db:test        # pgTAP 440
@@ -3013,7 +3016,7 @@ npm run build && VITE_BASE_PATH=/meal-ticket/ npm run build && grep -q '/meal-ti
 npm run e2e                                # 6 passed
 ```
 
-- [ ] **Step 5: 커밋** (push·PR 은 컨트롤러가 한다)
+- [x] **Step 5: 커밋** (push·PR 은 컨트롤러가 한다)
 
 ```bash
 git add README.md docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md docs/superpowers/plans/2026-10-11-phase4b-people.md
@@ -3036,7 +3039,7 @@ PR 본문:
 - 관리자 조작은 교회 전체 범위다(4a 와 같다). 마지막 관리자는 초기화할 수 없고, 합치기는 관리자 권한을 남는 쪽으로 넘긴다.
 
 ## Test Plan
-- [ ] CI 녹색 (pgTAP 440 · Vitest · E2E 6)
+- [ ] CI 녹색 (pgTAP 446 · Vitest 576 · E2E 6)
 - [ ] merge 후 Deploy 성공, 운영에서 관리 › 사람 열어 교인 검색·전체 번호 확인
 - [ ] 실제 폰: 시험용 중복 행 만들어 합치기 → 이력 합산 → 초기화
 
@@ -3049,10 +3052,10 @@ PR 은 사용자가 merge 한다.
 
 ## 완료 기준
 
-- pgTAP: 010~150 전부 통과, 총 440 (150 = 48).
-- Vitest 전부 통과, 커버리지 임계값(lines 80 · functions 80 · branches 70 · statements 80) 통과.
-- `npm run lint` · `npx tsc -b` · `npm run build` · 하위 경로 빌드 통과.
-- Playwright: 6 passed (admin 1 · family 1 · onboarding 2 · people 1 · tickets 1).
+- pgTAP: 010~150 전부 통과, **Files=15, Tests=446** (150 = `plan(54)` — 계획의 48 에 리뷰가 찾은 빈 자리 6개를 더했다).
+- Vitest: **73 파일 576 통과**. 커버리지 — statements **97.85%** (1460/1492) · branches **91.38%** (1050/1149) · functions **97.14%** (510/525) · lines **98.97%** (1254/1267). 임계값(80/80/70/80) 모두 통과.
+- `npm run lint`(oxlint `--deny-warnings`) · `npx tsc -b` · `npm run build` · `VITE_BASE_PATH=/meal-ticket/` 하위 경로 빌드 통과(`dist/index.html` 에 `/meal-ticket/assets/` 확인).
+- Playwright: **6 passed** (admin 1 · family 1 · onboarding 2 · people 1 · tickets 1).
 - 수동: 관리자로 사람 검색 → 상세 → 번호 수정 → 중복 합치기 → 초기화가 화면 문구대로 동작.
 - 운영: merge 뒤 Deploy 성공, 관리 › 사람에서 교인 목록이 보인다.
 
