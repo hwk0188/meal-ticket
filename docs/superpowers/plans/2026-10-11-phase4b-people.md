@@ -35,6 +35,7 @@
 ## 구현 결과와 계획의 차이 (실행 중 리뷰로 바뀐 것)
 
 - **Task 1** (DB): 계획 초안의 `merge_people` 은 빈 옛 가족을 지우지 못했다 — 익명화는 `family_id` 를 건드리지 않아 **익명화된 from 행이 옛 가족을 계속 가리키기** 때문이다(`not exists (people)` 가 거짓 → 조용히 0행 삭제; `deleted_at is null` 로 조건만 좁히면 FK 23503). 구현은 장부를 옮긴 뒤 **익명화된 행의 가족도 남는 쪽으로 옮기고** 나서 빈 가족을 지운다. 3단계 `add_family_member` 는 같은 상황에서 빈 껍데기 가족을 남기는데(문서에 "무해하다" 로 기록), 합치기는 "두 행이 같은 사람" 이라 익명화된 행을 남는 쪽 가족에 두는 편이 뜻에 맞고 껍데기도 쌓이지 않는다. 교인 화면에는 영향이 없다(가족 조회는 RLS·쿼리 모두 `deleted_at is null`). 관리자 사람 상세의 가족 목록에는 '초기화됨' 태그로 보인다.
+- **Task 4** (상세 데이터): `IssuanceEntry` 에 `cancelReason` 이 생겨 **교인 내역 화면 테스트**(`src/pages/HistoryPage.test.tsx`)의 `LedgerEntry[]` 픽스처 두 곳에 `cancelReason: null` 을 더해야 했다(계획엔 없던 파일). `useFamilyLedger.test.tsx` 의 픽스처는 `ok(...)` 에 넘기는 무타입 리터럴이라 손댈 필요가 없었다.
 - **Task 1** (테스트): `last_admin` 단언 뒤 관리자 인증 상태에서 `consented_at` 열을 넣으려다 `permission denied` — `authenticated` 에는 `insert (name, phone)` 열 권한만 있다. 그 insert 앞에 `tests.clear_auth()`, 뒤에 `tests.authenticate_as(admin)` 를 넣었다(공통 규약의 "직접 쓰기 전에 clear_auth" 그대로).
 
 ## 파일 구조
@@ -1063,6 +1064,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `src/features/admin/usePersonLedger.ts`, `src/features/admin/usePersonLedger.test.tsx`
 - Modify: `src/features/history/mergeLedger.ts`, `src/features/history/mergeLedger.test.ts`
 - Modify: `src/features/history/useFamilyLedger.ts`
+- Modify: `src/pages/HistoryPage.test.tsx` (`LedgerEntry[]` 로 타입을 박은 픽스처에 `cancelReason: null` — 교인 화면은 그리지 않는다)
 
 - [ ] **Step 1: 실패하는 테스트**
 
