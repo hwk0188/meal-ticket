@@ -28,7 +28,7 @@
 
 ## 구현 결과와 계획의 차이 (실행 중 리뷰로 바뀐 것)
 
-- **Task 1** (조회): 계획 초안의 라벨 계산이 최근 발급부터 이름을 나열해 테스트의 기대(`'김철수 · 이영희'` — 먼저 산 사람 먼저)와 어긋났다. 구현은 `buyerId` 는 최근 활성 발급에서, 라벨은 오래된 발급부터(활성 → 취소 순)로 계산한다. 위 스니펫은 고친 뒤 버전이다.
+- **Task 1** (조회): 계획 초안의 라벨 계산이 최근 발급부터 이름을 나열해 테스트의 기대(`'김철수 · 이영희'` — 먼저 산 사람 먼저)와 어긋났다. 구현은 `buyerId` 는 최근 활성 발급에서, 라벨은 오래된 발급부터(활성 → 취소 순)로 계산한다. 품질 리뷰로 ① `FamilyRow` → **`FamilyGroup`**(이후 Task 는 이 이름을 쓴다), ② 두 표 읽기에 `.order(…, desc)` 고정(ms 동률이 폴링마다 뒤바뀌어 `buyerId` 가 바뀌는 것 방지), ③ uuid 가 아닌 주소는 조회 없이 `null`(손으로 고친 `#/admin/meals/zzz` 가 22P02 → 영원한 '다시 시도' 가 되던 것), ④ 임베딩에 `deleted_at` 을 더해 **`buyerId` 는 탈퇴자를 건너뛰고** 산 사람(없으면 이 가족에서 쓴 산 사람)을 고른다 — `use_ticket_as_admin` 이 탈퇴자를 거부하므로, ⑤ 검색어 NFC 정규화, 이름 없는 가족은 맨 뒤, 사용만 남은 가족의 라벨도 오래된 순, ⑥ 오류 경로 테스트. 네 요청이 각자 스냅샷이라 합계와 줄이 잠깐 어긋날 수 있는 것은 5초 폴링으로 두고(조작 판단은 서버), 조작이 거부되면 현황을 바로 다시 읽는다(Task 4 `onError`). Task 1 스니펫은 리뷰 전 버전(이름만 `FamilyGroup` 으로 바꿔 둠).
 
 ## 파일 구조
 
@@ -254,7 +254,7 @@ export type MealIssuance = {
   memo: string | null; issuedAt: string; issuer: string; cancelled: boolean; cancelReason: string | null
 }
 export type MealUsage = { id: string; personId: string; person: string; via: 'self' | 'admin'; usedAt: string; voided: boolean }
-export type FamilyRow = {
+export type FamilyGroup = {
   familyId: string
   /** 구매자 이름들(활성 발급 먼저, 중복 제거) — "김철수 · 이영희". 발급이 없으면 사용자 이름. */
   label: string
@@ -270,18 +270,18 @@ export type FamilyRow = {
   buyerId: string | null
 }
 export type MealTotals = { issued: number; used: number; remaining: number; amount: number }
-export type MealLedger = { totals: MealTotals; families: FamilyRow[] }
+export type MealLedger = { totals: MealTotals; families: FamilyGroup[] }
 
 const NO_NAME = '(이름 없음)'
 const byTimeDesc = (a: string, b: string) => Date.parse(b) - Date.parse(a)
 
 /** 식사 하나의 발급·사용·잔량 행을 가족별 블록과 합계로 묶는다. 이름이 가려진 행(RLS·탈퇴)은 빈 이름으로 둔다. */
 export function groupMealLedger(issuances: readonly MealIssuanceRow[], usages: readonly MealUsageRow[], balances: readonly Balance[]): MealLedger {
-  const byFamily = new Map<string, FamilyRow>()
-  const rowOf = (familyId: string): FamilyRow => {
+  const byFamily = new Map<string, FamilyGroup>()
+  const rowOf = (familyId: string): FamilyGroup => {
     const existing = byFamily.get(familyId)
     if (existing) return existing
-    const fresh: FamilyRow = { familyId, label: NO_NAME, issued: 0, used: 0, remaining: 0, amount: 0, issuances: [], usages: [], buyerId: null }
+    const fresh: FamilyGroup = { familyId, label: NO_NAME, issued: 0, used: 0, remaining: 0, amount: 0, issuances: [], usages: [], buyerId: null }
     byFamily.set(familyId, fresh)
     return fresh
   }
@@ -326,7 +326,7 @@ export function groupMealLedger(issuances: readonly MealIssuanceRow[], usages: r
 }
 
 /** 이름 검색: 구매자·사용자 이름 어디든 검색어가 들어 있는 가족만. 빈 검색어는 전부. */
-export function filterFamilies(families: readonly FamilyRow[], query: string): FamilyRow[] {
+export function filterFamilies(families: readonly FamilyGroup[], query: string): FamilyGroup[] {
   const q = query.trim()
   if (!q) return [...families]
   return families.filter((f) => f.label.includes(q) || f.issuances.some((i) => i.buyer.includes(q)) || f.usages.some((u) => u.person.includes(q)))
@@ -419,19 +419,19 @@ vi.mock('../../features/admin/useMealDetail', async (importOriginal) => ({
 const meal = { id: 'm1', title: '주일 점심', served_on: '2026-10-11', note: null, created_by: 'a', created_at: '' }
 const issuance = (over: Partial<MealIssuanceRow>): MealIssuanceRow => ({
   id: 'i1', person_id: 'p1', family_id: 'f1', quantity: 2, unit_price: 5000, memo: null, issued_at: '2026-10-09T05:00:00Z',
-  cancelled_at: null, cancel_reason: null, buyer: { name: '김철수' }, issuer: { name: '권사' }, ...over,
+  cancelled_at: null, cancel_reason: null, buyer: { name: '김철수', deleted_at: null }, issuer: { name: '권사' }, ...over,
 })
 const usage = (over: Partial<MealUsageRow>): MealUsageRow => ({
-  id: 'u1', person_id: 'p2', family_id: 'f1', used_at: '2026-10-11T03:31:00Z', used_via: 'self', voided_at: null, person: { name: '서연' }, ...over,
+  id: 'u1', person_id: 'p2', family_id: 'f1', used_at: '2026-10-11T03:31:00Z', used_via: 'self', voided_at: null, person: { name: '서연', deleted_at: null }, ...over,
 })
 const ledger = groupMealLedger(
   [
     issuance({ id: 'i1' }),
-    issuance({ id: 'i2', person_id: 'p3', buyer: { name: '이영희' }, quantity: 1, issued_at: '2026-10-10T05:00:00Z', memo: '입금 확인' }),
+    issuance({ id: 'i2', person_id: 'p3', buyer: { name: '이영희', deleted_at: null }, quantity: 1, issued_at: '2026-10-10T05:00:00Z', memo: '입금 확인' }),
     issuance({ id: 'i3', quantity: 1, issued_at: '2026-10-08T05:00:00Z', cancelled_at: '2026-10-08T06:00:00Z', cancel_reason: '실수' }),
-    issuance({ id: 'i4', family_id: 'f2', person_id: 'p9', buyer: { name: '박민수' }, quantity: 4, issued_at: '2026-10-09T05:00:00Z' }),
+    issuance({ id: 'i4', family_id: 'f2', person_id: 'p9', buyer: { name: '박민수', deleted_at: null }, quantity: 4, issued_at: '2026-10-09T05:00:00Z' }),
   ],
-  [usage({ id: 'u1' }), usage({ id: 'u2', used_at: '2026-10-11T03:40:00Z', used_via: 'admin', person: { name: '김철수' } })],
+  [usage({ id: 'u1' }), usage({ id: 'u2', used_at: '2026-10-11T03:40:00Z', used_via: 'admin', person: { name: '김철수', deleted_at: null } })],
   [
     { family_id: 'f1', meal_id: 'm1', issued: 3, used: 2, remaining: 1, amount: 15000 },
     { family_id: 'f2', meal_id: 'm1', issued: 4, used: 0, remaining: 4, amount: 20000 },
@@ -544,7 +544,7 @@ Expected: `MealDetailPage` 모듈 없음, AdminMealsPage 링크 단언 실패.
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { Spinner, TextField } from '../../components/ui'
-import { filterFamilies, type FamilyRow, type MealIssuance, type MealUsage } from '../../features/admin/groupMealLedger'
+import { filterFamilies, type FamilyGroup, type MealIssuance, type MealUsage } from '../../features/admin/groupMealLedger'
 import { useMealDetail } from '../../features/admin/useMealDetail'
 import { formatDateTime, formatMealDate } from '../../lib/dates'
 import { formatWon } from '../../lib/money'
@@ -591,7 +591,7 @@ export function MealDetailPage() {
   )
 }
 
-function FamilyList({ families }: { families: readonly FamilyRow[] }) {
+function FamilyList({ families }: { families: readonly FamilyGroup[] }) {
   if (families.length === 0) return <p className="py-6 text-center text-sm text-gray-500">찾는 가족이 없어요</p>
   return (
     <ul aria-label="가족별 현황" className="flex flex-col gap-2">
@@ -601,7 +601,7 @@ function FamilyList({ families }: { families: readonly FamilyRow[] }) {
 }
 
 /** 가족 한 블록: 구매자 이름들 · "N장 중 M장 사용" · 남음·금액 · 발급 줄 · 사용 줄 */
-function FamilyBlock({ family }: { family: FamilyRow }) {
+function FamilyBlock({ family }: { family: FamilyGroup }) {
   return (
     <li aria-label={family.label} className="rounded-2xl border border-gray-200 bg-white p-4">
       <div className="flex items-baseline justify-between gap-2">
@@ -1126,10 +1126,12 @@ describe('useCancelIssuance', () => {
 
   it('RPC 오류는 코드를 보존한 Error 로 던진다', async () => {
     rpc.mockReturnValue({ then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: null, error: { code: 'P0001', message: 'would_go_negative', details: '', hint: '', name: 'PostgrestError' } }).then(resolve) })
-    const { wrapper } = makeWrapper()
+    const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
     await expect(result.current.mutateAsync('i1')).rejects.toMatchObject({ message: 'would_go_negative', code: 'P0001' })
     await waitFor(() => expect(result.current.isError).toBe(true))
+    // 거부되면 화면의 잔량이 낡았을 수 있다 → 현황만 다시 읽는다
+    expect(invalidate.mock.calls.map((c) => (c[0] as { queryKey?: unknown } | undefined)?.queryKey)).toEqual([['meal-detail', 'm1']])
   })
 })
 
@@ -1216,6 +1218,10 @@ export function invalidateMealOps(queryClient: QueryClient, mealId: string) {
   ])
 }
 
+// 네 조회가 각자 스냅샷이라 화면의 남은 장수가 잠깐 낡을 수 있다 → 서버가 거부하면(would_go_negative·no_remaining 등)
+// 현황을 바로 다시 읽어 버튼 잠금이 실제 잔량을 따르게 한다 (Task 1 리뷰).
+const refreshBoard = (queryClient: QueryClient, mealId: string) => () => queryClient.invalidateQueries({ queryKey: mealDetailQueryKey(mealId) })
+
 /** 발급 한 건 취소. 사유 입력 칸은 4a 에 두지 않는다(DB 의 p_reason 은 선택 인자). */
 export function useCancelIssuance(mealId: string) {
   const queryClient = useQueryClient()
@@ -1223,6 +1229,7 @@ export function useCancelIssuance(mealId: string) {
     mutationFn: async (issuanceId: string) => unwrap(await supabase.rpc('cancel_issuance', { p_issuance_id: issuanceId })),
     // promise 를 돌려줘야 재조회가 끝날 때까지 isPending 이 유지된다
     onSuccess: () => invalidateMealOps(queryClient, mealId),
+    onError: refreshBoard(queryClient, mealId),
   })
 }
 
@@ -1240,6 +1247,7 @@ export function useUseTicketAsAdmin(mealId: string) {
   return useMutation({
     mutationFn: async (personId: string) => unwrap(await supabase.rpc('use_ticket_as_admin', { p_person_id: personId, p_meal_id: mealId })),
     onSuccess: () => invalidateMealOps(queryClient, mealId),
+    onError: refreshBoard(queryClient, mealId),
   })
 }
 ```
@@ -1375,7 +1383,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { Spinner, TextField } from '../../components/ui'
-import { filterFamilies, type FamilyRow, type MealIssuance, type MealUsage } from '../../features/admin/groupMealLedger'
+import { filterFamilies, type FamilyGroup, type MealIssuance, type MealUsage } from '../../features/admin/groupMealLedger'
 import { useMealDetail } from '../../features/admin/useMealDetail'
 import { useCancelIssuance, useUseTicketAsAdmin, useVoidUsage } from '../../features/admin/useMealOps'
 import { formatDateTime, formatMealDate } from '../../lib/dates'
@@ -1386,7 +1394,7 @@ type Actions = {
   pending: boolean
   onCancel: (issuance: MealIssuance) => void
   onVoid: (usage: MealUsage) => void
-  onUseAsAdmin: (family: FamilyRow) => void
+  onUseAsAdmin: (family: FamilyGroup) => void
 }
 
 /** `#/admin/meals/:mealId` — 식사 하나의 현황판 (설계 §8.3). 발급·사용·남음·금액, 이름 검색, 가족별 명단 + 취소·대신 사용·무효. 5초 폴링은 훅이 한다. */
@@ -1464,7 +1472,7 @@ export function MealDetailPage() {
   )
 }
 
-function FamilyList({ families, actions }: { families: readonly FamilyRow[]; actions: Actions }) {
+function FamilyList({ families, actions }: { families: readonly FamilyGroup[]; actions: Actions }) {
   if (families.length === 0) return <p className="py-6 text-center text-sm text-gray-500">찾는 가족이 없어요</p>
   return (
     <ul aria-label="가족별 현황" className="flex flex-col gap-2">
@@ -1474,7 +1482,7 @@ function FamilyList({ families, actions }: { families: readonly FamilyRow[]; act
 }
 
 /** 가족 한 블록: 구매자 이름들 · "N장 중 M장 사용" · 남음·금액 · 1장 대신 사용 · 발급 줄 · 사용 줄 */
-function FamilyBlock({ family, actions }: { family: FamilyRow; actions: Actions }) {
+function FamilyBlock({ family, actions }: { family: FamilyGroup; actions: Actions }) {
   return (
     <li aria-label={family.label} className="rounded-2xl border border-gray-200 bg-white p-4">
       <div className="flex items-baseline justify-between gap-2">
