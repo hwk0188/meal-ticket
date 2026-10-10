@@ -222,6 +222,27 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"cancel_issuance":
+{ Args: { "p_issuance_id": string,"p_reason"?: string }; Returns: {
+              "cancel_reason": string | null,
+"cancelled_at": string | null,
+"cancelled_by": string | null,
+"family_id": string,
+"id": string,
+"issued_at": string,
+"issued_by": string,
+"meal_id": string,
+"memo": string | null,
+"person_id": string,
+"quantity": number,
+"unit_price": number
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "issuances"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
 "claim_person":
 { Args: { "p_consent_version": string,"p_name": string,"p_phone": string }; Returns: {
               "auth_user_id": string | null,
@@ -376,6 +397,46 @@ isOneToOne: false
                            },
 "use_ticket":
 { Args: { "p_meal_id": string,"p_request_id": string }; Returns: {
+              "family_id": string,
+"id": string,
+"meal_id": string,
+"person_id": string,
+"quantity": number,
+"recorded_by": string,
+"request_id": string,
+"used_at": string,
+"used_via": string,
+"voided_at": string | null,
+"voided_by": string | null
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "usages"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"use_ticket_as_admin":
+{ Args: { "p_family_id"?: string,"p_meal_id": string,"p_person_id": string }; Returns: {
+              "family_id": string,
+"id": string,
+"meal_id": string,
+"person_id": string,
+"quantity": number,
+"recorded_by": string,
+"request_id": string,
+"used_at": string,
+"used_via": string,
+"voided_at": string | null,
+"voided_by": string | null
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "usages"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"void_usage":
+{ Args: { "p_usage_id": string }; Returns: {
               "family_id": string,
 "id": string,
 "meal_id": string,
