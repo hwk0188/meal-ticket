@@ -2031,12 +2031,12 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 - [ ] **Step 2: 설계 문서**
 
-- §7.3 표: `cancel_issuance(id, reason)` 행 — "발급 한 건 통째로 취소. 취소 뒤 가족 잔량이 음수면 `would_go_negative`. 코드: `not_authenticated \| forbidden \| invalid_reason \| issuance_not_found \| already_cancelled \| would_go_negative`". `use_ticket_as_admin(person_id, meal_id)` 행 — "날짜 제한 없음. 자녀 몫도 허용(잔량은 가족 것). `used_via='admin'`, `recorded_by`=관리자, `request_id` 는 서버 생성. 코드: `not_authenticated \| forbidden \| person_not_found \| meal_not_found \| no_remaining`". `void_usage(id)` 행 — "코드: `not_authenticated \| forbidden \| usage_not_found \| already_voided`". `use_ticket` 행 끝에 "4a 에서 재정의: 사람 행 `for update` + `lock_family_meal`". 잠금 순서 문단에 "장부 행(issuances·usages) 잠금은 ④ 뒤에 — 합류의 장부 이동과 같은 순서" 한 줄.
+- §7.3 표: 행 이름을 실제 시그니처로 — `cancel_issuance(id, reason)`, `use_ticket_as_admin(person_id, meal_id, family_id, request_id)`(둘 다 선택; `family_id` 가 다르면 `family_changed`, `request_id` 는 재시도 키 — 같은 값은 처음 결과를 돌려주고 다른 대상에 재사용하면 `duplicate_request`), `void_usage(id)`. `cancel_issuance(id, reason)` 행 — "발급 한 건 통째로 취소. 취소 뒤 가족 잔량이 음수면 `would_go_negative`. 코드: `not_authenticated \| forbidden \| invalid_reason \| issuance_not_found \| already_cancelled \| would_go_negative`". `use_ticket_as_admin(person_id, meal_id)` 행 — "날짜 제한 없음. 자녀 몫도 허용(잔량은 가족 것). `used_via='admin'`, `recorded_by`=관리자, `request_id` 는 서버 생성. 코드: `not_authenticated \| forbidden \| person_not_found \| meal_not_found \| no_remaining`". `void_usage(id)` 행 — "코드: `not_authenticated \| forbidden \| usage_not_found \| already_voided`". `use_ticket` 행 끝에 "4a 에서 재정의: 사람 행 `for update` + `lock_family_meal`". 잠금 순서 문단에 "장부 행(issuances·usages) 잠금은 ④ 뒤에 — 합류의 장부 이동과 같은 순서" 한 줄.
 - §8.3 **식사 상세(현황판)**: 구현대로 — "네 숫자 한 줄, 이름 검색(구매자·사용자), 가족 블록(구매자 이름들 · N장 중 M장 사용 · 남음·금액 · 발급 줄 · 사용 줄). 동작은 ⋯ 메뉴가 아니라 줄마다 작은 두 단계 확인 버튼: 가족 블록 '1장 대신 사용'(활성 발급의 최근 구매자 몫), 발급 줄 '발급 취소'(가족 남은 장수보다 많으면 잠기고 이유 표시), 사용 줄 '무효'. 취소 사유 입력 칸은 두지 않는다(DB 는 받는다). 5초 폴링."
 - §9 발급: "취소 불가" 문구를 "남은 장수(N)보다 많아 취소할 수 없어요 — 먼저 사용을 무효 처리" 로.
-- §12 item 4 에 `e2e/admin.spec.ts`(현황판 흐름) 추가.
+- §12 item 1 의 `cancel_issuance` 항목에 "대신 사용 멱등(request_id)·가족 확인·④ 잠금 키 고정" 을, item 3 의 "식사 상세 ⋯ 메뉴" 를 "식사 상세 행 버튼(취소·대신 사용·무효, 두 단계 확인)" 으로, item 4 에 `e2e/admin.spec.ts`(현황판 흐름) 추가.
 - §14: 4단계를 "4a 식사 상세 현황판·식권 조작·`use_ticket` 재정의 (완료, 2026-10-10) · 4b 사람 탭 · 4c 통계·CSV·공유" 로 (완료일은 merge 날짜로 맞춘다).
-- §15: "그때 `use_ticket` 도 재정의해 사람 행을 `for update` 로 읽는다 …" 문장을 "(4a 에서 완료)" 로.
+- §15: "4단계에서 잔량을 바꾸는 함수(…)는 … `lock_family_meal` 을 통해 잠근다 … 그때 `use_ticket` 도 재정의해 …" 항목 전체를 "(4a 에서 완료 — `cancel_issuance`·`void_usage`·`use_ticket_as_admin` 이 `lock_family_meal` 로 잠그고 `use_ticket` 은 사람 행 `for update` 로 재정의됨)" 로 줄이고, `would_go_negative` 항목도 "(4a 에서 구현)" 표시. 새 항목: "대신 사용의 재시도 키는 메모리에만 있다(새로고침 뒤 새 키) — 발급과 같은 60초 중복 확인은 4b/4c 검토".
 
 - [ ] **Step 3: 이 계획 파일**
 
