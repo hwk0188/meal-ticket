@@ -1181,7 +1181,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { fail, ok } from '../../test/fakeSupabase'
-import { invalidateMealOps, mealOpsErrorMessage, useCancelIssuance, useUseTicketAsAdmin, useVoidUsage } from './useMealOps'
+import { invalidateMealOps, mealOpsErrorMessage, OPS_TIMEOUT_MS, useCancelIssuance, useUseTicketAsAdmin, useVoidUsage } from './useMealOps'
 
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn<(fn: string, args?: Record<string, unknown>) => unknown>() }))
 vi.mock('../../lib/supabase', () => ({ supabase: { rpc } }))
@@ -1338,6 +1338,63 @@ describe('useUseTicketAsAdmin', () => {
     const secondArgs = rpc.mock.calls[1]?.[1] as { p_request_id?: string } | undefined
     expect(firstArgs?.p_request_id).not.toBe(secondArgs?.p_request_id)
   })
+
+  it('대상 A 가 타임아웃으로 재시도 id 를 들고 있는 동안 대상 B 를 처리해도 A 의 슬롯을 덮어쓰지 않는다', async () => {
+    rpc.mockReturnValueOnce(fail('TimeoutError: signal timed out', '')) // A 1차: 통신 오류
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    await expect(result.current.mutateAsync({ personId: 'pA', familyId: 'fA' })).rejects.toThrow('TimeoutError: signal timed out')
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    const idA = (rpc.mock.calls[0]?.[1] as { p_request_id?: string } | undefined)?.p_request_id
+
+    rpc.mockReturnValueOnce(ok({ id: 'u-b', used_via: 'admin' })) // B: 다른 대상, 성공
+    await act(() => result.current.mutateAsync({ personId: 'pB', familyId: 'fB' }))
+
+    rpc.mockReturnValueOnce(ok({ id: 'u-a', used_via: 'admin' })) // A 재시도: 1차와 같은 id 를 보내야 한다
+    await act(() => result.current.mutateAsync({ personId: 'pA', familyId: 'fA' }))
+
+    const idARetry = (rpc.mock.calls[2]?.[1] as { p_request_id?: string } | undefined)?.p_request_id
+    expect(idARetry).toBe(idA)
+    expect(idA).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  it(`OPS_TIMEOUT_MS(${OPS_TIMEOUT_MS}ms) 안에 응답이 없으면 요청을 끊는다`, async () => {
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
+
+    vi.useFakeTimers()
+    try {
+      const pending = {
+        signal: undefined as AbortSignal | undefined,
+        abortSignal(s: AbortSignal) {
+          this.signal = s
+          return this
+        },
+        then(resolve: (value: unknown) => void) {
+          this.signal?.addEventListener('abort', () => resolve({ data: null, error: { message: 'TimeoutError: signal timed out', code: '' } }))
+        },
+      }
+      rpc.mockReturnValue(pending)
+
+      act(() => {
+        void result.current.mutateAsync({ personId: 'p1', familyId: 'f1' }).catch(() => undefined)
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(OPS_TIMEOUT_MS)
+      })
+
+      expect(pending.signal?.aborted).toBe(true)
+      expect((pending.signal?.reason as { name?: string } | undefined)?.name).toBe('TimeoutError')
+
+      await act(async () => {
+        await vi.runAllTimersAsync()
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+    await waitFor(() => expect(result.current.isError).toBe(true))
+  })
 })
 
 describe('mealOpsErrorMessage', () => {
@@ -1462,14 +1519,15 @@ export type AdminUseArgs = { personId: string; familyId: string }
 /** 담당자가 교인 폰 없이 1장 사용 처리. personId 는 "누구 몫"(가족 블록의 산 사람), familyId 는 화면이 본 가족 — 그 사이 옮겼으면 서버가 family_changed 로 거부한다. */
 export function useUseTicketAsAdmin(mealId: string) {
   const queryClient = useQueryClient()
-  // 재시도 키: 같은 대상(사람·가족)에 대한 재시도는 같은 request_id 를 보낸다 — 응답을 잃은 뒤 다시 눌러도 두 번 깎이지 않는다(use_ticket 과 같은 규칙).
-  // 서버가 판단한 응답(성공 또는 코드 있는 오류)이 오면 버린다; 통신 실패·타임아웃이면 남겨 둔다.
-  const retry = useRef<{ key: string; id: string } | null>(null)
+  // 재시도 키: 대상(식사·사람·가족)마다 하나씩 들고 있는다(한 훅 인스턴스가 여러 가족 블록을 처리하므로, 슬롯 하나였다면
+  // 다른 대상을 처리하는 사이 먼저 걸려 있던 재시도 id 를 덮어써 버린다). 서버가 판단한 응답(성공 또는 코드 있는 오류)이
+  // 오면 그 대상의 id 를 버린다; 통신 실패·타임아웃이면 남겨 둔다(use_ticket 과 같은 규칙).
+  const retry = useRef(new Map<string, string>())
   return useMutation({
     mutationFn: async ({ personId, familyId }: AdminUseArgs) => {
-      const key = `${personId}:${familyId}`
-      const requestId = retry.current?.key === key ? retry.current.id : crypto.randomUUID()
-      retry.current = { key, id: requestId }
+      const key = `${mealId}:${personId}:${familyId}`
+      const requestId = retry.current.get(key) ?? crypto.randomUUID()
+      retry.current.set(key, requestId)
       const { signal, done } = withTimeout(OPS_TIMEOUT_MS)
       try {
         const row = unwrap(
@@ -1477,10 +1535,10 @@ export function useUseTicketAsAdmin(mealId: string) {
             .rpc('use_ticket_as_admin', { p_person_id: personId, p_meal_id: mealId, p_family_id: familyId, p_request_id: requestId })
             .abortSignal(signal),
         )
-        retry.current = null
+        retry.current.delete(key)
         return row
       } catch (err) {
-        if (rpcCodeOf(err)) retry.current = null
+        if (rpcCodeOf(err)) retry.current.delete(key)
         throw err
       } finally {
         done()
