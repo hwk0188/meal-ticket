@@ -74,10 +74,21 @@ describe('MealDetailPage', () => {
     renderPage()
     const box = screen.getByLabelText('이름으로 찾기')
     await userEvent.type(box, '민수')
-    expect(screen.getAllByRole('listitem', { name: /./ }).map((r) => r.getAttribute('aria-label'))).toEqual(['박민수'])
+    expect(within(screen.getByRole('list', { name: '가족별 현황' })).getAllByRole('listitem', { name: /./ }).map((r) => r.getAttribute('aria-label'))).toEqual(['박민수'])
     await userEvent.clear(box)
     await userEvent.type(box, '없는사람')
     expect(screen.getByText('찾는 가족이 없어요')).toBeInTheDocument()
+  })
+
+  it('발급이 아예 없으면(검색어 없이) "아직 발급이 없어요" — 검색 실패 문구와 구분', () => {
+    useMealDetail.mockReturnValue({
+      status: 'success',
+      data: { meal, ledger: { totals: { issued: 0, used: 0, remaining: 0, amount: 0 }, families: [] } },
+      refetch: vi.fn<() => void>(),
+    })
+    renderPage()
+    expect(screen.getByText('아직 발급이 없어요')).toBeInTheDocument()
+    expect(screen.queryByText('찾는 가족이 없어요')).not.toBeInTheDocument()
   })
 
   it('"← 식사" 링크는 식사 목록으로', async () => {
@@ -96,7 +107,7 @@ describe('MealDetailPage', () => {
   it('처음 불러오는 중이면 스피너, data 없이 실패하면 다시 시도', async () => {
     useMealDetail.mockReturnValue({ status: 'pending', refetch: vi.fn<() => void>() })
     const { rerender } = renderPage()
-    expect(screen.getByRole('status')).toHaveTextContent('불러오는 중')
+    expect(screen.getByText('불러오는 중…')).toBeInTheDocument()
     const refetch = vi.fn<() => void>()
     useMealDetail.mockReturnValue({ status: 'error', refetch })
     rerender(

@@ -95,7 +95,7 @@ function MealCard({ meal, summary, onDelete, deleting }: { meal: Meal; summary?:
           {meal.note && <p className="text-xs text-gray-500">{meal.note}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-3">
-          <Link to={`/admin/meals/${meal.id}`} aria-label={`${label} 현황`} className="text-xs text-blue-600 underline">현황</Link>
+          <Link to={`/admin/meals/${meal.id}`} aria-label={`${label} 현황`} className="-my-2 px-2 py-2 text-xs text-blue-600 underline">현황</Link>
           {/* 발급이 있으면 FK 가 막으므로 버튼 자체를 감춘다 */}
           {s.issued === 0 && (
             <button type="button" onClick={() => onDelete(meal)} disabled={deleting} aria-label={`${label} 삭제`} className="text-xs text-red-600 underline">삭제</button>

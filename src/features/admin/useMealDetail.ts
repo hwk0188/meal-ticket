@@ -33,14 +33,15 @@ export function useMealDetail(mealId: string) {
       const [meal, issuances, usages, balances] = await Promise.all([
         // queryFn 문맥 타입과 maybeSingle 의 제네릭 추론이 부딪히므로(useLatestUnitPrice 참고) unwrap 에 타입 인자를 준다
         supabase.from('meals').select('*').eq('id', mealId).maybeSingle().then((r) => unwrap<Meal | null>(r)),
-        supabase.from('issuances').select(ISSUANCE_SELECT).eq('meal_id', mealId).order('issued_at', { ascending: false }).then(unwrap),
-        supabase.from('usages').select(USAGE_SELECT).eq('meal_id', mealId).order('used_at', { ascending: false }).then(unwrap),
+        supabase.from('issuances').select(ISSUANCE_SELECT).eq('meal_id', mealId).order('issued_at', { ascending: false }).order('id').then(unwrap),
+        supabase.from('usages').select(USAGE_SELECT).eq('meal_id', mealId).order('used_at', { ascending: false }).order('id').then(unwrap),
         supabase.from('ticket_balances').select('*').eq('meal_id', mealId).then(unwrap),
       ])
       if (!meal) return null
       // 두 select 문자열은 MealIssuanceRow·MealUsageRow 와 구조적으로 일치한다 (tsc 가 검증)
       return { meal, ledger: groupMealLedger(issuances, usages, balances) }
     },
-    refetchInterval: MEAL_DETAIL_POLL_MS,
+    // 없는 식사(null)는 다시 읽어도 달라지지 않는다 — 폴링을 멈춘다 (포커스 복귀 재조회는 그대로)
+    refetchInterval: (q) => (q.state.data === null ? false : MEAL_DETAIL_POLL_MS),
   })
 }

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { fail, FakeQuery, ok } from '../../test/fakeSupabase'
 import { MEAL_DETAIL_POLL_MS, mealDetailQueryKey, useMealDetail } from './useMealDetail'
@@ -43,8 +43,10 @@ describe('useMealDetail', () => {
     expect(queries.meals?.has('maybeSingle')).toBe(true)
     expect(queries.issuances?.has('eq', 'meal_id', MEAL_ID)).toBe(true)
     expect(queries.issuances?.has('order', 'issued_at', { ascending: false })).toBe(true)
+    expect(queries.issuances?.has('order', 'id')).toBe(true)
     expect(queries.usages?.has('eq', 'meal_id', MEAL_ID)).toBe(true)
     expect(queries.usages?.has('order', 'used_at', { ascending: false })).toBe(true)
+    expect(queries.usages?.has('order', 'id')).toBe(true)
     expect(queries.ticket_balances?.has('eq', 'meal_id', MEAL_ID)).toBe(true)
     // 캐시 키에 식사 id 가 들어간다 (다른 식사와 섞이지 않는다)
     expect(client.getQueryData(mealDetailQueryKey(MEAL_ID))).toBeDefined()
@@ -78,5 +80,45 @@ describe('useMealDetail', () => {
 
   it('5초마다 다시 읽는다 (설계 §8.3)', () => {
     expect(MEAL_DETAIL_POLL_MS).toBe(5_000)
+  })
+
+  it('없는 식사(null)는 폴링을 멈춘다', async () => {
+    vi.useFakeTimers()
+    try {
+      from.mockImplementation((table: string) => ok(table === 'meals' ? null : []))
+      const { wrapper } = makeWrapper()
+      const { result } = renderHook(() => useMealDetail(MEAL_ID), { wrapper })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result.current.data).toBeNull()
+      const callsAfterFirstFetch = from.mock.calls.length
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(11_000)
+      })
+      expect(from.mock.calls.length).toBe(callsAfterFirstFetch)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('식사가 있으면 그대로 5초마다 계속 다시 읽는다', async () => {
+    vi.useFakeTimers()
+    try {
+      from.mockImplementation((table: string) => ok(table === 'meals' ? meal : table === 'issuances' ? [issuanceRow] : table === 'usages' ? [usageRow] : [balanceRow]))
+      const { wrapper } = makeWrapper()
+      const { result } = renderHook(() => useMealDetail(MEAL_ID), { wrapper })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result.current.data).not.toBeNull()
+      const callsAfterFirstFetch = from.mock.calls.length
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(MEAL_DETAIL_POLL_MS)
+      })
+      expect(from.mock.calls.length).toBeGreaterThan(callsAfterFirstFetch)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

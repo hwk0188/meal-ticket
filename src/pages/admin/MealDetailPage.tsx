@@ -33,7 +33,7 @@ export function MealDetailPage() {
               발급 {detail.data.ledger.totals.issued}장 · 사용 {detail.data.ledger.totals.used}장 · 남음 {detail.data.ledger.totals.remaining}장 · {formatWon(detail.data.ledger.totals.amount)}
             </p>
             <TextField label="이름으로 찾기" name="query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="구매자·사용자 이름" autoComplete="off" />
-            <FamilyList families={filterFamilies(detail.data.ledger.families, query)} />
+            <FamilyList families={filterFamilies(detail.data.ledger.families, query)} searching={query.trim() !== ''} />
           </>
         )
       ) : detail.status === 'error' ? (
@@ -48,8 +48,8 @@ export function MealDetailPage() {
   )
 }
 
-function FamilyList({ families }: { families: readonly FamilyGroup[] }) {
-  if (families.length === 0) return <p className="py-6 text-center text-sm text-gray-500">찾는 가족이 없어요</p>
+function FamilyList({ families, searching }: { families: readonly FamilyGroup[]; searching: boolean }) {
+  if (families.length === 0) return <p className="py-6 text-center text-sm text-gray-500">{searching ? '찾는 가족이 없어요' : '아직 발급이 없어요'}</p>
   return (
     <ul aria-label="가족별 현황" className="flex flex-col gap-2">
       {families.map((f) => <FamilyBlock key={f.familyId} family={f} />)}
@@ -62,11 +62,11 @@ function FamilyBlock({ family }: { family: FamilyGroup }) {
   return (
     <li aria-label={family.label} className="rounded-2xl border border-gray-200 bg-white p-4">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="truncate font-bold">{family.label}</h2>
+        <h2 className="truncate font-bold" title={family.label}>{family.label}</h2>
         <span className="shrink-0 text-sm">{family.issued}장 중 {family.used}장 사용</span>
       </div>
       <p className="text-xs text-gray-500">남음 {family.remaining}장 · {formatWon(family.amount)}</p>
-      <ul className="mt-2 flex flex-col gap-2 text-sm">
+      <ul aria-label="발급·사용 내역" className="mt-2 flex flex-col gap-2 text-sm">
         {family.issuances.map((i) => <IssuanceLine key={i.id} issuance={i} />)}
         {family.usages.map((u) => <UsageLine key={u.id} usage={u} />)}
       </ul>
