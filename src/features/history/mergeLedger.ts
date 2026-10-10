@@ -9,8 +9,11 @@ export type IssuanceRow = {
   unit_price: number
   memo: string | null
   cancelled_at: string | null
-  /** 관리자가 취소할 때 적은 사유. 교인 화면은 쓰지 않는다 (관리자 사람 상세 이력에서 보여 준다). */
-  cancel_reason: string | null
+  /**
+   * 관리자가 취소할 때 적은 자유 서술. **교인 쪽 조회는 아예 읽지 않는다** — 화면에 안 그리는 것만으로는
+   * 교인 브라우저가 받는 JSON 에 값이 담긴다(설계 §10). 관리자 조회(usePersonLedger)만 넘겨 준다.
+   */
+  cancel_reason?: string | null
   meal: MealRef
   buyer: NameRef
   issuer: NameRef
@@ -49,7 +52,7 @@ export function mergeLedger(issuances: readonly IssuanceRow[], usages: readonly 
       kind: 'issuance', id: i.id, at: i.issued_at, ...mealOf(i.meal),
       quantity: i.quantity, amount: i.quantity * i.unit_price,
       buyer: i.buyer?.name ?? '', issuer: i.issuer?.name ?? '관리자', memo: i.memo,
-      cancelled: i.cancelled_at !== null, cancelReason: i.cancel_reason,
+      cancelled: i.cancelled_at !== null, cancelReason: i.cancel_reason ?? null,
     })),
     ...usages.map((u): UsageEntry => ({
       kind: 'usage', id: u.id, at: u.used_at, ...mealOf(u.meal),

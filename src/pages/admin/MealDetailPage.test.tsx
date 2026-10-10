@@ -54,15 +54,19 @@ const ledger = groupMealLedger(
 )
 const detail: MealDetail = { meal, ledger }
 
-function renderPage(path = '/admin/meals/m1') {
-  return render(
+function page(path = '/admin/meals/m1') {
+  return (
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/admin/meals/:mealId" element={<MealDetailPage />} />
         <Route path="/admin/meals" element={<p>식사 목록</p>} />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   )
+}
+
+function renderPage(path = '/admin/meals/m1') {
+  return render(page(path))
 }
 
 beforeEach(() => {
@@ -199,6 +203,59 @@ describe('MealDetailPage', () => {
     await userEvent.click(screen.getByRole('button', { name: '취소하기' }))
     expect(cancel.mutate).toHaveBeenCalledWith({ issuanceId: 'i2', reason: '입금 취소' }, expect.anything())
     expect(screen.getByText('이영희 님 1장 발급을 취소했어요')).toBeInTheDocument()
+  })
+
+  it('사유 칸은 100자까지이고, 가족도 볼 수 있다고 알린다', async () => {
+    useCancelIssuance.mockReturnValue(idle())
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /이영희 1장 발급 취소$/ }))
+    const box = screen.getByLabelText('취소 사유 (선택)')
+    // 서버의 invalid_reason(100자) 과 같은 한계를 입력 칸에서 먼저 막는다
+    expect(box).toHaveAttribute('maxlength', '100')
+    // 교인 쪽 조회는 이 열을 읽지 않지만 표 단위 권한이라 작정하면 볼 수 있다 (설계 §10)
+    expect(box).toHaveAccessibleDescription('가족도 볼 수 있어요 — 사적인 내용은 적지 마세요')
+    // 눌렀던 트리거가 사라지므로 포커스를 폼으로 데려온다
+    expect(box).toHaveFocus()
+  })
+
+  it('폼이 열려 있는 동안 남은 장수가 줄면 "취소하기" 가 잠긴다 (5초 폴링으로 실제로 일어난다)', async () => {
+    useCancelIssuance.mockReturnValue(idle())
+    const { rerender } = renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /이영희 1장 발급 취소$/ }))
+    expect(screen.getByRole('button', { name: '취소하기' })).toBeEnabled()
+    // 가족이 자기 폰에서 한 장 더 썼다 → 남음 1 → 0
+    useMealDetail.mockReturnValue({
+      status: 'success',
+      refetch: vi.fn<() => void>(),
+      data: { meal, ledger: groupMealLedger([issuance({ id: 'i2', person_id: 'p2', quantity: 1, buyer: { name: '이영희', deleted_at: null, family_id: 'f1' } })], [], [{ family_id: 'f1', meal_id: 'm1', issued: 1, used: 1, remaining: 0, amount: 5000 }]) },
+    })
+    rerender(page())
+    expect(screen.getByText('남은 장수(0)보다 많아 취소할 수 없어요 — 먼저 사용을 무효 처리해 주세요')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '취소하기' })).toBeDisabled()
+    expect(screen.getByText('남은 장수가 줄어서 이제 이 발급은 취소할 수 없어요 — 먼저 사용을 무효 처리해 주세요')).toBeInTheDocument()
+  })
+
+  it('취소가 실패하면 폼과 적어 둔 사유가 그대로 남는다 (식사 중에 다시 타이핑하지 않게)', async () => {
+    const cancel = idle()
+    cancel.mutate = vi.fn<M['mutate']>()
+    useCancelIssuance.mockReturnValue(cancel)
+    const { rerender } = renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /이영희 1장 발급 취소$/ }))
+    await userEvent.type(screen.getByLabelText('취소 사유 (선택)'), '입금 취소')
+    await userEvent.click(screen.getByRole('button', { name: '취소하기' }))
+    useCancelIssuance.mockReturnValue({ ...cancel, isError: true, error: new Error('would_go_negative') })
+    rerender(page())
+    expect(screen.getByLabelText('취소 사유 (선택)')).toHaveValue('입금 취소')
+    expect(screen.getByRole('alert')).toHaveTextContent('이미 사용된 장수가 있어')
+  })
+
+  it('"그만두기" 는 폼과 함께 취소 오류도 지운다', async () => {
+    const cancel = { ...idle(), isError: true, error: new Error('would_go_negative') }
+    useCancelIssuance.mockReturnValue(cancel)
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /이영희 1장 발급 취소$/ }))
+    await userEvent.click(screen.getByRole('button', { name: '그만두기' }))
+    expect(cancel.reset).toHaveBeenCalled()
   })
 
   it('사유 폼은 "그만두기" 로 닫히고 사유는 비워진다', async () => {

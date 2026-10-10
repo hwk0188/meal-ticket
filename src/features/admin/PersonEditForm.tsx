@@ -31,7 +31,7 @@ export function PersonEditForm({ personId, name: initialName, phone: initialPhon
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-3 rounded-2xl border border-blue-600 bg-white p-4">
       <h2 className="font-bold">정보 수정</h2>
-      <TextField label="이름" name="person-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} error={errors.name} />
+      <TextField label="이름" name="person-name" autoComplete="name" maxLength={20} value={name} onChange={(e) => setName(e.target.value)} error={errors.name} />
       <TextField
         label="휴대폰 번호"
         name="person-phone"

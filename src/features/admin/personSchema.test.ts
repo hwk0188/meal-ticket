@@ -11,7 +11,7 @@ describe('validateAdminPerson', () => {
 
   it('번호를 적으면 형식을 본다', () => {
     expect(validateAdminPerson({ name: '김철수', phone: '010-1234-5678' })).toEqual({ ok: true, values: { name: '김철수', phone: '01012345678' } })
-    expect(validateAdminPerson({ name: '김철수', phone: '02-123' })).toEqual({ ok: false, errors: { phone: '휴대폰 번호를 확인해 주세요.' } })
+    expect(validateAdminPerson({ name: '김철수', phone: '02-123' })).toEqual({ ok: false, errors: { phone: '휴대폰 번호를 확인해 주세요' } })
   })
 
   it('이름이 비면 거부', () => {

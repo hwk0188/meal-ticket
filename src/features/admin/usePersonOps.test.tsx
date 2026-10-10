@@ -13,7 +13,7 @@ vi.mock('../../lib/supabase', () => ({ supabase: { from, rpc } }))
 const PID = '00000000-0000-4000-8000-000000000001'
 // person-detail·person-ledger 는 "남는 쪽" id 가 아니라 접두사로 — 합치기·초기화는 상대편(익명 처리되는 쪽) 상세·이력도
 // 캐시에 남아 있을 수 있다. 어느 식사인지 몰라도 되게 meal-detail 도 접두사로 덮는다(현황판의 구매자 이름·가족 묶음도 낡는다).
-const PEOPLE_KEYS = [['all-people'], ['person-detail'], ['person-ledger'], ['admin-balances'], ['tickets'], ['ledger'], ['person'], ['meal-detail']]
+const PEOPLE_KEYS = [['all-people'], ['person-detail'], ['person-ledger'], ['admin-balances'], ['tickets'], ['ledger'], ['person'], ['meal-detail'], ['family-members'], ['people-search']]
 
 function makeWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: 0 } } })
@@ -27,7 +27,7 @@ function expectExactInvalidation(invalidate: ReturnType<typeof makeWrapper>['inv
 
 describe('invalidatePeople', () => {
   // oxlint-disable-next-line vitest/expect-expect -- 단언은 expectExactInvalidation 안의 expect() 가 한다
-  it('사람 목록·상세·이력(접두사)·식권 쪽·식사 현황판(접두사) 캐시를 무효화한다', async () => {
+  it('사람 목록·상세·이력(접두사)·식권 쪽·식사 현황판·가족 식구·발급 검색 캐시를 무효화한다', async () => {
     const { client, invalidate } = makeWrapper()
     await invalidatePeople(client)
     expectExactInvalidation(invalidate)
@@ -48,6 +48,17 @@ describe('useUpdatePerson', () => {
     expect(q.has('update', { name: '김철수', phone: '01099998888' })).toBe(true)
     expect(q.has('eq', 'id', PID)).toBe(true)
     expectExactInvalidation(invalidate)
+  })
+
+  it('번호를 비우면 빈 문자열이 아니라 null 로 보낸다 (DB 의 phone CHECK 가 빈 문자열을 거부한다)', async () => {
+    const q = ok({ id: PID, name: '김철수', phone: null })
+    from.mockReturnValue(q)
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useUpdatePerson(PID), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync({ name: '김철수', phone: null })
+    })
+    expect(q.has('update', { name: '김철수', phone: null })).toBe(true)
   })
 
   it('번호 중복(23505)은 코드를 보존해 던진다', async () => {

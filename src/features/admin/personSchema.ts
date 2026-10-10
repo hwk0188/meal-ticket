@@ -8,7 +8,7 @@ const optionalPhoneSchema = z
   .string()
   .transform((s) => normalizePhone(s))
   .transform((s) => (s === '' ? null : s))
-  .refine((s) => s === null || isValidMobile(s), '휴대폰 번호를 확인해 주세요.')
+  .refine((s) => s === null || isValidMobile(s), '휴대폰 번호를 확인해 주세요')
 
 export const adminPersonSchema = z.object({ name: nameSchema, phone: optionalPhoneSchema })
 export const authUserIdSchema = z.object({

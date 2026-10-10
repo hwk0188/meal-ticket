@@ -3,11 +3,13 @@ import { rpcCodeOf, toUserMessage } from '../../lib/errors'
 import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
 import { withTimeout } from '../../lib/timeout'
+import { familyMembersQueryKey } from '../family/useFamilyMembers'
 import { ledgerQueryKey } from '../history/useFamilyLedger'
 import { ticketsQueryKey } from '../tickets/useFamilyTickets'
 import { MEAL_DETAIL_QUERY_KEY } from './useMealDetail'
 import { OPS_TIMEOUT_MS } from './useMealOps'
 import { adminBalancesQueryKey } from './useMeals'
+import { peopleSearchQueryKey } from './usePeopleSearch'
 import { allPeopleQueryKey } from './useAllPeople'
 import { PERSON_DETAIL_QUERY_KEY, personDetailQueryKey } from './usePersonDetail'
 import { PERSON_LEDGER_QUERY_KEY } from './usePersonLedger'
@@ -34,6 +36,10 @@ export function invalidatePeople(queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey: ledgerQueryKey }),
     queryClient.invalidateQueries({ queryKey: ['person'] }),
     queryClient.invalidateQueries({ queryKey: MEAL_DETAIL_QUERY_KEY }),
+    // 가족 탭의 식구 목록(초기화된 사람이 계속 보인다)과 발급 화면의 검색 결과
+    // (익명화된 사람이 계속 발급 대상으로 뜬다 — staleTime 10초 + keepPreviousData).
+    queryClient.invalidateQueries({ queryKey: familyMembersQueryKey }),
+    queryClient.invalidateQueries({ queryKey: peopleSearchQueryKey }),
   ])
 }
 
