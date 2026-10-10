@@ -18,7 +18,7 @@
 
 | 영역 | 이 계획에서 하는 것 |
 |---|---|
-| DB | `cancel_issuance(id, reason)` · `use_ticket_as_admin(person_id, meal_id)` · `void_usage(id)` 신설(잠금 규칙 적용, 코드 목록은 각 함수 헤더). `use_ticket` 재정의(사람 행 `for update`, `lock_family_meal`). pgTAP `140_admin_ticket_ops.sql`(32). 타입 재생성 |
+| DB | `cancel_issuance(id, reason)` · `use_ticket_as_admin(person_id, meal_id)` · `void_usage(id)` 신설(잠금 규칙 적용, 코드 목록은 각 함수 헤더). `use_ticket` 재정의(사람 행 `for update`, `lock_family_meal`). pgTAP `140_admin_ticket_ops.sql`(43). 타입 재생성 |
 | 관리자 화면 | 식사 카드에 "현황" 링크 → `#/admin/meals/:mealId` 식사 상세: 발급·사용·남음·금액 한 줄, 이름 검색, 가족별 블록(구매자 이름 · "N장 중 M장 사용" · 발급 줄 · 사용 줄), 5초 폴링. 행 동작: 발급 줄 "발급 취소"(남은 장수보다 많으면 비활성 + 안내), 사용 줄 "무효", 가족 블록 "1장 대신 사용" — 모두 `ConfirmButton` 두 단계 확인 |
 | 공통 | 오류 문구 7개. E2E `admin.spec.ts`(현황판 → 대신 사용 → 무효 → 취소). README 임시 SQL 절차 제거, 설계 §7.3·§8.3·§14·§15 동기화 |
 
@@ -30,6 +30,7 @@
 
 - **Task 5** (동작): 품질 리뷰(프로브 테스트로 검증)로 ① 페이지가 `mealOpsErrorMessage` 를 쓴다(Task 4 의 관리자 맥락 문구), ② 행별 접근성 이름을 고유하게 — 발급 `"<발급 시각> <구매자> N장"`, 사용 `"<누구> <시각> 사용"` (같은 사람 1장 두 번·같은 분 사용 두 건이 겹치던 것; Task 6 선택자는 정규식 `$` 일치), ③ 알림·오류를 `sticky` 로 위에 고정하고 **포커스를 옮긴다**(누른 버튼이 성공 뒤 사라지면 포커스가 body 로 떨어진다), ④ 취소 불가 안내에 "먼저 사용을 무효 처리해 주세요", ⑤ 무효 알림에 대상(`"<누구> 사용을 무효 처리했어요"`), ⑥ `break-words`, `NO_NAME` export, `startAction` → `clearFeedback`, ⑦ 테스트: 공허하던 '무효' 개수 단언에 무효 처리된 사용 줄 추가, 처리 중 버튼 수 7 고정, buyerId null 안내, 알림이 다음 동작에서 사라짐, `no_remaining` 관리자 문구, 포커스 이동. 미룸(5단계 a11y·레이아웃): 조건부 마운트 라이브 리전(iOS VoiceOver), 32px 탭 영역, 열린 확인 프롬프트가 행 안에서 좁게 접히는 것, 행 안 피드백.
 - **Task 4** (뮤테이션): 품질 리뷰로 ① `onError` 의 현황 재조회는 **서버가 판단한 거부(코드 있음)일 때만**(통신 실패 때 재조회를 기다리면 오류 문구가 늦거나 오프라인이면 안 보인다 — `rpcCodeOf` 게이트), ② `useVoidUsage` 도 `onError` 재조회(`already_voided` 는 낡은 화면), ③ 세 RPC 에 `withTimeout`(`OPS_TIMEOUT_MS` 8초 — 매달린 요청이 모든 버튼을 '처리 중…' 에 가두지 않게), ④ `mealOpsErrorMessage`: `no_remaining` 을 관리자 맥락("남은 식권이 없어요")으로 — 교인 폰 문구 "방금 다른 폰에서 사용되었어요" 는 관리자에게 오해를 준다(Task 5 페이지가 쓴다), ⑤ 문구: `*_not_found` 는 "현황을 다시 불러왔어요", `would_go_negative` 는 "먼저 사용 기록을 무효 처리해 주세요". 리뷰어 메모(미룸): `use_ticket_as_admin` 은 request_id 를 서버가 만들어 **멱등이 아니다** — 매달린 요청 뒤 새로고침·재시도가 두 번 깎을 수 있다(현재 완화는 `pending` 잠금뿐). 4b 에서 클라이언트 `p_request_id` 를 받는 쪽으로 검토; Task 6 E2E 는 한 번 누름 → 사용 1건을 단언한다. 계획대로. `invalidateMealOps` 단독 테스트는 단언이 헬퍼 안에만 있어 oxlint `vitest/expect-expect` 가 경고하므로 그 `it` 위에 `oxlint-disable-next-line` 을 둔다(스니펫 반영).
+- **Task 3** (DB): 품질 리뷰(두 세션 psql 로 잠금 실험 — 역순이면 실제 40P01, 구현 순서는 교착 없음; `use_ticket` 재정의가 합류 중 새 가족에 기록함을 확인; `db push` 는 함수·권한만 건드림)로 ① ④ 뒤 재조회에 `not found` 가드(행이 사라지면 NULL 행을 돌려주던 틈), ② **`use_ticket_as_admin` 에 `p_request_id`(선택) 멱등** — 운영에 올라간 뒤 기본값 인자를 더하려면 `drop function` 이 필요해(`20261009000002:39`) 지금 넣었다; 시그니처 `(uuid, uuid, uuid, uuid)`, `duplicate_request` 코드, ③ 헤더에 재잠금 경로의 이론상 상호 합류 교착이 앱 경로로는 닿지 않음을 기록, ④ pgTAP +11(not_authenticated ×3, `pg_locks` ④ 키 고정, 가족 일치 happy path, 멱등 ×4) → 140 = 43, 총 391. 위 Task 3 스니펫은 반영본. 리뷰어 메모: 가족 블록의 `ticket_balances` 행이 사라질 수 있다(마지막 발급 취소 + 사용 없음) — `groupMealLedger` 가 0 으로 채운다(Task 1 테스트).
 - **Task 2** (화면): 품질 리뷰 + 로컬 실데이터 스모크(관리자 발급 → 현황 → 명단·검색·없는 식사·비관리자 리다이렉트·로그아웃 상태, PostgREST 임베딩 200 확인). 반영: ① 발급이 없는 식사(내일 식사를 미리 연 경우)는 "찾는 가족이 없어요" 대신 **"아직 발급이 없어요"**(`searching` 로 분기), ② 없는 식사(`null`)는 폴링 중지(`refetchInterval` 콜백), ③ 정렬 보조 키 `.order('id')`, ④ 내역 목록 `aria-label`, 가족 제목 `title`, 현황 링크 탭 영역 확대, ⑤ 테스트는 스피너를 `getByText('불러오는 중…')` 로(Task 5 의 ConfirmButton 프롬프트가 `role="status"`). 위 Task 1·2 스니펫은 반영본. 미룬 것: `text-gray-500` 의 바탕색 대비(4.44:1, 기존 화면과 동일 → 5단계 a11y 일괄), 로딩·오류 상태의 h1 부재, 음수 잔량 표시 강조(Task 5 이후), 가상 스크롤(가족 수백 규모에서만).
 - **Task 1** (조회): 계획 초안의 라벨 계산이 최근 발급부터 이름을 나열해 테스트의 기대(`'김철수 · 이영희'` — 먼저 산 사람 먼저)와 어긋났다. 구현은 `buyerId` 는 최근 활성 발급에서, 라벨은 오래된 발급부터(활성 → 취소 순)로 계산한다. 품질 리뷰로 ① `FamilyRow` → **`FamilyGroup`**(이후 Task 는 이 이름을 쓴다), ② 두 표 읽기에 `.order(…, desc)` 고정(ms 동률이 폴링마다 뒤바뀌어 `buyerId` 가 바뀌는 것 방지), ③ uuid 가 아닌 주소는 조회 없이 `null`(손으로 고친 `#/admin/meals/zzz` 가 22P02 → 영원한 '다시 시도' 가 되던 것), ④ 임베딩에 `deleted_at` 을 더해 **`buyerId` 는 탈퇴자를 건너뛰고** 산 사람(없으면 이 가족에서 쓴 산 사람)을 고른다 — `use_ticket_as_admin` 이 탈퇴자를 거부하므로, ⑤ 검색어 NFC 정규화, 이름 없는 가족은 맨 뒤, 사용만 남은 가족의 라벨도 오래된 순, ⑥ 오류 경로 테스트. 네 요청이 각자 스냅샷이라 합계와 줄이 잠깐 어긋날 수 있는 것은 5초 폴링으로 두고(조작 판단은 서버), 조작이 거부되면 현황을 바로 다시 읽는다(Task 4 `onError`). Task 1 스니펫은 리뷰 전 버전(이름만 `FamilyGroup` 으로 바꿔 둠). 재리뷰가 찾은 것: 장부의 `family_id` 는 발급 시점 스냅샷이고 `use_ticket_as_admin` 은 사람의 **현재** 가족에서 깎으므로, 가족을 옮긴 구매자를 옛 가족 블록에서 누르면 새 가족 풀이 깎인다 → ⑦ 임베딩에 `family_id` 를 더해 `buyerId` 는 **이 블록 가족에 아직 속한** 산 사람만 고르고(Task 1 후속 커밋; 테스트 픽스처의 `buyer`/`person` 에 `family_id` 가 들어간다), Task 3 의 `use_ticket_as_admin` 이 `p_family_id` 를 받아 `family_changed` 로 거부한다(5초 창도 닫음). 타입 이름은 `PersonRef`(name·deleted_at·family_id)·`NameRef`(name) 로 정리.
 
@@ -38,7 +39,7 @@
 | 파일 | 책임 |
 |---|---|
 | `supabase/migrations/20261010000001_admin_ticket_ops.sql` | `cancel_issuance` · `use_ticket_as_admin` · `void_usage` + `use_ticket` 재정의 |
-| `supabase/tests/database/140_admin_ticket_ops.sql` | 위 네 함수 pgTAP (32) |
+| `supabase/tests/database/140_admin_ticket_ops.sql` | 위 네 함수 pgTAP (43) |
 | `src/lib/database.types.ts` (재생성) | RPC 3개 추가 |
 | `src/features/admin/groupMealLedger.ts` (+test) | 순수: 식사 하나의 발급·사용·잔량 행 → 합계 + 가족별 블록, 이름 필터 |
 | `src/features/admin/useMealDetail.ts` (+test) | 식사·발급·사용·잔량 네 조회 → `groupMealLedger`. 5초 폴링. 키 `['meal-detail', mealId]` |
@@ -706,11 +707,11 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ```sql
 begin;
-select plan(32);
+select plan(43);
 
 -- 권한: anon 은 셋 다 실행 불가, authenticated 는 재정의된 use_ticket 을 여전히 실행할 수 있다
 select is(has_function_privilege('anon', 'public.cancel_issuance(uuid,text)', 'EXECUTE'), false, 'anon 은 cancel_issuance 를 실행할 수 없다');
-select is(has_function_privilege('anon', 'public.use_ticket_as_admin(uuid,uuid,uuid)', 'EXECUTE'), false, 'anon 은 use_ticket_as_admin 을 실행할 수 없다');
+select is(has_function_privilege('anon', 'public.use_ticket_as_admin(uuid,uuid,uuid,uuid)', 'EXECUTE'), false, 'anon 은 use_ticket_as_admin 을 실행할 수 없다');
 select is(has_function_privilege('anon', 'public.void_usage(uuid)', 'EXECUTE'), false, 'anon 은 void_usage 를 실행할 수 없다');
 select is(has_function_privilege('authenticated', 'public.use_ticket(uuid,uuid)', 'EXECUTE'), true, '재정의된 use_ticket 은 authenticated 가 실행할 수 있다');
 
@@ -752,6 +753,14 @@ select throws_ok(format($$ select public.void_usage(%L) $$, gen_random_uuid()), 
 select tests.authenticate_as(:'ghost_uid');
 select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, :'i2'), 'P0001', 'forbidden', '사람 행이 없는 계정은 취소할 수 없다');
 
+-- JWT 없이 직접 호출 (세 함수 모두, 090_use_ticket.sql 과 같은 규약)
+select tests.clear_auth();
+set local role authenticated;
+select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, :'i2'), 'P0001', 'not_authenticated', 'JWT 가 없으면 cancel_issuance 는 not_authenticated');
+select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'a_pid', :'today_meal'), 'P0001', 'not_authenticated', 'JWT 가 없으면 use_ticket_as_admin 은 not_authenticated');
+select throws_ok(format($$ select public.void_usage(%L) $$, gen_random_uuid()), 'P0001', 'not_authenticated', 'JWT 가 없으면 void_usage 는 not_authenticated');
+reset role;
+
 -- 관리자: 취소
 select tests.authenticate_as(:'admin_uid');
 select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, gen_random_uuid()), 'P0001', 'issuance_not_found', '없는 발급은 거부');
@@ -772,6 +781,12 @@ select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'b_pid
 -- 화면이 본 가족(p_family_id)과 사람의 현재 가족이 다르면 거부 — A 의 김철수를 B 가족 블록에서 누른 상황
 select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L) $$, :'a_pid', :'today_meal', :'b_fid'), 'P0001', 'family_changed', '그 사이 가족이 바뀐 사람은 거부');
 select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'kid_pid', :'today_meal'), '자녀 몫으로도 대신 사용 처리할 수 있다 (잔량은 가족 것)');
+-- ④ 잠금: 첫 성공 호출이 (가족, 식사) advisory lock 을 트랜잭션 끝까지 쥔다
+select is((select count(*) from pg_locks
+            where locktype = 'advisory' and objsubid = 2 and pid = pg_backend_pid()
+              and classid::bigint = (hashtext(:'a_fid'::text)::bigint & 4294967295)
+              and objid::bigint   = (hashtext(:'today_meal'::text)::bigint & 4294967295)),
+          1::bigint, 'use_ticket_as_admin 이 (가족, 식사) ④ 잠금을 쥔다');
 select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'b_pid', :'past_meal'), '지난 식사도 대신 사용 처리할 수 있다 (날짜 제한 없음)');
 select tests.clear_auth();
 select results_eq(
@@ -781,15 +796,33 @@ select results_eq(
 select is((select remaining from public.ticket_balances where family_id = :'a_fid' and meal_id = :'today_meal'), 2, '대신 사용 뒤 A 가족 남은 장수는 2');
 select id as admin_usage from public.usages where meal_id = :'today_meal' and used_via = 'admin' \gset
 
+-- 정상 경로: 화면이 본 가족이 지금 가족과 같으면(p_family_id 일치) 그대로 처리된다
+select tests.authenticate_as(:'admin_uid');
+select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L) $$, :'a_pid', :'today_meal', :'a_fid'), '화면이 본 가족이 지금 가족과 같으면 대신 사용할 수 있다 (정상 경로)');
+select tests.clear_auth();
+select id as a_usage from public.usages where meal_id = :'today_meal' and used_via = 'admin' and person_id = :'a_pid' \gset
+select is((select remaining from public.ticket_balances where family_id = :'a_fid' and meal_id = :'today_meal'), 1, '정상 경로 사용 뒤 A 가족 남은 장수는 1');
+
 -- 관리자: 무효
 select tests.authenticate_as(:'admin_uid');
 select throws_ok(format($$ select public.void_usage(%L) $$, gen_random_uuid()), 'P0001', 'usage_not_found', '없는 사용 기록은 거부');
 select lives_ok(format($$ select public.void_usage(%L) $$, :'admin_usage'), '관리자는 사용 기록을 무효 처리할 수 있다');
+select lives_ok(format($$ select public.void_usage(%L) $$, :'a_usage'), '정상 경로로 쓴 사용 기록도 무효 처리할 수 있다 (상쇄)');
 select tests.clear_auth();
 select is((select voided_by from public.usages where id = :'admin_usage'), :'admin_pid'::uuid, '무효 처리한 관리자가 기록된다');
 select is((select remaining from public.ticket_balances where family_id = :'a_fid' and meal_id = :'today_meal'), 3, '무효 처리된 사용은 잔량에서 빠진다');
 select tests.authenticate_as(:'admin_uid');
 select throws_ok(format($$ select public.void_usage(%L) $$, :'admin_usage'), 'P0001', 'already_voided', '이미 무효인 기록은 다시 무효 처리할 수 없다');
+
+-- 관리자: 대신 사용 멱등(p_request_id) — 같은 값은 처음 결과를 돌려준다(use_ticket 과 같은 규칙)
+select tests.authenticate_as(:'admin_uid');
+select gen_random_uuid() as rid \gset
+select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L, %L) $$, :'kid_pid', :'today_meal', :'a_fid', :'rid'), '같은 request_id 로 첫 호출은 기록된다');
+select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L, %L) $$, :'kid_pid', :'today_meal', :'a_fid', :'rid'), '같은 request_id 로 다시 호출해도 살아 있다 (멱등)');
+select tests.clear_auth();
+select is((select count(*)::integer from public.usages where request_id = :'rid'), 1, '같은 request_id 는 한 건만');
+select tests.authenticate_as(:'admin_uid');
+select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L, %L) $$, :'b_pid', :'past_meal', :'b_fid', :'rid'), 'P0001', 'duplicate_request', '다른 사람·식사에 같은 request_id 를 재사용하면 거부');
 
 -- 재정의된 use_ticket: 교인이 그대로 쓸 수 있고, 그 뒤 잔량보다 큰 발급의 취소는 would_go_negative
 select tests.authenticate_as(:'a_uid');
@@ -797,7 +830,7 @@ select lives_ok(format($$ select public.use_ticket(%L, %L) $$, :'today_meal', ge
 select tests.clear_auth();
 select is((select count(*)::integer from public.usages where meal_id = :'today_meal' and used_via = 'self' and voided_at is null), 1, 'self 사용 1건이 남는다');
 select tests.authenticate_as(:'admin_uid');
--- A 오늘: 발급 3(i1), 사용 1 → i1(3장)을 취소하면 잔량 -1
+-- A 오늘: 발급 3(i1), 이미 쓴 장수(멱등 대신 사용 1 + self 1)가 있어 i1(3장) 전체 취소는 잔량을 음수로 만든다
 select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, :'i1'), 'P0001', 'would_go_negative', '이미 사용된 장수가 있어 잔량이 음수가 되는 취소는 거부');
 
 select * from finish();
@@ -821,6 +854,9 @@ Expected: `140` 이 함수 없음으로 실패 (010~130 은 통과).
 --   합류(add_family_member)는 ③ → ④ → 장부 update 순이라, 장부 행을 먼저 잠그고 ④ 를 기다리면 40P01 이 난다.
 --   그래서 cancel_issuance·void_usage 는 행을 잠그지 않고 읽어 (family, meal) 을 알아낸 뒤 ④ → 행 for update 재조회 순으로 간다.
 --   과거 식사는 합류가 ④ 를 잡지 않아 그 사이 family_id 가 바뀔 수 있다 → 재조회한 가족이 다르면 그 쌍도 잠근다.
+--   (이론상 두 세션이 서로 다른 가족의 재조회에서 서로를 기다리는 상호 합류 40P01 도 생각해 볼 수 있지만, 앱에서는
+--   합류의 도착 가족이 항상 호출자 자신의 가족이고 leave_family 는 새 가족을 만들 뿐이라 이 경로로는 닿지 않는다 —
+--   혹시 나타나면 40P01 은 그대로 일반 오류 문구로 보여도 된다.)
 -- use_ticket: 2단계 파일(20261008000004)은 운영에 적용됐으므로 고치지 않고 여기서 같은 시그니처로 재정의한다.
 --   바뀐 점 = 사람 행 for update(합류 중이면 끝날 때까지 기다려 새 family_id 를 읽는다 — 3단계 최종 리뷰가 넘긴 틈) +
 --   잠금을 lock_family_meal 헬퍼로(키는 100_pairing_codes.sql 이 같음을 고정). 멱등·당일·잔량 규칙은 그대로.
@@ -861,6 +897,9 @@ begin
   perform public.lock_family_meal(v_row.family_id, v_row.meal_id);
   v_locked_family := v_row.family_id;
   select * into v_row from public.issuances where id = p_issuance_id for update;
+  if not found then
+    raise exception 'issuance_not_found';
+  end if;
   if v_row.family_id <> v_locked_family then
     perform public.lock_family_meal(v_row.family_id, v_row.meal_id);
   end if;
@@ -919,6 +958,9 @@ begin
   perform public.lock_family_meal(v_row.family_id, v_row.meal_id);
   v_locked_family := v_row.family_id;
   select * into v_row from public.usages where id = p_usage_id for update;
+  if not found then
+    raise exception 'usage_not_found';
+  end if;
   if v_row.family_id <> v_locked_family then
     perform public.lock_family_meal(v_row.family_id, v_row.meal_id);
   end if;
@@ -939,9 +981,15 @@ grant execute on function public.void_usage(uuid) to authenticated;
 -- 대신 사용: 담당자가 교인 폰 없이 1장을 사용 처리한다(사후 기록 포함 — 날짜 제한 없음). 자녀 몫도 허용(잔량은 가족 것).
 -- p_family_id(선택): 화면이 본 가족. 그 사이 사람이 가족을 옮겼으면(가족 나가기·합류) family_changed 로 거부한다 — 옛 가족 블록에서 눌렀는데
 -- 새 가족 풀에서 깎이는 것을 막는다(장부의 family_id 는 발급 시점 스냅샷, 함수는 현재 가족으로 깎는다 — Task 1 리뷰).
--- 코드: not_authenticated | forbidden | person_not_found | family_changed | meal_not_found | no_remaining
+-- p_request_id(선택): 클라이언트가 만든 재시도 키 — 같은 값은 처음 결과를 돌려준다(use_ticket 과 같은 규칙). 없으면 서버가 만든다(멱등 아님).
+-- 코드: not_authenticated | forbidden | person_not_found | family_changed | meal_not_found | no_remaining | duplicate_request
 -- =========================================================
-create or replace function public.use_ticket_as_admin(p_person_id uuid, p_meal_id uuid, p_family_id uuid default null)
+create or replace function public.use_ticket_as_admin(
+  p_person_id uuid,
+  p_meal_id uuid,
+  p_family_id uuid default null,
+  p_request_id uuid default null
+)
 returns public.usages
 language plpgsql
 security definer
@@ -974,6 +1022,17 @@ begin
 
   -- ④
   perform public.lock_family_meal(v_person.family_id, p_meal_id);
+
+  if p_request_id is not null then
+    select * into v_row from public.usages where request_id = p_request_id;
+    if found then
+      if v_row.person_id <> v_person.id or v_row.meal_id <> p_meal_id then
+        raise exception 'duplicate_request';
+      end if;
+      return v_row;
+    end if;
+  end if;
+
   select coalesce(sum(i.quantity), 0)
          - (select coalesce(sum(u.quantity), 0) from public.usages u
              where u.family_id = v_person.family_id and u.meal_id = p_meal_id and u.voided_at is null)
@@ -984,16 +1043,23 @@ begin
     raise exception 'no_remaining';
   end if;
 
-  insert into public.usages (family_id, person_id, meal_id, quantity, used_via, recorded_by, request_id)
-  values (v_person.family_id, v_person.id, p_meal_id, 1, 'admin', v_admin, gen_random_uuid())
-  returning * into v_row;
+  begin
+    insert into public.usages (family_id, person_id, meal_id, quantity, used_via, recorded_by, request_id)
+    values (v_person.family_id, v_person.id, p_meal_id, 1, 'admin', v_admin, coalesce(p_request_id, gen_random_uuid()))
+    returning * into v_row;
+  exception when unique_violation then
+    select * into v_row from public.usages where request_id = p_request_id;
+    if not found or v_row.person_id <> v_person.id or v_row.meal_id <> p_meal_id then
+      raise exception 'duplicate_request';
+    end if;
+  end;
   return v_row;
 end
 $$;
 
-comment on function public.use_ticket_as_admin(uuid, uuid, uuid) is '관리자 대신 사용 처리(날짜 제한 없음, ② 사람 행 → ④, 가족 확인). 오류 코드는 파일 헤더 참고.';
-revoke execute on function public.use_ticket_as_admin(uuid, uuid, uuid) from public, anon;
-grant execute on function public.use_ticket_as_admin(uuid, uuid, uuid) to authenticated;
+comment on function public.use_ticket_as_admin(uuid, uuid, uuid, uuid) is '관리자 대신 사용 처리(날짜 제한 없음, ② 사람 행 → ④, 가족 확인, p_request_id 로 멱등). 오류 코드는 파일 헤더 참고.';
+revoke execute on function public.use_ticket_as_admin(uuid, uuid, uuid, uuid) from public, anon;
+grant execute on function public.use_ticket_as_admin(uuid, uuid, uuid, uuid) to authenticated;
 
 -- =========================================================
 -- use_ticket 재정의 (시그니처·동작 동일, 잠금만 보강). 원본 설명은 20261008000004_use_ticket.sql 참고.
@@ -1074,10 +1140,10 @@ grant execute on function public.use_ticket(uuid, uuid) to authenticated;
 - [ ] **Step 4: 통과 확인 · 타입 재생성**
 
 Run: `npm run db:reset && npm run db:test`
-Expected: `Files=14, Tests=380, Result: PASS` (348 + 32). `090_use_ticket.sql` 22건이 재정의 뒤에도 그대로 통과한다(동작 동일의 증거).
+Expected: `Files=14, Tests=391, Result: PASS` (348 + 43). `090_use_ticket.sql` 22건이 재정의 뒤에도 그대로 통과한다(동작 동일의 증거).
 
 Run: `npm run db:types && git diff --stat src/lib/database.types.ts`
-Expected: `Functions` 에 `cancel_issuance`(`p_issuance_id: string; p_reason?: string`), `use_ticket_as_admin`(`p_family_id?: string`), `void_usage` 추가.
+Expected: `Functions` 에 `cancel_issuance`(`p_issuance_id: string; p_reason?: string`), `use_ticket_as_admin`(`p_family_id?: string`, `p_request_id?: string`), `void_usage` 추가.
 
 - [ ] **Step 5: 커밋**
 
@@ -1812,7 +1878,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - [ ] **Step 4: 전체 검증**
 
 ```bash
-npm run db:reset && npm run db:test        # pgTAP 380
+npm run db:reset && npm run db:test        # pgTAP 391
 npm run lint && npx tsc -b
 npm run test:coverage                      # 임계값(80/80/70/80) 통과
 npm run build && VITE_BASE_PATH=/meal-ticket/ npm run build && grep -q '/meal-ticket/assets/' dist/index.html
@@ -1835,14 +1901,14 @@ PR 본문:
 ```markdown
 ## Summary
 - 관리자 식사 탭 카드 → **현황**: 발급·사용·남음·금액, 이름 검색, 가족별 발급·사용 명단(5초 폴링). 줄마다 두 단계 확인으로 **발급 취소**(가족 남은 장수 안에서만) · **1장 대신 사용** · **사용 무효**.
-- DB: `cancel_issuance` · `use_ticket_as_admin` · `void_usage` 신설(잠금 규칙 ②→④→장부 행), `use_ticket` 재정의(사람 행 `for update` + `lock_family_meal` — 3단계 최종 리뷰 인계). pgTAP +32 (총 380).
+- DB: `cancel_issuance` · `use_ticket_as_admin` · `void_usage` 신설(잠금 규칙 ②→④→장부 행), `use_ticket` 재정의(사람 행 `for update` + `lock_family_meal` — 3단계 최종 리뷰 인계). pgTAP +43 (총 391).
 - E2E `admin.spec.ts`(현황판 흐름). README 의 임시 SQL 정정 절차 제거.
 
 ## 운영 (merge 전 확인)
 - 마이그레이션 1개(함수만, 테이블 변경 없음). `use_ticket` 은 같은 시그니처로 재정의되어 교인 화면은 바뀌지 않는다.
 
 ## Test Plan
-- [ ] CI 녹색 (pgTAP 380 · vitest · E2E 5)
+- [ ] CI 녹색 (pgTAP 391 · vitest · E2E 5)
 - [ ] merge 후 Deploy 성공, 운영에서 관리 › 식사 › 현황 열어 내일 식사의 발급 명단 확인
 - [ ] 실제 폰: 대신 사용 1건 → 교인 홈 잔량 반영 → 무효 → 복구
 
@@ -1855,7 +1921,7 @@ PR 은 사용자가 merge 한다.
 
 ## 완료 기준
 
-- pgTAP: 010~140 전부 통과, 총 380 (140 = 32).
+- pgTAP: 010~140 전부 통과, 총 391 (140 = 43).
 - Vitest 전부 통과, 커버리지 임계값 통과.
 - `npm run lint` · `npx tsc -b` · `npm run build` · 하위 경로 빌드 통과.
 - Playwright: 5 passed (admin 1 · family 1 · onboarding 2 · tickets 1).
