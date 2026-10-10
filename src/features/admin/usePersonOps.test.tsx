@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { fail, ok } from '../../test/fakeSupabase'
-import { invalidatePeople, useLinkPerson, useMergePeople, useResetPerson, useUpdatePerson } from './usePersonOps'
+import { invalidatePeople, personOpsErrorMessage, useLinkPerson, useMergePeople, useResetPerson, useUpdatePerson } from './usePersonOps'
 
 const { from, rpc } = vi.hoisted(() => ({
   from: vi.fn<(table: string) => unknown>(),
@@ -100,5 +100,18 @@ describe('useLinkPerson', () => {
     })
     expect(rpc).toHaveBeenCalledWith('link_person', { p_person_id: PID, p_auth_user_id: '123e4567-e89b-42d3-a456-426614174000' })
     expectExactInvalidation(invalidate)
+  })
+})
+
+describe('personOpsErrorMessage', () => {
+  it('사람 관리 맥락에서만 다른 세 코드를 바꿔 준다', () => {
+    expect(personOpsErrorMessage(new Error('already_registered'))).toBe('이 분은 이미 카카오 계정이 연결돼 있어요.')
+    expect(personOpsErrorMessage(new Error('consent_required'))).toBe('그 분의 동의 기록이 없어요. 본인이 가입 화면에서 동의해야 연결할 수 있어요.')
+    expect(personOpsErrorMessage(new Error('last_admin'))).toBe('마지막 관리자는 초기화할 수 없어요. 다른 관리자를 먼저 지정해 주세요.')
+  })
+
+  it('나머지는 공용 문구 그대로', () => {
+    expect(personOpsErrorMessage(new Error('both_have_accounts'))).toBe('두 분 모두 카카오 계정이 있어요. 한쪽을 먼저 초기화해 주세요.')
+    expect(personOpsErrorMessage(new Error('has_children'))).toBe('연결된 자녀가 있어요. 자녀를 먼저 삭제해 주세요.')
   })
 })

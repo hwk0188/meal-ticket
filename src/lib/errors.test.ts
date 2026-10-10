@@ -125,4 +125,12 @@ describe('2단계 오류 문구', () => {
     expect(toUserMessage(new Error('already_voided'))).toBe('이미 무효 처리된 기록이에요.')
     expect(toUserMessage(new Error('family_changed'))).toBe('그 사이 이 분의 가족이 바뀌었어요. 현황을 다시 불러왔어요.')
   })
+
+  it('4b단계 사람 관리 코드에 문구가 있다', () => {
+    expect(toUserMessage(new Error('same_person'))).toBe('같은 사람끼리는 합칠 수 없어요.')
+    expect(toUserMessage(new Error('minor_not_allowed'))).toBe('자녀는 가족 탭에서 관리해 주세요.')
+    expect(toUserMessage(new Error('both_have_accounts'))).toBe('두 분 모두 카카오 계정이 있어요. 한쪽을 먼저 초기화해 주세요.')
+    expect(toUserMessage(new Error('account_not_found'))).toBe('그 계정 id 를 찾을 수 없어요. 다시 확인해 주세요.')
+    expect(toUserMessage(new Error('account_taken'))).toBe('이미 다른 분이 쓰는 계정이에요.')
+  })
 })
