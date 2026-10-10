@@ -28,7 +28,7 @@
 
 ## 구현 결과와 계획의 차이 (실행 중 리뷰로 바뀐 것)
 
-- **Task 5** (동작): 품질 리뷰(프로브 테스트로 검증)로 ① 페이지가 `mealOpsErrorMessage` 를 쓴다(Task 4 의 관리자 맥락 문구), ② 행별 접근성 이름을 고유하게 — 발급 `"<발급 시각> <구매자> N장"`, 사용 `"<누구> <시각> 사용"` (같은 사람 1장 두 번·같은 분 사용 두 건이 겹치던 것; Task 6 선택자는 정규식 `$` 일치), ③ 알림·오류를 `sticky` 로 위에 고정하고 **포커스를 옮긴다**(누른 버튼이 성공 뒤 사라지면 포커스가 body 로 떨어진다), ④ 취소 불가 안내에 "먼저 사용을 무효 처리해 주세요", ⑤ 무효 알림에 대상(`"<누구> 사용을 무효 처리했어요"`), ⑥ `break-words`, `NO_NAME` export, `startAction` → `clearFeedback`, ⑦ 테스트: 공허하던 '무효' 개수 단언에 무효 처리된 사용 줄 추가, 처리 중 버튼 수 7 고정, buyerId null 안내, 알림이 다음 동작에서 사라짐, `no_remaining` 관리자 문구, 포커스 이동. 미룸(5단계 a11y·레이아웃): 조건부 마운트 라이브 리전(iOS VoiceOver), 32px 탭 영역, 열린 확인 프롬프트가 행 안에서 좁게 접히는 것, 행 안 피드백.
+- **Task 5** (동작): 품질 리뷰(프로브 테스트로 검증)로 ① 페이지가 `mealOpsErrorMessage` 를 쓴다(Task 4 의 관리자 맥락 문구), ② 행별 접근성 이름을 고유하게 — 발급 `"<발급 시각> <구매자> N장"`, 사용 `"<누구> <시각> 사용"` (같은 사람 1장 두 번·같은 분 사용 두 건이 겹치던 것; Task 6 선택자는 정규식 `$` 일치), ③ 알림·오류를 `sticky` 로 위에 고정하고 **포커스를 옮긴다**(누른 버튼이 성공 뒤 사라지면 포커스가 body 로 떨어진다), ④ 취소 불가 안내에 "먼저 사용을 무효 처리해 주세요", ⑤ 무효 알림에 대상(`"<누구> 사용을 무효 처리했어요"`), ⑥ `break-words`, `NO_NAME` export, `startAction` → `clearFeedback`, ⑦ 테스트: 공허하던 '무효' 개수 단언에 무효 처리된 사용 줄 추가, 처리 중 버튼 수 7 고정, buyerId null 안내, 알림이 다음 동작에서 사라짐, `no_remaining` 관리자 문구, 포커스 이동. 재리뷰로 피드백 상자에 바탕색·포커스 링(스크롤 시 오류 문구가 행에 가려지던 것). 남는 것(기록): 같은 사람 몫을 같은 분(分)에 두 번 대신 사용하면 두 사용 줄의 접근성 이름이 같다 — 기능상 동일한 두 줄이라 그대로 둔다(E2E 는 이름 고유성을 가정하지 말 것; 필요하면 초 단위나 가족 내 순번). 미룸(5단계 a11y·레이아웃): 조건부 마운트 라이브 리전(iOS VoiceOver), 32px 탭 영역, 열린 확인 프롬프트가 행 안에서 좁게 접히는 것, 행 안 피드백, 포커스가 위로 점프한 뒤 Tab 순서.
 - **Task 4** (뮤테이션): 품질 리뷰로 ① `onError` 의 현황 재조회는 **서버가 판단한 거부(코드 있음)일 때만**(통신 실패 때 재조회를 기다리면 오류 문구가 늦거나 오프라인이면 안 보인다 — `rpcCodeOf` 게이트), ② `useVoidUsage` 도 `onError` 재조회(`already_voided` 는 낡은 화면), ③ 세 RPC 에 `withTimeout`(`OPS_TIMEOUT_MS` 8초 — 매달린 요청이 모든 버튼을 '처리 중…' 에 가두지 않게), ④ `mealOpsErrorMessage`: `no_remaining` 을 관리자 맥락("남은 식권이 없어요")으로 — 교인 폰 문구 "방금 다른 폰에서 사용되었어요" 는 관리자에게 오해를 준다(Task 5 페이지가 쓴다), ⑤ 문구: `*_not_found` 는 "현황을 다시 불러왔어요", `would_go_negative` 는 "먼저 사용 기록을 무효 처리해 주세요". ⑥ (Task 3 리뷰 뒤) `use_ticket_as_admin` 이 `p_request_id` 를 받게 되어 훅이 **재시도 키**를 보낸다 — `useUseTicket` 과 같은 규칙으로 대상(사람·가족)별로 키를 쥐고 있다가 서버가 판단한 응답(성공·코드 있는 오류)이 오면 버리고 통신 실패·타임아웃이면 남겨 재사용한다(새로고침 뒤에는 새 키 — 메모리 ref). 재리뷰로 키를 **대상별 Map**(`식사:사람:가족`)으로 — 한 칸짜리 ref 는 다른 가족을 누르는 순간 첫 대상의 키를 버려 재탭이 두 번 깎을 수 있었다. Task 6 E2E 는 한 번 누름 → 사용 1건을 단언한다. 위 스니펫은 반영본. `invalidateMealOps` 단독 테스트는 단언이 헬퍼 안에만 있어 oxlint `vitest/expect-expect` 가 경고하므로 그 `it` 위에 `oxlint-disable-next-line` 을 둔다(스니펫 반영).
 - **Task 3** (DB): 품질 리뷰(두 세션 psql 로 잠금 실험 — 역순이면 실제 40P01, 구현 순서는 교착 없음; `use_ticket` 재정의가 합류 중 새 가족에 기록함을 확인; `db push` 는 함수·권한만 건드림)로 ① ④ 뒤 재조회에 `not found` 가드(행이 사라지면 NULL 행을 돌려주던 틈), ② **`use_ticket_as_admin` 에 `p_request_id`(선택) 멱등** — 운영에 올라간 뒤 기본값 인자를 더하려면 `drop function` 이 필요해(`20261009000002:39`) 지금 넣었다; 시그니처 `(uuid, uuid, uuid, uuid)`, `duplicate_request` 코드, ③ 헤더에 재잠금 경로의 이론상 상호 합류 교착이 앱 경로로는 닿지 않음을 기록, ④ pgTAP +11(not_authenticated ×3, `pg_locks` ④ 키 고정, 가족 일치 happy path, 멱등 ×4) → 140 = 43, 총 391. 위 Task 3 스니펫은 반영본. 리뷰어 메모: 가족 블록의 `ticket_balances` 행이 사라질 수 있다(마지막 발급 취소 + 사용 없음) — `groupMealLedger` 가 0 으로 채운다(Task 1 테스트).
 - **Task 2** (화면): 품질 리뷰 + 로컬 실데이터 스모크(관리자 발급 → 현황 → 명단·검색·없는 식사·비관리자 리다이렉트·로그아웃 상태, PostgREST 임베딩 200 확인). 반영: ① 발급이 없는 식사(내일 식사를 미리 연 경우)는 "찾는 가족이 없어요" 대신 **"아직 발급이 없어요"**(`searching` 로 분기), ② 없는 식사(`null`)는 폴링 중지(`refetchInterval` 콜백), ③ 정렬 보조 키 `.order('id')`, ④ 내역 목록 `aria-label`, 가족 제목 `title`, 현황 링크 탭 영역 확대, ⑤ 테스트는 스피너를 `getByText('불러오는 중…')` 로(Task 5 의 ConfirmButton 프롬프트가 `role="status"`). 위 Task 1·2 스니펫은 반영본. 미룬 것: `text-gray-500` 의 바탕색 대비(4.44:1, 기존 화면과 동일 → 5단계 a11y 일괄), 로딩·오류 상태의 h1 부재, 음수 잔량 표시 강조(Task 5 이후), 가상 스크롤(가족 수백 규모에서만).
@@ -1894,12 +1894,13 @@ test('관리자 식사 현황판: 발급 명단 → 1장 대신 사용 → 무�
 
   await test.step('1장 대신 사용 → 2장 중 1장, 취소 불가 안내', async () => {
     await page.getByRole('button', { name: '김철수 1장 대신 사용' }).click()
-    await page.getByRole('button', { name: '사용 처리' }).click()
+    await page.getByRole('button', { name: '사용 처리', exact: true }).click()
     await expect(page.getByText('김철수 가족 식권 1장을 사용 처리했어요')).toBeVisible()
     await expect(page.getByText('발급 2장 · 사용 1장 · 남음 1장 · 10,000원')).toBeVisible()
     await expect(page.getByRole('listitem', { name: '김철수', exact: true })).toContainText('김철수 몫 · 담당자 처리')
     // 한 번 눌렀으니 사용 줄도 하나 (대신 사용은 멱등이 아니다 — Task 4 리뷰)
-    await expect(page.getByRole('listitem', { name: '김철수', exact: true }).getByText(/담당자 처리/)).toHaveCount(1)
+    // ConfirmButton 의 sr-only 접두사에도 같은 글자가 있어 행 안 getByText 는 '$' 로 줄 본문만 맞춘다 (Task 5 리뷰)
+    await expect(page.getByRole('listitem', { name: '김철수', exact: true }).getByText(/담당자 처리$/)).toHaveCount(1)
     // 남은 1장 < 발급 2장 → 이 발급은 취소할 수 없다
     await expect(page.getByRole('button', { name: /김철수 2장 발급 취소$/ })).toBeDisabled() // 접근성 이름은 '<발급 시각> 김철수 2장 발급 취소'
     await expect(page.getByText('남은 장수(1)보다 많아 취소할 수 없어요')).toBeVisible()
@@ -1907,7 +1908,7 @@ test('관리자 식사 현황판: 발급 명단 → 1장 대신 사용 → 무�
 
   await test.step('무효 처리 → 다시 2장 남음', async () => {
     await page.getByRole('button', { name: /사용 무효$/ }).click()
-    await page.getByRole('button', { name: '무효 처리' }).click()
+    await page.getByRole('button', { name: '무효 처리', exact: true }).click()
     await expect(page.getByText('김철수 몫 · 담당자 처리 사용을 무효 처리했어요')).toBeVisible()
     await expect(page.getByText('발급 2장 · 사용 0장 · 남음 2장 · 10,000원')).toBeVisible()
     // '무효' 글자는 버튼 이름에도 있으므로, 버튼이 사라지고 줄이 남는 것으로 확인한다
@@ -1918,7 +1919,7 @@ test('관리자 식사 현황판: 발급 명단 → 1장 대신 사용 → 무�
 
   await test.step('발급 취소 → 0장', async () => {
     await page.getByRole('button', { name: /김철수 2장 발급 취소$/ }).click()
-    await page.getByRole('button', { name: '취소하기' }).click()
+    await page.getByRole('button', { name: '취소하기', exact: true }).click()
     await expect(page.getByText('김철수 님 2장 발급을 취소했어요')).toBeVisible()
     await expect(page.getByText('발급 0장 · 사용 0장 · 남음 0장 · 0원')).toBeVisible()
     await expect(page.getByRole('listitem', { name: '김철수', exact: true })).toContainText('취소됨')
