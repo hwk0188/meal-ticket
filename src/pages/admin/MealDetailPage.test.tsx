@@ -12,6 +12,15 @@ vi.mock('../../features/admin/useMealDetail', async (importOriginal) => ({
   useMealDetail,
 }))
 
+type M = { isPending: boolean; isError: boolean; error?: Error; mutate: (vars: unknown, opts?: { onSuccess?: () => void }) => void; reset: () => void }
+const { useCancelIssuance, useVoidUsage, useUseTicketAsAdmin } = vi.hoisted(() => ({
+  useCancelIssuance: vi.fn<(mealId: string) => M>(),
+  useVoidUsage: vi.fn<(mealId: string) => M>(),
+  useUseTicketAsAdmin: vi.fn<(mealId: string) => M>(),
+}))
+vi.mock('../../features/admin/useMealOps', () => ({ useCancelIssuance, useVoidUsage, useUseTicketAsAdmin }))
+const idle = (): M => ({ isPending: false, isError: false, mutate: vi.fn<M['mutate']>(), reset: vi.fn<() => void>() })
+
 const meal = { id: 'm1', title: '주일 점심', served_on: '2026-10-11', note: null, created_by: 'a', created_at: '' }
 const issuance = (over: Partial<MealIssuanceRow>): MealIssuanceRow => ({
   id: 'i1', person_id: 'p1', family_id: 'f1', quantity: 2, unit_price: 5000, memo: null, issued_at: '2026-10-09T05:00:00Z',
@@ -48,6 +57,9 @@ function renderPage(path = '/admin/meals/m1') {
 
 beforeEach(() => {
   useMealDetail.mockReturnValue({ status: 'success', data: detail, refetch: vi.fn<() => void>() })
+  useCancelIssuance.mockReturnValue(idle())
+  useVoidUsage.mockReturnValue(idle())
+  useUseTicketAsAdmin.mockReturnValue(idle())
 })
 
 describe('MealDetailPage', () => {
@@ -126,5 +138,75 @@ describe('MealDetailPage', () => {
     renderPage()
     expect(screen.getByText('최신 현황을 받지 못했어요')).toBeInTheDocument()
     expect(screen.getByRole('list', { name: '가족별 현황' })).toBeInTheDocument()
+  })
+
+  it('"1장 대신 사용" 은 확인을 거쳐 가장 최근 구매자 몫으로 use_ticket_as_admin, 성공하면 알림', async () => {
+    const use = idle()
+    use.mutate = vi.fn<M['mutate']>((_vars, opts) => opts?.onSuccess?.())
+    useUseTicketAsAdmin.mockReturnValue(use)
+    renderPage()
+    expect(useUseTicketAsAdmin).toHaveBeenCalledWith('m1')
+    await userEvent.click(screen.getByRole('button', { name: '김철수 · 이영희 1장 대신 사용' }))
+    expect(use.mutate).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: '사용 처리' }))
+    expect(use.mutate).toHaveBeenCalledWith({ personId: 'p3', familyId: 'f1' }, expect.anything()) // f1 의 최근 활성 발급 구매자 = 이영희(p3)
+    expect(screen.getByText('김철수 · 이영희 가족 식권 1장을 사용 처리했어요')).toBeInTheDocument()
+  })
+
+  it('남은 장수가 0 이면 "1장 대신 사용" 이 잠긴다', () => {
+    const zero = groupMealLedger([issuance({ quantity: 1 })], [usage({})], [{ family_id: 'f1', meal_id: 'm1', issued: 1, used: 1, remaining: 0, amount: 5000 }])
+    useMealDetail.mockReturnValue({ status: 'success', data: { meal, ledger: zero }, refetch: vi.fn<() => void>() })
+    renderPage()
+    expect(screen.getByRole('button', { name: '김철수 1장 대신 사용' })).toBeDisabled()
+  })
+
+  it('"발급 취소" 는 남은 장수 안의 발급에만 열리고, 확인을 거쳐 cancel_issuance', async () => {
+    const cancel = idle()
+    cancel.mutate = vi.fn<M['mutate']>((_vars, opts) => opts?.onSuccess?.())
+    useCancelIssuance.mockReturnValue(cancel)
+    renderPage()
+    // f1: 남음 1. 이영희 1장(i2) → 가능. 김철수 2장(i1) → 불가 + 안내. 취소된 i3 에는 버튼이 없다.
+    const blocked = screen.getByRole('button', { name: '김철수 2장 발급 취소' })
+    expect(blocked).toBeDisabled()
+    expect(screen.getByText('남은 장수(1)보다 많아 취소할 수 없어요')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /발급 취소$/ })).toHaveLength(3) // i1, i2, f2 의 박민수 4장
+    await userEvent.click(screen.getByRole('button', { name: '이영희 1장 발급 취소' }))
+    await userEvent.click(screen.getByRole('button', { name: '취소하기' }))
+    expect(cancel.mutate).toHaveBeenCalledWith('i2', expect.anything())
+    expect(screen.getByText('이영희 님 1장 발급을 취소했어요')).toBeInTheDocument()
+  })
+
+  it('"무효" 는 무효 아닌 사용 줄에만 있고, 확인을 거쳐 void_usage', async () => {
+    const voidUsage = idle()
+    voidUsage.mutate = vi.fn<M['mutate']>((_vars, opts) => opts?.onSuccess?.())
+    useVoidUsage.mockReturnValue(voidUsage)
+    renderPage()
+    expect(screen.getAllByRole('button', { name: /무효$/ })).toHaveLength(2)
+    await userEvent.click(screen.getByRole('button', { name: '10/11 12:40 사용 무효' }))
+    await userEvent.click(screen.getByRole('button', { name: '무효 처리' }))
+    expect(voidUsage.mutate).toHaveBeenCalledWith('u2', expect.anything())
+    expect(screen.getByText('사용 기록을 무효 처리했어요')).toBeInTheDocument()
+  })
+
+  it('처리 중에는 모든 동작 버튼이 "처리 중…" 으로 잠긴다', () => {
+    useCancelIssuance.mockReturnValue({ ...idle(), isPending: true })
+    renderPage()
+    const busy = screen.getAllByRole('button', { name: /처리 중…$/ })
+    expect(busy.length).toBeGreaterThan(0)
+    for (const b of busy) expect(b).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /발급 취소$/ })).not.toBeInTheDocument()
+  })
+
+  it('동작 오류 문구를 보여 주고, 다음 동작이 시작되면 세 뮤테이션을 reset 한다', async () => {
+    const cancel = { ...idle(), isError: true, error: new Error('would_go_negative') }
+    const voidUsage = idle()
+    useCancelIssuance.mockReturnValue(cancel)
+    useVoidUsage.mockReturnValue(voidUsage)
+    renderPage()
+    expect(screen.getByRole('alert')).toHaveTextContent('이미 사용된 장수가 있어 이 발급은 취소할 수 없어요')
+    await userEvent.click(screen.getByRole('button', { name: '10/11 12:40 사용 무효' }))
+    await userEvent.click(screen.getByRole('button', { name: '무효 처리' }))
+    expect(cancel.reset).toHaveBeenCalled()
+    expect(voidUsage.reset).toHaveBeenCalled()
   })
 })
