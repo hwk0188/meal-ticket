@@ -227,9 +227,9 @@ GitHub Actions ─────────────────────�
 | `cancel_issuance(id, reason)` | 관리자 | 발급 한 건 통째로 취소(`cancelled_at`·`cancelled_by`·`cancel_reason`). 취소 뒤 가족 잔량이 음수면 `would_go_negative` 거부. 코드: `not_authenticated \| forbidden \| invalid_reason \| issuance_not_found \| already_cancelled \| would_go_negative` |
 | `use_ticket_as_admin(person_id, meal_id, family_id, request_id)` | 관리자 | 1장 대신 사용. 날짜 제한 없음(사후 기록). 자녀 몫도 허용(잔량은 가족 것). `used_via='admin'`, `recorded_by`=관리자. `family_id`(선택)는 화면이 본 가족 — 그 사이 사람이 가족을 옮겼으면 `family_changed` 로 거부. `request_id`(선택)는 재시도 키 — 같은 값은 처음 결과를 돌려주고 다른 대상에 재사용하면 `duplicate_request`, 없으면 서버가 만든다(멱등 아님). 코드: `not_authenticated \| forbidden \| person_not_found \| family_changed \| meal_not_found \| no_remaining \| duplicate_request` |
 | `void_usage(id)` | 관리자 | 사용 한 건을 무효 표시(`voided_at`·`voided_by`, 잔량 +1). 삭제하지 않는다. 코드: `not_authenticated \| forbidden \| usage_not_found \| already_voided` |
-| `merge_people(from_id, into_id)` | 관리자 | from의 장부·자녀·계정을 into로 옮기고 from 익명화. 둘 다 계정이 있으면 `both_have_accounts` 거부 |
-| `link_person(person_id, auth_user_id)` | 관리자 | 수동 연결 |
-| `admin_reset_person(person_id)` | 관리자 | 잘못 가입한 사람 초기화: 익명화 + 계정 연결 해제. 장부는 보존. 그 폰은 다음 접속 때 가입 화면부터 다시 시작 |
+| `merge_people(from_id, into_id)` | 관리자 | from 의 장부(구매자·처리자)·자녀·계정·관리자 권한을 into 로 옮기고 from 익명화. 장부의 가족은 **옛 가족에 산 사람이 남지 않을 때만** 옮긴다. 익명화된 from 행도 남는 쪽 가족으로 옮겨 빈 가족을 지운다. 코드: `not_authenticated \| forbidden \| same_person \| person_not_found \| minor_not_allowed \| both_have_accounts` |
+| `link_person(person_id, auth_user_id)` | 관리자 | 수동 연결. **동의 기록이 있는, 계정 없는 어른에게만.** 동의를 대신 만들지 않는다. 코드: `not_authenticated \| forbidden \| person_not_found \| minor_not_allowed \| already_registered \| consent_required \| account_not_found \| anonymous_cannot_claim \| account_taken` |
+| `admin_reset_person(person_id)` | 관리자 | 잘못 가입한 사람 초기화: 익명화 + 계정 연결 해제. **장부는 보존.** 그 폰은 다음 접속 때 가입 화면부터 다시 시작. 코드: `not_authenticated \| forbidden \| person_not_found \| minor_not_allowed \| has_children \| last_admin` |
 | `create_next_sunday_lunch(p_today date default 서울 오늘)` | 관리자 | 기준일 = max(가장 늦은 '주일 점심', 어제)의 다음 일요일. 동시 클릭만 on conflict 로 수렴하고 순차 재호출은 다음 일요일을 만든다(프론트는 자동 재시도하지 않는다) |
 | `ping()` | anon | keep-alive용. `select 1` |
 
@@ -321,7 +321,9 @@ pg_cron 은 실패를 재시도하지 않는다 — 실패는 `cron.job_run_deta
 
 **식사 상세(현황판)**: 발급·사용·남음·금액 네 숫자 한 줄, 이름 검색(구매자·사용자), 가족 블록(구매자 이름들 · "N장 중 M장 사용" · 남음·금액 · 발급 줄 · 사용 줄). 동작은 ⋯ 메뉴가 아니라 줄마다 작은 두 단계 확인 버튼: 가족 블록 "1장 대신 사용"(활성 발급의 최근 구매자 몫), 발급 줄 "발급 취소"(가족 남은 장수보다 많으면 잠기고 이유 표시), 사용 줄 "무효". 취소 사유 입력 칸은 두지 않는다(DB 는 받는다). 5초 폴링.
 
-**사람**: 검색, 필터 칩(전체·미가입·관리자), 목록(전체 번호 표시, 가족·자녀·방문자·미가입 태그). 상세: 번호 수정, 가족 보기, 카카오 계정 수동 연결, 중복 사람 합치기, 사람 초기화(잘못 가입 시), 발급·사용 이력.
+**사람**(4b 에서 구현): 검색(이름·번호 뒷자리 — 살아 있는 사람 전체를 한 번 읽어 클라이언트에서 좁힌다), 필터 칩(전체·미가입·관리자), 목록(전체 번호, 관리자·자녀·미가입 태그와 가족 수). 상세: 이름·번호 수정, 가족 보기, 발급·사용 이력(취소 사유 포함), 중복 사람 합치기, 사람 초기화, 카카오 계정 수동 연결(복구 경로). 익명화된 사람은 목록에서 빼고, 상세는 "기록만 남아 있어요" 로 보여 준다.
+**"방문자" 태그는 넣지 않았다** — 스키마에 근거가 될 열이 없다(선발급 입력과 미가입은 구별되지 않는다). 대신 관리자 태그를 둔다.
+목록 줄은 번호 없는 동명이인을 구분할 수 있어야 한다(자녀는 번호 없이 등록되고 유일 인덱스는 번호 있는 행만 본다) — 식구 한 명의 이름을 함께 보여 주고, 줄 링크에 명시적 접근성 이름을 준다.
 
 **통계**: 월 선택(식사일 기준) → 발급 장수·금액·사용 장수 → 식사별 행 → 교인별 검색. "CSV 저장"(다운로드), "카톡으로 공유"(Web Share API, 미지원 시 숨김).
 CSV 열: 종류(발급/취소/사용/무효), 일시, 식사일, 식사명, 이름, 가족 대표, 장수, 단가, 금액, 처리자, 메모. 월 단위 필터 적용.
@@ -343,7 +345,7 @@ CSV 열: 종류(발급/취소/사용/무효), 일시, 식사일, 식사명, 이�
 ### 가입·연결
 - `phone_taken`: "이미 등록된 번호예요. 권사님께 문의해 주세요".
 - 코드 오류·만료: "코드가 맞지 않거나 만료되었어요. 자녀 폰에서 새 코드를 받아 주세요".
-- 14세 미만이 어른으로 가입: 기술적으로 막지 않음. 안내 문구로 유도하고, 발견 시 관리자가 그 사람을 초기화하면 아이 폰이 가입 화면으로 돌아가 "만 14세 미만 → 코드 → 보호자 자녀 추가"의 정상 경로를 다시 탄다.
+- 14세 미만이 어른으로 가입: 기술적으로 막지 않음. 안내 문구로 유도하고, 발견 시 관리자가 **사람 › 사람 초기화** 를 누르면 아이 폰이 가입 화면으로 돌아가 "만 14세 미만 → 코드 → 보호자 자녀 추가"의 정상 경로를 다시 탄다.
 - 카카오 로그인 취소·실패: 시작 화면 + 한 줄 안내.
 - 익명 세션 소실(브라우저 데이터 삭제·폰 교체): 시작 화면으로. 보호자가 재연결.
 - 세션 만료: Supabase가 리프레시 토큰으로 자동 갱신. 실패 시 재로그인 유도.
@@ -391,12 +393,13 @@ Supabase 설정: Kakao provider(REST API key, client secret), "Allow users witho
    - `use_ticket`: 잔량 초과 거부, 당일 외 거부, 동일 `request_id` 1회 처리, 동시 호출 중 1건만 성공, 자녀 계정 호출 성공, 다른 가족 호출 거부.
    - `issue_tickets`/`cancel_issuance`/`use_ticket_as_admin`/`void_usage`: 비관리자 거부, 음수 잔량 거부(`would_go_negative`), family 스냅샷, 대신 사용 멱등(`request_id`)·가족 확인(`family_changed`)·④ 잠금 키 고정(`pg_locks`), 무효 재호출 거부.
    - `claim_person`: 선발급 연결, 중복 번호 거부, 동의 기록.
-   - `add_family_member`/`relink_child`/`leave_family`/`merge_people`: 가족 이동, 자녀 동반 이동, 빈 가족 삭제, 장부 보존.
+   - `add_family_member`/`relink_child`/`leave_family`: 가족 이동, 자녀 동반 이동, 빈 가족 삭제, 장부 보존.
+   - `merge_people`/`admin_reset_person`/`link_person`: 장부(구매자·처리자 네 열)·자녀·계정·관리자 권한 이동, 옛 가족을 유지할 조건, 익명화된 사람을 주는 쪽·받는 쪽으로 삼을 때 거부, ③ `lock_family`·④ `lock_family_meal` 잠금 키(`pg_locks`), 초기화 뒤 장부 보존, 연결의 모든 관문.
    - RLS: 다른 가족 issuances/usages/people 비노출, 관리자 전부 가시, pairing_codes 직접 접근 불가.
    - `create_next_sunday_lunch`: 날짜 계산, 중복 시 기존 반환.
 2. **Vitest 단위**: 전화번호 정규화·검증, 금액 표기, 식권 목록 접기 규칙, Asia/Seoul 날짜 유틸, 꾹 누르기 훅(600ms, 조기 해제 취소), 오류 코드 → 문구 매핑.
 3. **Testing Library 컴포넌트**: 식권 목록 상태(미사용·누르는 중·사용·접힘), 가입 폼(동의 전 비활성), 발급 폼(검증·합계), 식사 상세 행 버튼(취소·대신 사용·무효, 두 단계 확인).
-4. **Playwright E2E (로컬 Supabase, 테스트 세션 주입)**: (a)+(c) 관리자 발급 → 선발급 가입 자동 연결 → 꾹 눌러 사용 → 회색, 2단계에서 한 테스트(`e2e/tickets.spec.ts`)로 합쳤다. (b) 아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰에 가족 잔량 → 아이 폰에서 사용 → 보호자 폰 반영 = 3단계의 `e2e/family.spec.ts`(**두 브라우저 컨텍스트** = 두 대의 폰). (d) 관리자 현황판 → 발급 명단 → 1장 대신 사용 → 무효 → 발급 취소 = 4a 의 `e2e/admin.spec.ts`. 공통 동작은 `e2e/helpers.ts`. E2E 는 단일 워커 직렬 실행(공유 DB).
+4. **Playwright E2E (로컬 Supabase, 테스트 세션 주입)**: (a)+(c) 관리자 발급 → 선발급 가입 자동 연결 → 꾹 눌러 사용 → 회색, 2단계에서 한 테스트(`e2e/tickets.spec.ts`)로 합쳤다. (b) 아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰에 가족 잔량 → 아이 폰에서 사용 → 보호자 폰 반영 = 3단계의 `e2e/family.spec.ts`(**두 브라우저 컨텍스트** = 두 대의 폰). (d) 관리자 현황판 → 발급 명단 → 1장 대신 사용 → 무효 → 발급 취소 = 4a 의 `e2e/admin.spec.ts`. (e) 중복 사람 합치기 → 이력 합산 → 발급 취소 사유 → 사람 초기화 = 4b 의 `e2e/people.spec.ts`. 공통 동작은 `e2e/helpers.ts`. E2E 는 단일 워커 직렬 실행(공유 DB).
 5. **CI**: `supabase start`(러너마다 새 DB — 마이그레이션·시드가 그때 적용되므로 `db reset` 은 불필요) → pgTAP → 린트 → Vitest(coverage) → `npm run build` → 하위 경로 빌드(`VITE_BASE_PATH=/meal-ticket/`) → Playwright. main push 는 통과 시 `supabase db push`(마이그레이션 먼저) → Pages 배포. 새 프론트가 옛 스키마를 만나지 않도록 DB를 먼저 올린다.
 6. **수동**: 실제 폰에서 꾹 누르기 감도, 지하 식당 네트워크, iOS Safari PWA 설치.
 
@@ -417,11 +420,15 @@ Supabase 설정: Kakao provider(REST API key, client secret), "Allow users witho
 1. **기반**: 저장소·Vite·Tailwind·Supabase CLI·CI 뼈대, 카카오 로그인, 어른 가입(동의), 처리방침 페이지. (완료, 2026-10-08)
 2. **식권 핵심**: meals/people/families/issuances/usages 스키마와 함수, 관리자 식사·발급, 교인 홈(식권 목록, 꾹 누르기), 내역. (완료, 2026-10-08)
 3. **가족·아이**: pairing_codes, 익명 로그인, 가족 탭, 자녀 추가·재연결, 가족 공유 잔량, pg_cron 정리. (완료, 2026-10-09)
-4. **관리 확장**: **4a** 식사 상세 현황판(1장 대신 사용·발급 취소·사용 무효)과 `use_ticket` 재정의. (완료, 2026-10-10) · **4b** 사람 탭(합치기·연결·초기화·번호 수정·이력) · **4c** 통계·CSV·공유.
+4. **관리 확장**: **4a** 식사 상세 현황판(1장 대신 사용·발급 취소·사용 무효)과 `use_ticket` 재정의. (완료, 2026-10-10) · **4b** 사람 탭(합치기·연결·초기화·번호 수정·이력, 발급 취소 사유). (완료, 2026-10-10) · **4c** 통계·CSV·공유.
 5. **운영**: PWA, keep-alive, 백업, 운영 문서(관리자 지정, 복구 절차, 카카오·Supabase 설정 안내).
 
 ## 15. 범위 밖 · 향후 검토
 
+- 사람 목록은 살아 있는 사람 **전체**를 한 번 읽는다(수백 명 전제, `staleTime` 30초, `max_rows` 1000 천장을 화면이 알린다). 수천 명이 되면 서버 검색 + 가족 수 집계 뷰로 바꾼다.
+- `link_person` 은 계정 id 를 손으로 붙여 넣는 **복구 경로**다. 교인이 스스로 가입하면 자동 연결(`claim_person`) 또는 합치기로 해결되므로 평소에는 쓰지 않는다. 더 쉬운 길이 필요하면 미가입 폰이 `#/pair` 처럼 코드를 띄우는 방식을 검토한다.
+- **합치기와 초기화는 되돌릴 수 없다.** 분리(un-merge)는 범위 밖 — 필요해지면 `merge_log` 표를 먼저 두고 설계한다.
+- 익명화된 사람은 목록에서 뺀다(이름이 모두 같아 검색을 방해한다). 감사 목적으로 보고 싶어지면 `useAllPeople` 에 플래그를 더한다.
 - 가족 안 1인당 사용 제한.
 - 식권 양도(가족 밖).
 - 알림(발급 완료 카카오톡 알림 등). 알림톡은 유료라 제외.
