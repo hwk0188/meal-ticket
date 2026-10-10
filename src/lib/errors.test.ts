@@ -115,4 +115,14 @@ describe('2단계 오류 문구', () => {
       '지금은 요청이 많아요. 잠시 뒤 다시 시도해 주세요.',
     )
   })
+
+  it('4a단계 관리자 식권 조작 코드에 문구가 있다', () => {
+    expect(toUserMessage(new Error('issuance_not_found'))).toBe('발급 기록을 찾을 수 없어요. 목록을 새로고침해 주세요.')
+    expect(toUserMessage(new Error('already_cancelled'))).toBe('이미 취소된 발급이에요.')
+    expect(toUserMessage(new Error('invalid_reason'))).toBe('취소 사유는 100자까지예요.')
+    expect(toUserMessage(new Error('would_go_negative'))).toBe('이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 남은 장수를 확인해 주세요.')
+    expect(toUserMessage(new Error('usage_not_found'))).toBe('사용 기록을 찾을 수 없어요. 목록을 새로고침해 주세요.')
+    expect(toUserMessage(new Error('already_voided'))).toBe('이미 무효 처리된 기록이에요.')
+    expect(toUserMessage(new Error('family_changed'))).toBe('그 사이 이 분의 가족이 바뀌었어요. 현황을 다시 불러왔어요.')
+  })
 })
