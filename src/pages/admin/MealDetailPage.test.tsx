@@ -15,19 +15,19 @@ vi.mock('../../features/admin/useMealDetail', async (importOriginal) => ({
 const meal = { id: 'm1', title: '주일 점심', served_on: '2026-10-11', note: null, created_by: 'a', created_at: '' }
 const issuance = (over: Partial<MealIssuanceRow>): MealIssuanceRow => ({
   id: 'i1', person_id: 'p1', family_id: 'f1', quantity: 2, unit_price: 5000, memo: null, issued_at: '2026-10-09T05:00:00Z',
-  cancelled_at: null, cancel_reason: null, buyer: { name: '김철수', deleted_at: null }, issuer: { name: '권사' }, ...over,
+  cancelled_at: null, cancel_reason: null, buyer: { name: '김철수', deleted_at: null, family_id: 'f1' }, issuer: { name: '권사' }, ...over,
 })
 const usage = (over: Partial<MealUsageRow>): MealUsageRow => ({
-  id: 'u1', person_id: 'p2', family_id: 'f1', used_at: '2026-10-11T03:31:00Z', used_via: 'self', voided_at: null, person: { name: '서연', deleted_at: null }, ...over,
+  id: 'u1', person_id: 'p2', family_id: 'f1', used_at: '2026-10-11T03:31:00Z', used_via: 'self', voided_at: null, person: { name: '서연', deleted_at: null, family_id: 'f1' }, ...over,
 })
 const ledger = groupMealLedger(
   [
     issuance({ id: 'i1' }),
-    issuance({ id: 'i2', person_id: 'p3', buyer: { name: '이영희', deleted_at: null }, quantity: 1, issued_at: '2026-10-10T05:00:00Z', memo: '입금 확인' }),
+    issuance({ id: 'i2', person_id: 'p3', buyer: { name: '이영희', deleted_at: null, family_id: 'f1' }, quantity: 1, issued_at: '2026-10-10T05:00:00Z', memo: '입금 확인' }),
     issuance({ id: 'i3', quantity: 1, issued_at: '2026-10-08T05:00:00Z', cancelled_at: '2026-10-08T06:00:00Z', cancel_reason: '실수' }),
-    issuance({ id: 'i4', family_id: 'f2', person_id: 'p9', buyer: { name: '박민수', deleted_at: null }, quantity: 4, issued_at: '2026-10-09T05:00:00Z' }),
+    issuance({ id: 'i4', family_id: 'f2', person_id: 'p9', buyer: { name: '박민수', deleted_at: null, family_id: 'f2' }, quantity: 4, issued_at: '2026-10-09T05:00:00Z' }),
   ],
-  [usage({ id: 'u1' }), usage({ id: 'u2', used_at: '2026-10-11T03:40:00Z', used_via: 'admin', person: { name: '김철수', deleted_at: null } })],
+  [usage({ id: 'u1' }), usage({ id: 'u2', used_at: '2026-10-11T03:40:00Z', used_via: 'admin', person: { name: '김철수', deleted_at: null, family_id: 'f1' } })],
   [
     { family_id: 'f1', meal_id: 'm1', issued: 3, used: 2, remaining: 1, amount: 15000 },
     { family_id: 'f2', meal_id: 'm1', issued: 4, used: 0, remaining: 4, amount: 20000 },

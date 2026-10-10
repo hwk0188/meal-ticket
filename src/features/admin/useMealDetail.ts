@@ -13,10 +13,12 @@ export const mealDetailQueryKey = (mealId: string) => ['meal-detail', mealId] as
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // FK 가 둘(person_id, issued_by)이라 임베딩에 제약 이름 힌트가 필요하다 (useFamilyLedger 와 같은 규칙).
-// buyer·person 은 탈퇴 여부(deleted_at)도 받는다 — buyerId 가 탈퇴자를 가리키지 않게. issuer 는 버튼 대상이 아니라 이름만.
+// buyer·person 은 탈퇴 여부(deleted_at)와 지금 가족(family_id)도 받는다 — buyerId 가 탈퇴자나 다른 가족으로 옮긴 사람을
+// 가리키지 않게(issuances.family_id 는 발급 당시 스냅샷이라 가족 이동 뒤에는 달라질 수 있다). issuer 는 버튼 대상이 아니라 이름만.
 const ISSUANCE_SELECT =
-  'id, person_id, family_id, quantity, unit_price, memo, issued_at, cancelled_at, cancel_reason, buyer:people!issuances_person_id_fkey(name, deleted_at), issuer:people!issuances_issued_by_fkey(name)'
-const USAGE_SELECT = 'id, person_id, family_id, used_at, used_via, voided_at, person:people!usages_person_id_fkey(name, deleted_at)'
+  'id, person_id, family_id, quantity, unit_price, memo, issued_at, cancelled_at, cancel_reason, buyer:people!issuances_person_id_fkey(name, deleted_at, family_id), issuer:people!issuances_issued_by_fkey(name)'
+const USAGE_SELECT =
+  'id, person_id, family_id, used_at, used_via, voided_at, person:people!usages_person_id_fkey(name, deleted_at, family_id)'
 
 export type MealDetail = { meal: Meal; ledger: MealLedger }
 

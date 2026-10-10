@@ -4,11 +4,11 @@ import type { Balance } from '../tickets/groupTickets'
 const issuance = (over: Partial<MealIssuanceRow>): MealIssuanceRow => ({
   id: 'i1', person_id: 'p1', family_id: 'f1', quantity: 2, unit_price: 5000, memo: null,
   issued_at: '2026-10-09T05:00:00Z', cancelled_at: null, cancel_reason: null,
-  buyer: { name: '김철수', deleted_at: null }, issuer: { name: '권사' }, ...over,
+  buyer: { name: '김철수', deleted_at: null, family_id: 'f1' }, issuer: { name: '권사' }, ...over,
 })
 const usage = (over: Partial<MealUsageRow>): MealUsageRow => ({
   id: 'u1', person_id: 'p2', family_id: 'f1', used_at: '2026-10-11T03:31:00Z', used_via: 'self', voided_at: null,
-  person: { name: '서연', deleted_at: null }, ...over,
+  person: { name: '서연', deleted_at: null, family_id: 'f1' }, ...over,
 })
 const balance = (over: Partial<Balance>): Balance => ({ family_id: 'f1', meal_id: 'm1', issued: 0, used: 0, remaining: 0, amount: 0, ...over })
 
@@ -17,11 +17,14 @@ describe('groupMealLedger', () => {
     const rows = groupMealLedger(
       [
         issuance({ id: 'i1', issued_at: '2026-10-09T05:00:00Z' }),
-        issuance({ id: 'i2', person_id: 'p3', buyer: { name: '이영희', deleted_at: null }, issued_at: '2026-10-10T05:00:00Z', quantity: 1 }),
+        issuance({ id: 'i2', person_id: 'p3', buyer: { name: '이영희', deleted_at: null, family_id: 'f1' }, issued_at: '2026-10-10T05:00:00Z', quantity: 1 }),
         issuance({ id: 'i3', issued_at: '2026-10-08T05:00:00Z', cancelled_at: '2026-10-08T06:00:00Z', cancel_reason: '실수' }),
-        issuance({ id: 'i4', family_id: 'f2', person_id: 'p9', buyer: { name: '박민수', deleted_at: null }, issued_at: '2026-10-09T05:00:00Z', quantity: 4 }),
+        issuance({ id: 'i4', family_id: 'f2', person_id: 'p9', buyer: { name: '박민수', deleted_at: null, family_id: 'f2' }, issued_at: '2026-10-09T05:00:00Z', quantity: 4 }),
       ],
-      [usage({ id: 'u1' }), usage({ id: 'u2', used_at: '2026-10-11T03:40:00Z', used_via: 'admin', person: { name: '김철수', deleted_at: null } })],
+      [
+        usage({ id: 'u1' }),
+        usage({ id: 'u2', used_at: '2026-10-11T03:40:00Z', used_via: 'admin', person: { name: '김철수', deleted_at: null, family_id: 'f1' } }),
+      ],
       [balance({ family_id: 'f1', issued: 3, used: 2, remaining: 1, amount: 15000 }), balance({ family_id: 'f2', issued: 4, used: 0, remaining: 4, amount: 20000 })],
     )
     expect(rows.totals).toEqual({ issued: 7, used: 2, remaining: 5, amount: 35000 })
@@ -39,8 +42,8 @@ describe('groupMealLedger', () => {
     const rows = groupMealLedger(
       [],
       [
-        usage({ id: 'u1', family_id: 'f3', person_id: 'p-choi', used_at: '2026-10-11T03:00:00Z', person: { name: '최은지', deleted_at: null } }),
-        usage({ id: 'u2', family_id: 'f3', person_id: 'p-park', used_at: '2026-10-11T03:10:00Z', person: { name: '박서준', deleted_at: null } }),
+        usage({ id: 'u1', family_id: 'f3', person_id: 'p-choi', used_at: '2026-10-11T03:00:00Z', person: { name: '최은지', deleted_at: null, family_id: 'f3' } }),
+        usage({ id: 'u2', family_id: 'f3', person_id: 'p-park', used_at: '2026-10-11T03:10:00Z', person: { name: '박서준', deleted_at: null, family_id: 'f3' } }),
       ],
       [balance({ family_id: 'f3', used: 2, remaining: -2 })],
     )
@@ -48,7 +51,11 @@ describe('groupMealLedger', () => {
   })
 
   it('이름이 가려진 행(RLS·탈퇴)은 빈 이름을 건너뛰고, 아무 이름도 없으면 "(이름 없음)"', () => {
-    const rows = groupMealLedger([issuance({ buyer: null }), issuance({ id: 'i2', buyer: { name: '', deleted_at: null } })], [], [balance({})])
+    const rows = groupMealLedger(
+      [issuance({ buyer: null }), issuance({ id: 'i2', buyer: { name: '', deleted_at: null, family_id: 'f1' } })],
+      [],
+      [balance({})],
+    )
     expect(rows.families[0]!.label).toBe('(이름 없음)')
   })
 
@@ -66,8 +73,8 @@ describe('groupMealLedger', () => {
   it('가장 최근 활성 발급의 구매자가 탈퇴했으면 더 오래된(살아 있는) 활성 발급의 구매자를 쓴다', () => {
     const rows = groupMealLedger(
       [
-        issuance({ id: 'i1', person_id: 'p1', buyer: { name: '김철수', deleted_at: null }, issued_at: '2026-10-08T05:00:00Z' }),
-        issuance({ id: 'i2', person_id: 'p2', buyer: { name: '이영희', deleted_at: '2026-10-09T00:00:00Z' }, issued_at: '2026-10-09T05:00:00Z' }),
+        issuance({ id: 'i1', person_id: 'p1', buyer: { name: '김철수', deleted_at: null, family_id: 'f1' }, issued_at: '2026-10-08T05:00:00Z' }),
+        issuance({ id: 'i2', person_id: 'p2', buyer: { name: '이영희', deleted_at: '2026-10-09T00:00:00Z', family_id: 'f1' }, issued_at: '2026-10-09T05:00:00Z' }),
       ],
       [],
       [],
@@ -77,18 +84,42 @@ describe('groupMealLedger', () => {
 
   it('활성 발급의 구매자가 모두 탈퇴했으면 이 가족에서 쓴(취소·탈퇴 아닌) 사람을 쓴다', () => {
     const rows = groupMealLedger(
-      [issuance({ buyer: { name: '김철수', deleted_at: '2026-10-09T00:00:00Z' } })],
-      [usage({ person_id: 'p-use', person: { name: '서연', deleted_at: null }, voided_at: null })],
+      [issuance({ buyer: { name: '김철수', deleted_at: '2026-10-09T00:00:00Z', family_id: 'f1' } })],
+      [usage({ person_id: 'p-use', person: { name: '서연', deleted_at: null, family_id: 'f1' }, voided_at: null })],
       [],
     )
     expect(rows.families[0]!.buyerId).toBe('p-use')
+  })
+
+  it('가장 최근 활성 발급의 구매자가 다른 가족으로 옮겼으면(가족 이동) 아직 이 가족에 있는 더 오래된 구매자를 쓴다', () => {
+    const rows = groupMealLedger(
+      [
+        issuance({ id: 'i1', person_id: 'p1', buyer: { name: '김철수', deleted_at: null, family_id: 'f1' }, issued_at: '2026-10-08T05:00:00Z' }),
+        issuance({ id: 'i2', person_id: 'p2', buyer: { name: '이영희', deleted_at: null, family_id: 'f9' }, issued_at: '2026-10-09T05:00:00Z' }),
+      ],
+      [],
+      [],
+    )
+    expect(rows.families[0]!.buyerId).toBe('p1')
+  })
+
+  it('산 사람도 사용한 사람도 지금은 이 가족에 없으면(모두 다른 가족으로 이동) buyerId 는 null', () => {
+    const rows = groupMealLedger(
+      [issuance({ buyer: { name: '김철수', deleted_at: null, family_id: 'f9' } })],
+      [usage({ person: { name: '서연', deleted_at: null, family_id: 'f9' } })],
+      [],
+    )
+    expect(rows.families[0]!.buyerId).toBeNull()
   })
 })
 
 describe('filterFamilies', () => {
   const families = groupMealLedger(
-    [issuance({}), issuance({ id: 'i2', family_id: 'f2', person_id: 'p9', buyer: { name: '박민수', deleted_at: null } })],
-    [usage({ family_id: 'f2', person: { name: '박서준', deleted_at: null } })],
+    [
+      issuance({}),
+      issuance({ id: 'i2', family_id: 'f2', person_id: 'p9', buyer: { name: '박민수', deleted_at: null, family_id: 'f2' } }),
+    ],
+    [usage({ family_id: 'f2', person: { name: '박서준', deleted_at: null, family_id: 'f2' } })],
     [],
   ).families
   it('빈 검색어는 전부', () => {

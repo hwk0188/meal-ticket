@@ -12,11 +12,11 @@ const MEAL_ID = '00000000-0000-4000-8000-000000000001'
 const meal = { id: MEAL_ID, title: '주일 점심', served_on: '2026-10-11', note: null, created_by: 'a', created_at: '' }
 const issuanceRow = {
   id: 'i1', person_id: 'p1', family_id: 'f1', quantity: 2, unit_price: 5000, memo: null, issued_at: '2026-10-09T05:00:00Z',
-  cancelled_at: null, cancel_reason: null, buyer: { name: '김철수', deleted_at: null }, issuer: { name: '권사' },
+  cancelled_at: null, cancel_reason: null, buyer: { name: '김철수', deleted_at: null, family_id: 'f1' }, issuer: { name: '권사' },
 }
 const usageRow = {
   id: 'u1', person_id: 'p1', family_id: 'f1', used_at: '2026-10-11T03:31:00Z', used_via: 'self', voided_at: null,
-  person: { name: '김철수', deleted_at: null },
+  person: { name: '김철수', deleted_at: null, family_id: 'f1' },
 }
 const balanceRow = { family_id: 'f1', meal_id: MEAL_ID, issued: 2, used: 1, remaining: 1, amount: 10000 }
 

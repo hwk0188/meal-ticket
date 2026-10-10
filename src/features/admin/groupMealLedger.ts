@@ -1,8 +1,8 @@
 import type { Balance } from '../tickets/groupTickets'
 
-// 탈퇴 여부를 알아야 하는 참조(구매자·사용자). issuer 는 탈퇴해도 버튼 대상이 아니므로 이름만 쓴다(별도 타입).
-type NameRef = { name: string; deleted_at: string | null } | null
-type IssuerRef = { name: string } | null
+// 구매자·사용자는 탈퇴 여부와 "지금" 가족도 알아야 한다(가족 이동 뒤 대신 사용 오차감 방지). issuer 는 버튼 대상이 아니라 이름만.
+type PersonRef = { name: string; deleted_at: string | null; family_id: string } | null
+type NameRef = { name: string } | null
 
 /** issuances 에 구매자·발급자 이름을 임베딩한 행 (select 문자열은 useMealDetail 참고) */
 export type MealIssuanceRow = {
@@ -15,8 +15,8 @@ export type MealIssuanceRow = {
   issued_at: string
   cancelled_at: string | null
   cancel_reason: string | null
-  buyer: NameRef
-  issuer: IssuerRef
+  buyer: PersonRef
+  issuer: NameRef
 }
 export type MealUsageRow = {
   id: string
@@ -25,15 +25,17 @@ export type MealUsageRow = {
   used_at: string
   used_via: string // DB 는 check 제약뿐인 text
   voided_at: string | null
-  person: NameRef
+  person: PersonRef
 }
 
 export type MealIssuance = {
-  id: string; personId: string; buyer: string; buyerDeleted: boolean; quantity: number; unitPrice: number; amount: number
+  id: string; personId: string; buyer: string; buyerDeleted: boolean; buyerFamilyId: string | null
+  quantity: number; unitPrice: number; amount: number
   memo: string | null; issuedAt: string; issuer: string; cancelled: boolean; cancelReason: string | null
 }
 export type MealUsage = {
-  id: string; personId: string; person: string; personDeleted: boolean; via: 'self' | 'admin'; usedAt: string; voided: boolean
+  id: string; personId: string; person: string; personDeleted: boolean; personFamilyId: string | null
+  via: 'self' | 'admin'; usedAt: string; voided: boolean
 }
 export type FamilyGroup = {
   familyId: string
@@ -70,6 +72,7 @@ export function groupMealLedger(issuances: readonly MealIssuanceRow[], usages: r
   for (const i of issuances.toSorted((a, b) => byTimeDesc(a.issued_at, b.issued_at))) {
     rowOf(i.family_id).issuances.push({
       id: i.id, personId: i.person_id, buyer: i.buyer?.name ?? '', buyerDeleted: i.buyer?.deleted_at != null,
+      buyerFamilyId: i.buyer?.family_id ?? null,
       quantity: i.quantity, unitPrice: i.unit_price,
       amount: i.quantity * i.unit_price, memo: i.memo, issuedAt: i.issued_at, issuer: i.issuer?.name ?? '관리자',
       cancelled: i.cancelled_at !== null, cancelReason: i.cancel_reason,
@@ -78,6 +81,7 @@ export function groupMealLedger(issuances: readonly MealIssuanceRow[], usages: r
   for (const u of usages.toSorted((a, b) => byTimeDesc(a.used_at, b.used_at))) {
     rowOf(u.family_id).usages.push({
       id: u.id, personId: u.person_id, person: u.person?.name ?? '', personDeleted: u.person?.deleted_at != null,
+      personFamilyId: u.person?.family_id ?? null,
       via: u.used_via === 'admin' ? 'admin' : 'self', usedAt: u.used_at, voided: u.voided_at !== null,
     })
   }
@@ -92,8 +96,11 @@ export function groupMealLedger(issuances: readonly MealIssuanceRow[], usages: r
   for (const r of byFamily.values()) {
     // r.issuances 는 최근 발급부터(내림차순).
     const activeDesc = r.issuances.filter((i) => !i.cancelled)
-    // 대신 사용 처리의 "누구 몫" — 산 사람(탈퇴자 제외)이 없으면 이 가족에서 쓴 산 사람. 어느 산 사람이든 가족 잔량이 같다.
-    r.buyerId = activeDesc.find((i) => !i.buyerDeleted)?.personId ?? r.usages.find((u) => !u.voided && !u.personDeleted)?.personId ?? null
+    // 대신 사용 처리의 "누구 몫" — 이 가족에 아직 속한 산 사람(탈퇴·가족 이동 제외). 산 사람이 없으면 이 가족에서 쓴 산 사람. 어느 산 사람이든 가족 잔량이 같다.
+    r.buyerId =
+      activeDesc.find((i) => !i.buyerDeleted && i.buyerFamilyId === r.familyId)?.personId ??
+      r.usages.find((u) => !u.voided && !u.personDeleted && u.personFamilyId === r.familyId)?.personId ??
+      null
     // 라벨은 오래된 발급부터 나열한다("먼저 산 사람 먼저") — 활성 발급을 모두 앞세우고, 그 다음 취소된 발급.
     const ascending = r.issuances.toReversed()
     const names = [...ascending.filter((i) => !i.cancelled), ...ascending.filter((i) => i.cancelled)].map((i) => i.buyer)
