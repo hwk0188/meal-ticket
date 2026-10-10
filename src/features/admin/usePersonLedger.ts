@@ -3,7 +3,9 @@ import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
 import { mergeLedger, type LedgerEntry } from '../history/mergeLedger'
 
-export const personLedgerQueryKey = (personId: string) => ['person-ledger', personId] as const
+/** 사람을 모를 때(취소·무효는 issuanceId·usageId 만 받는다) 전부 무효화하는 접두사 — useMealOps 가 쓴다. */
+export const PERSON_LEDGER_QUERY_KEY = ['person-ledger'] as const
+export const personLedgerQueryKey = (personId: string) => [...PERSON_LEDGER_QUERY_KEY, personId] as const
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

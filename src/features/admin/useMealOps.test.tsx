@@ -15,7 +15,7 @@ import {
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn<(fn: string, args?: Record<string, unknown>) => unknown>() }))
 vi.mock('../../lib/supabase', () => ({ supabase: { rpc } }))
 
-const OPS_KEYS = [['meal-detail', 'm1'], ['admin-balances'], ['tickets'], ['ledger']]
+const OPS_KEYS = [['meal-detail', 'm1'], ['admin-balances'], ['tickets'], ['ledger'], ['person-ledger']]
 
 function makeWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: 0 } } })
@@ -30,7 +30,7 @@ function expectExactInvalidation(invalidate: ReturnType<typeof makeWrapper>['inv
 
 describe('invalidateMealOps', () => {
   // oxlint-disable-next-line vitest/expect-expect -- 단언은 expectExactInvalidation 안의 expect() 가 한다
-  it('식사 현황·관리자 합계·식권·내역을 무효화한다', async () => {
+  it('식사 현황·관리자 합계·식권·내역·사람 이력을 무효화한다', async () => {
     const { client, invalidate } = makeWrapper()
     await invalidateMealOps(client, 'm1')
     expectExactInvalidation(invalidate)
@@ -38,7 +38,7 @@ describe('invalidateMealOps', () => {
 })
 
 describe('useCancelIssuance', () => {
-  it('cancel_issuance 를 발급 id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+  it('cancel_issuance 를 발급 id 로 부르고 성공 시 다섯 키를 무효화한다 (abortSignal 포함)', async () => {
     const q = ok({ id: 'i1', cancelled_at: '2026-10-10T00:00:00Z' })
     rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
@@ -121,7 +121,7 @@ describe('useCancelIssuance', () => {
 })
 
 describe('useVoidUsage', () => {
-  it('void_usage 를 사용 id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+  it('void_usage 를 사용 id 로 부르고 성공 시 다섯 키를 무효화한다 (abortSignal 포함)', async () => {
     const q = ok({ id: 'u1', voided_at: '2026-10-10T00:00:00Z' })
     rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
@@ -145,7 +145,7 @@ describe('useVoidUsage', () => {
 })
 
 describe('useUseTicketAsAdmin', () => {
-  it('use_ticket_as_admin 을 사람·식사 id 와 새 request_id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+  it('use_ticket_as_admin 을 사람·식사 id 와 새 request_id 로 부르고 성공 시 다섯 키를 무효화한다 (abortSignal 포함)', async () => {
     const q = ok({ id: 'u9', used_via: 'admin' })
     rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
