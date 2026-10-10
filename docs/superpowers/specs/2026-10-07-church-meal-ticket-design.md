@@ -1,7 +1,7 @@
 # 교회 식권 모바일 웹 · 설계 문서
 
 - 작성일: 2026-10-07
-- 상태: 1·2·3단계 구현 완료 (2026-10-09). 4단계 계획 전 §15 와 3단계 계획(`docs/superpowers/plans/2026-10-09-phase3-family.md`)의 "4단계로 넘기는 것" 참고
+- 상태: 1·2·3단계와 4a(식사 상세 현황판) 구현 완료 (2026-10-10). 남은 4단계(4b 사람 탭 · 4c 통계) 계획 전 §15 와 3단계 계획(`docs/superpowers/plans/2026-10-09-phase3-family.md`)의 "4단계로 넘기는 것" 참고
 - 목업: `docs/superpowers/specs/mockups/2026-10-07-meal-ticket/index.html` (브라우저에서 바로 열리는 단독 HTML. 파란 테두리가 확정된 선택)
 
 ## 1. 개요
@@ -222,11 +222,11 @@ GitHub Actions ─────────────────────�
 | `delete_my_account()` | 교인 | 본인 익명화. 자녀가 있으면 먼저 자녀 처리 요구(`has_children`), 마지막 관리자는 거부(`last_admin` — 역할 지정이 SQL 로만 가능해 운영이 멈춘다). 동의 시각·버전은 증빙으로 남긴다. 코드: `not_authenticated \| not_registered \| not_adult \| has_children \| last_admin` |
 | `lock_family(family_id)` | 내부 전용(API 역할 revoke) | 가족 하나를 트랜잭션 단위로 직렬화하는 advisory lock 헬퍼(단일 키, `'family:'` 이름공간) |
 | `lock_family_meal(family_id, meal_id)` | 내부 전용(API 역할 revoke) | 가족·식사 단위 advisory lock 헬퍼. `use_ticket` 과 같은 두 키(`hashtext(family), hashtext(meal)`) |
-| `use_ticket(meal_id, request_id)` | 가족 구성원(자녀 포함) | `request_id` 중복이면 기존 결과 반환. 식사가 **오늘(Asia/Seoul)**이 아니면 `not_today`. 가족 잔량 행 잠금(advisory lock on family_id, meal_id) → remaining < 1이면 `no_remaining` → usages 1건 삽입. 코드: `not_authenticated \| not_registered \| invalid_request \| meal_not_found \| not_today \| no_remaining \| duplicate_request`. 잠금(`pg_advisory_xact_lock(hashtext(family_id), hashtext(meal_id))`)을 멱등 조회보다 먼저 건다; 같은 request_id 를 다른 식사에 재사용하면 `duplicate_request` |
+| `use_ticket(meal_id, request_id)` | 가족 구성원(자녀 포함) | `request_id` 중복이면 기존 결과 반환. 식사가 **오늘(Asia/Seoul)**이 아니면 `not_today`. 가족 잔량 행 잠금(advisory lock on family_id, meal_id) → remaining < 1이면 `no_remaining` → usages 1건 삽입. 코드: `not_authenticated \| not_registered \| invalid_request \| meal_not_found \| not_today \| no_remaining \| duplicate_request`. 잠금(`pg_advisory_xact_lock(hashtext(family_id), hashtext(meal_id))`)을 멱등 조회보다 먼저 건다; 같은 request_id 를 다른 식사에 재사용하면 `duplicate_request`. 4a 에서 재정의: 사람 행 `for update` + `lock_family_meal` |
 | `issue_tickets(person_id, meal_id, qty, unit_price, memo)` | 관리자 | issuances 삽입. `family_id`는 그 사람의 현재 가족. 코드: `not_authenticated \| forbidden \| invalid_quantity \| invalid_price \| invalid_memo \| person_not_found \| person_is_minor \| meal_not_found`(자녀 이름으로는 발급하지 않는다) |
-| `cancel_issuance(id, reason)` | 관리자 | 취소 후 remaining이 음수가 되면 `would_go_negative` 거부 |
-| `use_ticket_as_admin(person_id, meal_id)` | 관리자 | 날짜 제한 없음. `used_via='admin'`, `recorded_by`=관리자 |
-| `void_usage(id)` | 관리자 | `voided_at` 기록 |
+| `cancel_issuance(id, reason)` | 관리자 | 발급 한 건 통째로 취소(`cancelled_at`·`cancelled_by`·`cancel_reason`). 취소 뒤 가족 잔량이 음수면 `would_go_negative` 거부. 코드: `not_authenticated \| forbidden \| invalid_reason \| issuance_not_found \| already_cancelled \| would_go_negative` |
+| `use_ticket_as_admin(person_id, meal_id, family_id, request_id)` | 관리자 | 1장 대신 사용. 날짜 제한 없음(사후 기록). 자녀 몫도 허용(잔량은 가족 것). `used_via='admin'`, `recorded_by`=관리자. `family_id`(선택)는 화면이 본 가족 — 그 사이 사람이 가족을 옮겼으면 `family_changed` 로 거부. `request_id`(선택)는 재시도 키 — 같은 값은 처음 결과를 돌려주고 다른 대상에 재사용하면 `duplicate_request`, 없으면 서버가 만든다(멱등 아님). 코드: `not_authenticated \| forbidden \| person_not_found \| family_changed \| meal_not_found \| no_remaining \| duplicate_request` |
+| `void_usage(id)` | 관리자 | 사용 한 건을 무효 표시(`voided_at`·`voided_by`, 잔량 +1). 삭제하지 않는다. 코드: `not_authenticated \| forbidden \| usage_not_found \| already_voided` |
 | `merge_people(from_id, into_id)` | 관리자 | from의 장부·자녀·계정을 into로 옮기고 from 익명화. 둘 다 계정이 있으면 `both_have_accounts` 거부 |
 | `link_person(person_id, auth_user_id)` | 관리자 | 수동 연결 |
 | `admin_reset_person(person_id)` | 관리자 | 잘못 가입한 사람 초기화: 익명화 + 계정 연결 해제. 장부는 보존. 그 폰은 다음 접속 때 가입 화면부터 다시 시작 |
@@ -235,7 +235,7 @@ GitHub Actions ─────────────────────�
 
 모든 함수는 실패 시 `raise exception '<snake_case 코드>'`(메시지에 코드 문자열만, 값 보간 없음)로 오류를 내고, PostgREST가 `{"code":"P0001","message":"<코드>"}`로 내보내면 프론트가 사용자 문구로 바꾼다. DB 원시 오류(23503·23505 등)가 그대로 새어 나가면 규약 위반이다. 각 함수의 권위 있는 오류 코드 목록은 마이그레이션 파일의 함수 머리 주석이다.
 
-**가족·장부 함수의 잠금 순서(어기면 40P01 교착).** ① `pairing_codes` 행 → ② 쓸 `people` 행을 **id 순**으로 `for update`(어른·본인 행을 자녀 행보다 먼저) → ③ `lock_family(uuid)` 를 **가족 id 순**으로 → ④ `lock_family_meal(uuid, uuid)` 를 **meal_id 순**으로. 가족 잠금을 쥔 채 사람 행을 새로 잠그지 않는다 — 잠글 사람 행은 ②에서 모두 잡는다. "빈 가족인가 / 자녀가 있나 / 나뿐인가" 같은 구성원 판정은 ③ 뒤에서 한다.
+**가족·장부 함수의 잠금 순서(어기면 40P01 교착).** ① `pairing_codes` 행 → ② 쓸 `people` 행을 **id 순**으로 `for update`(어른·본인 행을 자녀 행보다 먼저) → ③ `lock_family(uuid)` 를 **가족 id 순**으로 → ④ `lock_family_meal(uuid, uuid)` 를 **meal_id 순**으로. 장부 행(issuances·usages) 잠금은 ④ 뒤에 — 합류의 장부 이동과 같은 순서다(먼저 잠그면 40P01). 가족 잠금을 쥔 채 사람 행을 새로 잠그지 않는다 — 잠글 사람 행은 ②에서 모두 잡는다. "빈 가족인가 / 자녀가 있나 / 나뿐인가" 같은 구성원 판정은 ③ 뒤에서 한다.
 
 ### 7.4 RLS
 
@@ -319,7 +319,7 @@ pg_cron 은 실패를 재시도하지 않는다 — 실패는 `cron.job_run_deta
 **발급**: 식사(다음 식사 기본 선택, "변경"), 이름·번호 뒷자리 검색(2글자부터), 결과에 가입/미가입/방문자 태그와 가족 수(검색 결과의 "방문자" 태그와 "가족 수" 는 3·4단계에서 — 2단계는 가입/미가입 태그만. 자녀는 검색 결과에서 제외), "+ 새로 등록(이름·전화)". 다음 → 장수(−/+), 단가(가장 최근의 **유료(0원 제외)·미취소** 발급 단가가 기본값, 첫 발급이면 빈칸), 메모, 합계 표시, "N장 발급하기". 완료 후 발급 화면으로 복귀.
 중복 방어: 버튼 즉시 비활성. 같은 사람·식사·장수 발급이 60초 안에 있으면 확인 창.
 
-**식사 상세(현황판)**: 발급·사용·남음·금액 네 숫자, 이름 검색, 가족 단위 명단("4장 중 2장 사용"). 행의 ⋯ 메뉴: "1장 대신 사용 처리", "발급 내역 보기 / 취소", "최근 사용 무효 처리". 위험 동작은 확인 창을 거친다. 5초 폴링.
+**식사 상세(현황판)**: 발급·사용·남음·금액 네 숫자 한 줄, 이름 검색(구매자·사용자), 가족 블록(구매자 이름들 · "N장 중 M장 사용" · 남음·금액 · 발급 줄 · 사용 줄). 동작은 ⋯ 메뉴가 아니라 줄마다 작은 두 단계 확인 버튼: 가족 블록 "1장 대신 사용"(활성 발급의 최근 구매자 몫), 발급 줄 "발급 취소"(가족 남은 장수보다 많으면 잠기고 이유 표시), 사용 줄 "무효". 취소 사유 입력 칸은 두지 않는다(DB 는 받는다). 5초 폴링.
 
 **사람**: 검색, 필터 칩(전체·미가입·관리자), 목록(전체 번호 표시, 가족·자녀·방문자·미가입 태그). 상세: 번호 수정, 가족 보기, 카카오 계정 수동 연결, 중복 사람 합치기, 사람 초기화(잘못 가입 시), 발급·사용 이력.
 
@@ -337,7 +337,7 @@ CSV 열: 종류(발급/취소/사용/무효), 일시, 식사일, 식사명, 이�
 
 ### 발급
 - 이중 클릭: 버튼 비활성 + 60초 내 동일 발급 확인 창.
-- 취소 불가: `would_go_negative` → "이미 사용된 장수가 있어 N장까지만 취소할 수 있어요".
+- 취소 불가: `would_go_negative` → "이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 먼저 사용 기록을 무효 처리해 주세요"(발급 단위 취소이므로 가족 남은 장수보다 많은 발급은 버튼도 잠기고 이유를 보여 준다).
 - 식사 삭제 불가: "발급이 있는 식사는 삭제할 수 없어요. 발급을 모두 취소한 뒤 삭제하세요".
 
 ### 가입·연결
@@ -389,14 +389,14 @@ Supabase 설정: Kakao provider(REST API key, client secret), "Allow users witho
 
 1. **pgTAP (로컬 Supabase)** — 가장 두텁게.
    - `use_ticket`: 잔량 초과 거부, 당일 외 거부, 동일 `request_id` 1회 처리, 동시 호출 중 1건만 성공, 자녀 계정 호출 성공, 다른 가족 호출 거부.
-   - `issue_tickets`/`cancel_issuance`: 비관리자 거부, 음수 잔량 거부, family 스냅샷.
+   - `issue_tickets`/`cancel_issuance`/`use_ticket_as_admin`/`void_usage`: 비관리자 거부, 음수 잔량 거부(`would_go_negative`), family 스냅샷, 대신 사용 멱등(`request_id`)·가족 확인(`family_changed`)·④ 잠금 키 고정(`pg_locks`), 무효 재호출 거부.
    - `claim_person`: 선발급 연결, 중복 번호 거부, 동의 기록.
    - `add_family_member`/`relink_child`/`leave_family`/`merge_people`: 가족 이동, 자녀 동반 이동, 빈 가족 삭제, 장부 보존.
    - RLS: 다른 가족 issuances/usages/people 비노출, 관리자 전부 가시, pairing_codes 직접 접근 불가.
    - `create_next_sunday_lunch`: 날짜 계산, 중복 시 기존 반환.
 2. **Vitest 단위**: 전화번호 정규화·검증, 금액 표기, 식권 목록 접기 규칙, Asia/Seoul 날짜 유틸, 꾹 누르기 훅(600ms, 조기 해제 취소), 오류 코드 → 문구 매핑.
-3. **Testing Library 컴포넌트**: 식권 목록 상태(미사용·누르는 중·사용·접힘), 가입 폼(동의 전 비활성), 발급 폼(검증·합계), 식사 상세 ⋯ 메뉴.
-4. **Playwright E2E (로컬 Supabase, 테스트 세션 주입)**: (a)+(c) 관리자 발급 → 선발급 가입 자동 연결 → 꾹 눌러 사용 → 회색, 2단계에서 한 테스트(`e2e/tickets.spec.ts`)로 합쳤다. (b) 아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰에 가족 잔량 → 아이 폰에서 사용 → 보호자 폰 반영 = 3단계의 `e2e/family.spec.ts`(**두 브라우저 컨텍스트** = 두 대의 폰). 공통 동작은 `e2e/helpers.ts`. E2E 는 단일 워커 직렬 실행(공유 DB).
+3. **Testing Library 컴포넌트**: 식권 목록 상태(미사용·누르는 중·사용·접힘), 가입 폼(동의 전 비활성), 발급 폼(검증·합계), 식사 상세 행 버튼(취소·대신 사용·무효, 두 단계 확인).
+4. **Playwright E2E (로컬 Supabase, 테스트 세션 주입)**: (a)+(c) 관리자 발급 → 선발급 가입 자동 연결 → 꾹 눌러 사용 → 회색, 2단계에서 한 테스트(`e2e/tickets.spec.ts`)로 합쳤다. (b) 아이 익명 시작 → 코드 → 보호자 자녀 추가 → 아이 폰에 가족 잔량 → 아이 폰에서 사용 → 보호자 폰 반영 = 3단계의 `e2e/family.spec.ts`(**두 브라우저 컨텍스트** = 두 대의 폰). (d) 관리자 현황판 → 발급 명단 → 1장 대신 사용 → 무효 → 발급 취소 = 4a 의 `e2e/admin.spec.ts`. 공통 동작은 `e2e/helpers.ts`. E2E 는 단일 워커 직렬 실행(공유 DB).
 5. **CI**: `supabase start`(러너마다 새 DB — 마이그레이션·시드가 그때 적용되므로 `db reset` 은 불필요) → pgTAP → 린트 → Vitest(coverage) → `npm run build` → 하위 경로 빌드(`VITE_BASE_PATH=/meal-ticket/`) → Playwright. main push 는 통과 시 `supabase db push`(마이그레이션 먼저) → Pages 배포. 새 프론트가 옛 스키마를 만나지 않도록 DB를 먼저 올린다.
 6. **수동**: 실제 폰에서 꾹 누르기 감도, 지하 식당 네트워크, iOS Safari PWA 설치.
 
@@ -417,7 +417,7 @@ Supabase 설정: Kakao provider(REST API key, client secret), "Allow users witho
 1. **기반**: 저장소·Vite·Tailwind·Supabase CLI·CI 뼈대, 카카오 로그인, 어른 가입(동의), 처리방침 페이지. (완료, 2026-10-08)
 2. **식권 핵심**: meals/people/families/issuances/usages 스키마와 함수, 관리자 식사·발급, 교인 홈(식권 목록, 꾹 누르기), 내역. (완료, 2026-10-08)
 3. **가족·아이**: pairing_codes, 익명 로그인, 가족 탭, 자녀 추가·재연결, 가족 공유 잔량, pg_cron 정리. (완료, 2026-10-09)
-4. **관리 확장**: 식사 상세 현황판(대신 사용·취소·무효), 사람 관리(합치기·연결), 통계·CSV·공유.
+4. **관리 확장**: **4a** 식사 상세 현황판(1장 대신 사용·발급 취소·사용 무효)과 `use_ticket` 재정의. (완료, 2026-10-10) · **4b** 사람 탭(합치기·연결·초기화·번호 수정·이력) · **4c** 통계·CSV·공유.
 5. **운영**: PWA, keep-alive, 백업, 운영 문서(관리자 지정, 복구 절차, 카카오·Supabase 설정 안내).
 
 ## 15. 범위 밖 · 향후 검토
@@ -434,8 +434,9 @@ Supabase 설정: Kakao provider(REST API key, client secret), "Allow users witho
 - 같은 가족의 두 어른이 각자 다른 가족으로 합류하면, 나중에 커밋된 쪽이 옛 가족의 장부 풀을 통째로 가져간다(순서 의존 — 손상은 없고 설계상 그렇다).
 - 가족 합치기(`add_family_member` adult 경로) 때는 장부 `family_id` 를 통째로 새 가족으로 옮긴다(풀 병합). `leave_family` 는 장부를 옛 가족에 두고 나간다(2단계 계획 인계 항목).
 - pg_cron 의 빈 가족 정리는 장부(issuances·usages)가 없는 가족만 지운다(2단계 계획 인계 항목).
-- 4단계에서 잔량을 바꾸는 함수(`cancel_issuance`·`void_usage`·`use_ticket_as_admin`)는 `use_ticket` 과 같은 잠금 키를 쓰는 공통 헬퍼 `lock_family_meal(uuid, uuid)` 를 통해 잠근다(2단계 계획 인계 항목). 그때 `use_ticket` 도 재정의해 사람 행을 `for update` 로 읽는다 — 지금은 합류가 그 사이에 커밋되면(옛 가족에 산 사람이 남아 장부가 옮겨 가지 않은 경우) 한 번의 사용이 옛 가족 풀에 기록될 수 있다(3단계 최종 리뷰; 초과 사용·손상은 없음).
-- `cancel_issuance` 는 잔량이 음수가 되면 `would_go_negative` 로 반드시 거부해야 한다(2단계 계획 인계 항목).
+- ~~4단계에서 잔량을 바꾸는 함수(`cancel_issuance`·`void_usage`·`use_ticket_as_admin`)는 `lock_family_meal(uuid, uuid)` 로 잠그고 `use_ticket` 도 사람 행 `for update` 로 재정의한다~~ → **4a 에서 완료**(2단계·3단계 계획 인계 항목; 합류 중 사용이 옛 가족 풀에 기록되던 틈이 닫혔다).
+- ~~`cancel_issuance` 는 잔량이 음수가 되면 `would_go_negative` 로 반드시 거부해야 한다~~ → **4a 에서 구현**(2단계 계획 인계 항목).
+- 대신 사용의 재시도 키는 메모리에만 있다(새로고침 뒤 새 키) — 발급과 같은 60초 중복 확인을 대신 사용에도 둘지는 4b/4c 에서 검토한다.
 - 취소된 발급이 있는 식사의 삭제 정책(soft-delete 또는 삭제 버튼 숨김)을 4단계에서 정해야 한다(2단계 계획 인계 항목).
 - 가족 이력이 쌓이면 홈·잔량 조회에 90일 등 이력 창을 두는 것을 검토한다(2단계 계획 인계 항목).
 - PWA standalone 표시가 생기면 상단 안전 영역(`pt-[env(safe-area-inset-top)]`)을 시작·가입·홈 머리말에 더해야 한다(2단계 계획 인계 항목).

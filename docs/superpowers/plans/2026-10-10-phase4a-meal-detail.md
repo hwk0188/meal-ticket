@@ -28,6 +28,7 @@
 
 ## 구현 결과와 계획의 차이 (실행 중 리뷰로 바뀐 것)
 
+- **Task 7** (문서·검증): 전체 검증 녹색(아래 완료 기준의 측정값). 설계 문서는 계획이 적은 §7.3·§8.3·§9·§12·§14·§15 외에 **머리말 "상태" 줄**도 고쳤다 — §14 가 4a 완료를 적는데 머리말이 "1·2·3단계 구현 완료" 로 남으면 어긋난다. §7.3 의 `use_ticket_as_admin` 은 계획 초안의 2인자·코드 5개가 아니라 **마이그레이션 헤더의 권위 목록**을 그대로 옮겼다(4인자 `(person_id, meal_id, family_id, request_id)`, 코드 7개 — `family_changed`·`duplicate_request` 포함). §15 의 "취소된 발급이 있는 식사의 삭제 정책" 은 4a 가 정하지 않아 그대로 남긴다.
 - **Task 6** (E2E): 계획대로 통과(4회 연속 녹색, admin 2.4~2.9초). 리뷰 메모: `/담당자 처리$/` 의 `$` 는 ConfirmButton 의 sr-only 접두사(`… 10/11 12:40 사용`)를 제외하는 핵심이라 지우면 2건이 된다 — 더 튼튼하게는 줄 본문 전체를 `^…$` 로 묶는다. `getByRole('listitem', { name: … })` 는 `exact` 없이도 1건이다(중첩 `li` 는 접근성 이름이 없다) — `exact: true` 는 가족 라벨이 `김철수 · 이영희` 로 늘었을 때 조용히 통과하지 않게 하는 안전장치. 같은 사람 몫을 같은 분(分)에 두 번 대신 사용하면 `/사용 무효$/` 가 2건이 되어 strict mode 위반(이 스펙은 하지 않는다). 5초 폴링은 이 스펙에서 한 번도 돌지 않으므로 폴링 경합은 **검증된 바 없다**. 가족이 많은 화면에서는 `sticky` 피드백 상자가 아래 행의 탭을 가로챌 수 있다(4b 에서 다가족 E2E 를 쓸 때 주의).
 - **Task 5** (동작): 품질 리뷰(프로브 테스트로 검증)로 ① 페이지가 `mealOpsErrorMessage` 를 쓴다(Task 4 의 관리자 맥락 문구), ② 행별 접근성 이름을 고유하게 — 발급 `"<발급 시각> <구매자> N장"`, 사용 `"<누구> <시각> 사용"` (같은 사람 1장 두 번·같은 분 사용 두 건이 겹치던 것; Task 6 선택자는 정규식 `$` 일치), ③ 알림·오류를 `sticky` 로 위에 고정하고 **포커스를 옮긴다**(누른 버튼이 성공 뒤 사라지면 포커스가 body 로 떨어진다), ④ 취소 불가 안내에 "먼저 사용을 무효 처리해 주세요", ⑤ 무효 알림에 대상(`"<누구> 사용을 무효 처리했어요"`), ⑥ `break-words`, `NO_NAME` export, `startAction` → `clearFeedback`, ⑦ 테스트: 공허하던 '무효' 개수 단언에 무효 처리된 사용 줄 추가, 처리 중 버튼 수 7 고정, buyerId null 안내, 알림이 다음 동작에서 사라짐, `no_remaining` 관리자 문구, 포커스 이동. 재리뷰로 피드백 상자에 바탕색·포커스 링(스크롤 시 오류 문구가 행에 가려지던 것). 남는 것(기록): 같은 사람 몫을 같은 분(分)에 두 번 대신 사용하면 두 사용 줄의 접근성 이름이 같다 — 기능상 동일한 두 줄이라 그대로 둔다(E2E 는 이름 고유성을 가정하지 말 것; 필요하면 초 단위나 가족 내 순번). 미룸(5단계 a11y·레이아웃): 조건부 마운트 라이브 리전(iOS VoiceOver), 32px 탭 영역, 열린 확인 프롬프트가 행 안에서 좁게 접히는 것, 행 안 피드백, 포커스가 위로 점프한 뒤 Tab 순서.
 - **Task 4** (뮤테이션): 품질 리뷰로 ① `onError` 의 현황 재조회는 **서버가 판단한 거부(코드 있음)일 때만**(통신 실패 때 재조회를 기다리면 오류 문구가 늦거나 오프라인이면 안 보인다 — `rpcCodeOf` 게이트), ② `useVoidUsage` 도 `onError` 재조회(`already_voided` 는 낡은 화면), ③ 세 RPC 에 `withTimeout`(`OPS_TIMEOUT_MS` 8초 — 매달린 요청이 모든 버튼을 '처리 중…' 에 가두지 않게), ④ `mealOpsErrorMessage`: `no_remaining` 을 관리자 맥락("남은 식권이 없어요")으로 — 교인 폰 문구 "방금 다른 폰에서 사용되었어요" 는 관리자에게 오해를 준다(Task 5 페이지가 쓴다), ⑤ 문구: `*_not_found` 는 "현황을 다시 불러왔어요", `would_go_negative` 는 "먼저 사용 기록을 무효 처리해 주세요". ⑥ (Task 3 리뷰 뒤) `use_ticket_as_admin` 이 `p_request_id` 를 받게 되어 훅이 **재시도 키**를 보낸다 — `useUseTicket` 과 같은 규칙으로 대상(사람·가족)별로 키를 쥐고 있다가 서버가 판단한 응답(성공·코드 있는 오류)이 오면 버리고 통신 실패·타임아웃이면 남겨 재사용한다(새로고침 뒤에는 새 키 — 메모리 ref). 재리뷰로 키를 **대상별 Map**(`식사:사람:가족`)으로 — 한 칸짜리 ref 는 다른 가족을 누르는 순간 첫 대상의 키를 버려 재탭이 두 번 깎을 수 있었다. Task 6 E2E 는 한 번 누름 → 사용 1건을 단언한다. 위 스니펫은 반영본. `invalidateMealOps` 단독 테스트는 단언이 헬퍼 안에만 있어 oxlint `vitest/expect-expect` 가 경고하므로 그 `it` 위에 `oxlint-disable-next-line` 을 둔다(스니펫 반영).
@@ -78,7 +79,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/features/admin/groupMealLedger.ts`, `src/features/admin/groupMealLedger.test.ts`
 - Create: `src/features/admin/useMealDetail.ts`, `src/features/admin/useMealDetail.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/admin/groupMealLedger.test.ts`:
 
@@ -217,12 +218,12 @@ describe('useMealDetail', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/admin/groupMealLedger src/features/admin/useMealDetail`
 Expected: 모듈 없음.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/admin/groupMealLedger.ts`:
 
@@ -382,12 +383,12 @@ export function useMealDetail(mealId: string) {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test -- src/features/admin && npm run lint && npx tsc -b`
 Expected: 전부 통과. (`tsc` 가 임베딩 행 타입을 `MealIssuanceRow` 에 맞추지 못하면 select 문자열의 열 이름을 다시 확인한다 — `useFamilyLedger.ts` 의 문자열과 같은 규칙이다.)
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/features/admin/groupMealLedger.ts src/features/admin/groupMealLedger.test.ts src/features/admin/useMealDetail.ts src/features/admin/useMealDetail.test.tsx
@@ -404,7 +405,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `src/pages/admin/AdminMealsPage.tsx` (카드에 링크), `src/pages/admin/AdminMealsPage.test.tsx` (단언 1개 추가)
 - Modify: `src/App.tsx` (라우트)
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/pages/admin/MealDetailPage.test.tsx`:
 
@@ -545,12 +546,12 @@ describe('MealDetailPage', () => {
 
 (파일 상단 import 를 `import { render, screen, within } from '@testing-library/react'` 로 바꾼다.)
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/pages/admin`
 Expected: `MealDetailPage` 모듈 없음, AdminMealsPage 링크 단언 실패.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/pages/admin/MealDetailPage.tsx`:
 
@@ -675,16 +676,16 @@ function UsageLine({ usage: u }: { usage: MealUsage }) {
               <Route path="/admin/meals/:mealId" element={<RequireAdmin><MealDetailPage /></RequireAdmin>} />
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과. (`PersonShell` 은 `/admin/` 접두사로 관리자 탭을 고르고, `TabBar` 의 "식사" 탭은 `end` 가 아니라 `/admin/meals/:id` 에서도 활성이다 — 별도 수정 없음.)
 
-- [ ] **Step 5: 수동 확인 (로컬)**
+- [x] **Step 5: 수동 확인 (로컬)**
 
 Run: `npm run dev`. 개발 로그인 `e2e-admin@test.local` → 관리 › 식사 › 카드의 "현황" → 네 숫자·가족 블록·검색 확인. (Task 6 의 E2E 가 같은 흐름을 자동화한다.)
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add src/pages/admin/MealDetailPage.tsx src/pages/admin/MealDetailPage.test.tsx src/pages/admin/AdminMealsPage.tsx src/pages/admin/AdminMealsPage.test.tsx src/App.tsx
@@ -703,7 +704,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `supabase/tests/database/140_admin_ticket_ops.sql`
 - Regenerate: `src/lib/database.types.ts`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `supabase/tests/database/140_admin_ticket_ops.sql`:
 
@@ -845,12 +846,12 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm run db:test`
 Expected: `140` 이 함수 없음으로 실패 (010~130 은 통과).
 
-- [ ] **Step 3: 마이그레이션**
+- [x] **Step 3: 마이그레이션**
 
 `supabase/migrations/20261010000001_admin_ticket_ops.sql`:
 
@@ -1148,7 +1149,7 @@ revoke execute on function public.use_ticket(uuid, uuid) from public, anon;
 grant execute on function public.use_ticket(uuid, uuid) to authenticated;
 ```
 
-- [ ] **Step 4: 통과 확인 · 타입 재생성**
+- [x] **Step 4: 통과 확인 · 타입 재생성**
 
 Run: `npm run db:reset && npm run db:test`
 Expected: `Files=14, Tests=392, Result: PASS` (348 + 44). `090_use_ticket.sql` 22건이 재정의 뒤에도 그대로 통과한다(동작 동일의 증거).
@@ -1156,7 +1157,7 @@ Expected: `Files=14, Tests=392, Result: PASS` (348 + 44). `090_use_ticket.sql` 2
 Run: `npm run db:types && git diff --stat src/lib/database.types.ts`
 Expected: `Functions` 에 `cancel_issuance`(`p_issuance_id: string; p_reason?: string`), `use_ticket_as_admin`(`p_family_id?: string`, `p_request_id?: string`), `void_usage` 추가.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add supabase/migrations/20261010000001_admin_ticket_ops.sql supabase/tests/database/140_admin_ticket_ops.sql src/lib/database.types.ts
@@ -1173,7 +1174,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/features/admin/useMealOps.ts`, `src/features/admin/useMealOps.test.tsx`
 - Modify: `src/lib/errors.ts`, `src/lib/errors.test.ts`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/admin/useMealOps.test.tsx`:
 
@@ -1425,12 +1426,12 @@ describe('mealOpsErrorMessage', () => {
   })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/features/admin/useMealOps src/lib/errors`
 Expected: 모듈 없음 · 문구 없음(폴백 문구가 나온다).
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/lib/errors.ts` 의 `MESSAGES` 에 `over_request_rate_limit` 줄 다음에 추가:
 
@@ -1556,12 +1557,12 @@ export function mealOpsErrorMessage(err: unknown): string {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/features/admin/useMealOps.ts src/features/admin/useMealOps.test.tsx src/lib/errors.ts src/lib/errors.test.ts
@@ -1576,7 +1577,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Files:**
 - Modify: `src/pages/admin/MealDetailPage.tsx`, `src/pages/admin/MealDetailPage.test.tsx`
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/pages/admin/MealDetailPage.test.tsx` 에 목과 테스트를 추가한다. 상단 `vi.mock` 들 다음에:
 
@@ -1678,12 +1679,12 @@ const idle = (): M => ({ isPending: false, isError: false, mutate: vi.fn<M['muta
   })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 Run: `npm test -- src/pages/admin/MealDetailPage`
 Expected: 버튼 없음으로 새 테스트 실패, Task 2 테스트는 통과.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/pages/admin/MealDetailPage.tsx` 를 아래처럼 바꾼다 (Task 2 코드에 동작을 더한 전체):
 
@@ -1898,16 +1899,16 @@ function UsageLine({ usage: u, actions }: { usage: MealUsage; actions: Actions }
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 Run: `npm test && npm run lint && npx tsc -b`
 Expected: 전부 통과.
 
-- [ ] **Step 5: 수동 확인 (로컬)**
+- [x] **Step 5: 수동 확인 (로컬)**
 
 Run: `npm run dev`. 관리자로 현황 화면에서 대신 사용 → 2장 중 1장 → 무효 → 다시 0 → 발급 취소(남은 장수 안) → 취소됨. 홈(내 식권)에 관리자 본인 가족이면 즉시 반영. (Task 6 이 자동화.)
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add src/pages/admin/MealDetailPage.tsx src/pages/admin/MealDetailPage.test.tsx
@@ -1923,7 +1924,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Files:**
 - Create: `e2e/admin.spec.ts`
 
-- [ ] **Step 1: 스펙 작성**
+- [x] **Step 1: 스펙 작성**
 
 `e2e/admin.spec.ts`:
 
@@ -1999,12 +2000,12 @@ test('관리자 식사 현황판: 발급 명단 → 1장 대신 사용 → 무�
 })
 ```
 
-- [ ] **Step 2: 실행**
+- [x] **Step 2: 실행**
 
 Run: `npm run e2e`
 Expected: **5 passed** (admin 1 · family 1 · onboarding 2 · tickets 1). 실패하면 `test-results/` 의 오류·스크린샷을 본다. 흔한 원인: (1) 가족 라벨은 `aria-label` 이라 `exact: true` 로 좁혔다(중첩 `li` 는 이름이 없어 `exact` 없이도 1건이지만, 라벨이 여러 구매자로 늘면 조용히 통과하지 않게 둔다); (2) ConfirmButton 의 접근성 이름은 `context + ' ' + label` 이다(`김철수 1장 대신 사용`); (3) 폴링(5초)과 무효화가 겹쳐 숫자가 잠깐 전 값 — 모두 재시도 단언(`toBeVisible`)이라 기다린다.
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add e2e/admin.spec.ts
@@ -2022,7 +2023,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md`
 - Modify: `docs/superpowers/plans/2026-10-10-phase4a-meal-detail.md` (이 파일)
 
-- [ ] **Step 1: README**
+- [x] **Step 1: README**
 
 "### 5. 운영 체크리스트" 의 하위 절 `#### 발급 실수 정정 (4단계 전 임시 절차)` 와 그 SQL 블록을 지우고, 체크리스트 목록 끝에 한 줄을 넣는다:
 
@@ -2030,7 +2031,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - 발급 실수 정정은 **관리 › 식사 › 현황** 에서 한다: 발급 취소(가족 남은 장수 안에서만 — 이미 쓴 장수가 있으면 먼저 "무효" 로 되돌린다), 담당자 "1장 대신 사용", 사용 "무효". 모두 기록이 남고 지워지지 않는다. SQL 로 직접 고치지 않는다.
 ```
 
-- [ ] **Step 2: 설계 문서**
+- [x] **Step 2: 설계 문서**
 
 - §7.3 표: 행 이름을 실제 시그니처로 — `cancel_issuance(id, reason)`, `use_ticket_as_admin(person_id, meal_id, family_id, request_id)`(둘 다 선택; `family_id` 가 다르면 `family_changed`, `request_id` 는 재시도 키 — 같은 값은 처음 결과를 돌려주고 다른 대상에 재사용하면 `duplicate_request`), `void_usage(id)`. `cancel_issuance(id, reason)` 행 — "발급 한 건 통째로 취소. 취소 뒤 가족 잔량이 음수면 `would_go_negative`. 코드: `not_authenticated \| forbidden \| invalid_reason \| issuance_not_found \| already_cancelled \| would_go_negative`". `use_ticket_as_admin(person_id, meal_id)` 행 — "날짜 제한 없음. 자녀 몫도 허용(잔량은 가족 것). `used_via='admin'`, `recorded_by`=관리자, `request_id` 는 서버 생성. 코드: `not_authenticated \| forbidden \| person_not_found \| meal_not_found \| no_remaining`". `void_usage(id)` 행 — "코드: `not_authenticated \| forbidden \| usage_not_found \| already_voided`". `use_ticket` 행 끝에 "4a 에서 재정의: 사람 행 `for update` + `lock_family_meal`". 잠금 순서 문단에 "장부 행(issuances·usages) 잠금은 ④ 뒤에 — 합류의 장부 이동과 같은 순서" 한 줄.
 - §8.3 **식사 상세(현황판)**: 구현대로 — "네 숫자 한 줄, 이름 검색(구매자·사용자), 가족 블록(구매자 이름들 · N장 중 M장 사용 · 남음·금액 · 발급 줄 · 사용 줄). 동작은 ⋯ 메뉴가 아니라 줄마다 작은 두 단계 확인 버튼: 가족 블록 '1장 대신 사용'(활성 발급의 최근 구매자 몫), 발급 줄 '발급 취소'(가족 남은 장수보다 많으면 잠기고 이유 표시), 사용 줄 '무효'. 취소 사유 입력 칸은 두지 않는다(DB 는 받는다). 5초 폴링."
@@ -2039,11 +2040,11 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - §14: 4단계를 "4a 식사 상세 현황판·식권 조작·`use_ticket` 재정의 (완료, 2026-10-10) · 4b 사람 탭 · 4c 통계·CSV·공유" 로 (완료일은 merge 날짜로 맞춘다).
 - §15: "4단계에서 잔량을 바꾸는 함수(…)는 … `lock_family_meal` 을 통해 잠근다 … 그때 `use_ticket` 도 재정의해 …" 항목 전체를 "(4a 에서 완료 — `cancel_issuance`·`void_usage`·`use_ticket_as_admin` 이 `lock_family_meal` 로 잠그고 `use_ticket` 은 사람 행 `for update` 로 재정의됨)" 로 줄이고, `would_go_negative` 항목도 "(4a 에서 구현)" 표시. 새 항목: "대신 사용의 재시도 키는 메모리에만 있다(새로고침 뒤 새 키) — 발급과 같은 60초 중복 확인은 4b/4c 검토".
 
-- [ ] **Step 3: 이 계획 파일**
+- [x] **Step 3: 이 계획 파일**
 
 "구현 결과와 계획의 차이" 절을 범위 절 다음에 만들어 Task 별로 실제 바뀐 것을 적고, 완료 기준의 수치를 실제 값으로. 모든 Step 체크박스를 `[x]` 로(PR 본문의 Test Plan 세 항목은 그대로 둔다).
 
-- [ ] **Step 4: 전체 검증**
+- [x] **Step 4: 전체 검증**
 
 ```bash
 npm run db:reset && npm run db:test        # pgTAP 392
@@ -2053,13 +2054,13 @@ npm run build && VITE_BASE_PATH=/meal-ticket/ npm run build && grep -q '/meal-ti
 npm run e2e                                # 5 passed
 ```
 
-- [ ] **Step 5: 커밋 · push · PR** (push·PR 은 컨트롤러가 한다)
+- [x] **Step 5: 커밋 · push · PR** (push·PR 은 컨트롤러가 한다)
 
 ```bash
 git add README.md docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md docs/superpowers/plans/2026-10-10-phase4a-meal-detail.md
 git commit -m "docs: 4a단계 문서 동기화 — README 정정 절차, 설계 §7.3·§8.3·§9·§12·§14·§15, 계획 차이·수치
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push -u origin feat/phase4a-meal-detail
 gh pr create --title "4a단계: 식사 상세 현황판 — 발급 명단, 취소·대신 사용·무효, use_ticket 재정의" --body-file <PR 본문 파일>
 ```
@@ -2076,7 +2077,7 @@ PR 본문:
 - 마이그레이션 1개(함수만, 테이블 변경 없음). `use_ticket` 은 같은 시그니처로 재정의되어 교인 화면은 바뀌지 않는다.
 
 ## Test Plan
-- [ ] CI 녹색 (pgTAP 392 · vitest · E2E 5)
+- [ ] CI 녹색 (pgTAP 392 · Vitest 463 · E2E 5)
 - [ ] merge 후 Deploy 성공, 운영에서 관리 › 식사 › 현황 열어 내일 식사의 발급 명단 확인
 - [ ] 실제 폰: 대신 사용 1건 → 교인 홈 잔량 반영 → 무효 → 복구
 
@@ -2087,13 +2088,13 @@ PR 은 사용자가 merge 한다.
 
 ---
 
-## 완료 기준
+## 완료 기준 (Task 7 측정값, 2026-10-10)
 
-- pgTAP: 010~140 전부 통과, 총 392 (140 = 44).
-- Vitest 전부 통과, 커버리지 임계값 통과.
-- `npm run lint` · `npx tsc -b` · `npm run build` · 하위 경로 빌드 통과.
-- Playwright: 5 passed (admin 1 · family 1 · onboarding 2 · tickets 1).
-- 운영: merge 뒤 Deploy 성공, 관리 › 식사 › 현황에서 명단이 보인다.
+- pgTAP: `Files=14, Tests=392, Result: PASS` — 010~140 전부 통과(140 = 44). ✅
+- Vitest: `Test Files 62 passed (62) / Tests 463 passed (463)`. 커버리지 임계값(`vite.config.ts` lines 80 · functions 80 · branches 70 · statements 80) 통과 — 측정 **stmts 97.64 · branch 91.45 · funcs 96.88 · lines 98.9**. ✅
+- `npm run lint`(oxlint `--deny-warnings`) 0 · `npx tsc -b` 0 · `npm run build` · 하위 경로 빌드(`VITE_BASE_PATH=/meal-ticket/` → `dist/index.html` 에 `/meal-ticket/assets/`) 전부 통과. ✅
+- Playwright: **5 passed (16.5s)** — admin 1 · family 1 · onboarding 2 · tickets 1. ✅
+- 운영: merge 뒤 Deploy 성공, 관리 › 식사 › 현황에서 명단이 보인다. (merge 후 확인 — PR Test Plan)
 
 ## 다음 계획(4b·4c)으로 넘기는 것
 
