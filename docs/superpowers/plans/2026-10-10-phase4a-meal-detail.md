@@ -276,7 +276,7 @@ export type FamilyGroup = {
 export type MealTotals = { issued: number; used: number; remaining: number; amount: number }
 export type MealLedger = { totals: MealTotals; families: FamilyGroup[] }
 
-const NO_NAME = '(이름 없음)'
+export const NO_NAME = '(이름 없음)'
 const byTimeDesc = (a: string, b: string) => Date.parse(b) - Date.parse(a)
 
 /** 식사 하나의 발급·사용·잔량 행을 가족별 블록과 합계로 묶는다. 이름이 가려진 행(RLS·탈퇴)은 빈 이름으로 둔다. */
@@ -1619,11 +1619,11 @@ Expected: 버튼 없음으로 새 테스트 실패, Task 2 테스트는 통과.
 `src/pages/admin/MealDetailPage.tsx` 를 아래처럼 바꾼다 (Task 2 코드에 동작을 더한 전체):
 
 ```tsx
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { Spinner, TextField } from '../../components/ui'
-import { filterFamilies, type FamilyGroup, type MealIssuance, type MealUsage } from '../../features/admin/groupMealLedger'
+import { filterFamilies, NO_NAME, type FamilyGroup, type MealIssuance, type MealUsage } from '../../features/admin/groupMealLedger'
 import { useMealDetail } from '../../features/admin/useMealDetail'
 import { mealOpsErrorMessage, useCancelIssuance, useUseTicketAsAdmin, useVoidUsage } from '../../features/admin/useMealOps'
 import { formatDateTime, formatMealDate } from '../../lib/dates'
@@ -1636,6 +1636,11 @@ type Actions = {
   onUseAsAdmin: (family: FamilyGroup) => void
 }
 
+// 사용 줄과 알림에 공통으로 쓰는 "누구 몫으로/어느 폰에서" 문구. admin 이면 담당자가 대신 처리했다는 뜻.
+function usageWho(u: MealUsage): string {
+  return u.via === 'admin' ? `${u.person || '가족'} 몫 · 담당자 처리` : `${u.person || '가족'} 폰`
+}
+
 /** `#/admin/meals/:mealId` — 식사 하나의 현황판 (설계 §8.3). 발급·사용·남음·금액, 이름 검색, 가족별 명단 + 취소·대신 사용·무효. 5초 폴링은 훅이 한다. */
 export function MealDetailPage() {
   const { mealId = '' } = useParams()
@@ -1645,13 +1650,25 @@ export function MealDetailPage() {
   const useAsAdmin = useUseTicketAsAdmin(mealId)
   const [query, setQuery] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
+  const feedbackRef = useRef<HTMLDivElement>(null)
 
   const pending = cancel.isPending || voidUsage.isPending || useAsAdmin.isPending
   // 관리자 맥락 문구(no_remaining 은 교인 폰 문구가 아니라 "남은 식권이 없어요")
-  const opsError = cancel.isError ? mealOpsErrorMessage(cancel.error) : voidUsage.isError ? mealOpsErrorMessage(voidUsage.error) : useAsAdmin.isError ? mealOpsErrorMessage(useAsAdmin.error) : null
+  const opsError = cancel.isError
+    ? mealOpsErrorMessage(cancel.error)
+    : voidUsage.isError
+      ? mealOpsErrorMessage(voidUsage.error)
+      : useAsAdmin.isError
+        ? mealOpsErrorMessage(useAsAdmin.error)
+        : null
+
+  // 피드백(성공 알림·오류)이 생기면 그 영역으로 포커스를 옮긴다 — 눌렸던 버튼이 성공으로 사라질 때 포커스를 잃지 않게 한다.
+  useEffect(() => {
+    if (notice || opsError) feedbackRef.current?.focus()
+  }, [notice, opsError])
 
   // 다음 동작이 시작되면 이전 동작의 오류·알림을 지운다 (공통 규약)
-  function startAction() {
+  function clearFeedback() {
     cancel.reset()
     voidUsage.reset()
     useAsAdmin.reset()
@@ -1660,16 +1677,16 @@ export function MealDetailPage() {
   const actions: Actions = {
     pending,
     onCancel: (i) => {
-      startAction()
-      cancel.mutate(i.id, { onSuccess: () => setNotice(`${i.buyer || '(이름 없음)'} 님 ${i.quantity}장 발급을 취소했어요`) })
+      clearFeedback()
+      cancel.mutate(i.id, { onSuccess: () => setNotice(`${i.buyer ? `${i.buyer} 님` : NO_NAME} ${i.quantity}장 발급을 취소했어요`) })
     },
     onVoid: (u) => {
-      startAction()
-      voidUsage.mutate(u.id, { onSuccess: () => setNotice('사용 기록을 무효 처리했어요') })
+      clearFeedback()
+      voidUsage.mutate(u.id, { onSuccess: () => setNotice(`${usageWho(u)} 사용을 무효 처리했어요`) })
     },
     onUseAsAdmin: (f) => {
-      if (!f.buyerId) return
-      startAction()
+      if (!f.buyerId) return // 버튼이 이미 잠겨 있어 도달하지 않는다 (타입 좁히기용)
+      clearFeedback()
       useAsAdmin.mutate({ personId: f.buyerId, familyId: f.familyId }, { onSuccess: () => setNotice(`${f.label} 가족 식권 1장을 사용 처리했어요`) })
     },
   }
@@ -1694,8 +1711,12 @@ export function MealDetailPage() {
             <p className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold">
               발급 {detail.data.ledger.totals.issued}장 · 사용 {detail.data.ledger.totals.used}장 · 남음 {detail.data.ledger.totals.remaining}장 · {formatWon(detail.data.ledger.totals.amount)}
             </p>
-            {notice && <p role="status" className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-700">{notice}</p>}
-            {opsError && <p role="alert" className="text-sm text-red-600">{opsError}</p>}
+            {(notice || opsError) && (
+              <div ref={feedbackRef} tabIndex={-1} className="sticky top-0 z-10 flex flex-col gap-2 outline-none">
+                {notice && <p role="status" className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-700">{notice}</p>}
+                {opsError && <p role="alert" className="text-sm text-red-600">{opsError}</p>}
+              </div>
+            )}
             <TextField label="이름으로 찾기" name="query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="구매자·사용자 이름" autoComplete="off" />
             <FamilyList families={filterFamilies(detail.data.ledger.families, query)} searching={query.trim() !== ''} actions={actions} />
           </>
@@ -1753,21 +1774,21 @@ function FamilyBlock({ family, actions }: { family: FamilyGroup; actions: Action
 }
 
 function IssuanceLine({ issuance: i, remaining, actions }: { issuance: MealIssuance; remaining: number; actions: Actions }) {
-  const buyer = i.buyer || '(이름 없음)'
+  const buyer = i.buyer || NO_NAME
   // 발급 단위 취소라, 이 발급 장수가 가족 남은 장수보다 많으면 DB 가 would_go_negative 로 거부한다 → 미리 잠그고 이유를 적는다 (설계 §9)
   const blocked = !i.cancelled && i.quantity > remaining
   return (
     <li className={`flex items-start justify-between gap-2 ${i.cancelled ? 'text-gray-500' : ''}`}>
-      <div className="min-w-0">
+      <div className="min-w-0 break-words">
         <div className={i.cancelled ? 'line-through' : ''}>발급 {i.quantity}장 · {buyer} · {formatWon(i.amount)}</div>
         <div className="text-xs text-gray-500">{formatDateTime(i.issuedAt)} · {i.issuer}{i.memo ? ` · ${i.memo}` : ''}</div>
         {i.cancelled && <div className="text-xs font-bold">취소됨{i.cancelReason ? ` · ${i.cancelReason}` : ''}</div>}
-        {blocked && <div className="text-xs text-gray-500">남은 장수({remaining})보다 많아 취소할 수 없어요</div>}
+        {blocked && <div className="text-xs text-gray-500">남은 장수({remaining})보다 많아 취소할 수 없어요 — 먼저 사용을 무효 처리해 주세요</div>}
       </div>
       {!i.cancelled && (
         <ConfirmButton
           label={actions.pending ? '처리 중…' : '발급 취소'}
-          context={`${buyer} ${i.quantity}장`}
+          context={`${formatDateTime(i.issuedAt)} ${buyer} ${i.quantity}장`}
           message={`${buyer} 님의 ${i.quantity}장 발급을 취소할까요? 가족 잔량이 ${i.quantity}장 줄어요.`}
           confirmLabel="취소하기"
           onConfirm={() => actions.onCancel(i)}
@@ -1780,11 +1801,11 @@ function IssuanceLine({ issuance: i, remaining, actions }: { issuance: MealIssua
 
 function UsageLine({ usage: u, actions }: { usage: MealUsage; actions: Actions }) {
   // admin 이면 person 은 "누구 몫으로", self 면 "어느 폰에서". 이름이 가려졌으면(탈퇴) 자리를 비우지 않는다.
-  const who = u.via === 'admin' ? `${u.person || '가족'} 몫 · 담당자 처리` : `${u.person || '가족'} 폰`
+  const who = usageWho(u)
   const when = formatDateTime(u.usedAt)
   return (
     <li className={`flex items-start justify-between gap-2 ${u.voided ? 'text-gray-500' : ''}`}>
-      <div className="min-w-0">
+      <div className="min-w-0 break-words">
         <div className={u.voided ? 'line-through' : ''}>사용 1장 · {who}</div>
         <div className="text-xs text-gray-500">{when}</div>
         {u.voided && <div className="text-xs font-bold">무효</div>}
@@ -1792,7 +1813,7 @@ function UsageLine({ usage: u, actions }: { usage: MealUsage; actions: Actions }
       {!u.voided && (
         <ConfirmButton
           label={actions.pending ? '처리 중…' : '무효'}
-          context={`${when} 사용`}
+          context={`${who} ${when} 사용`}
           message="이 사용 기록을 무효 처리할까요? 가족 잔량이 1장 늘어요."
           confirmLabel="무효 처리"
           onConfirm={() => actions.onVoid(u)}
