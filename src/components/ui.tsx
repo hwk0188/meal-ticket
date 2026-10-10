@@ -1,4 +1,4 @@
-import { useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react'
+import { useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref } from 'react'
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'kakao' | 'ghost' }
 
@@ -14,7 +14,8 @@ export function Button({ variant = 'primary', className = '', ...rest }: ButtonP
   return <button type="button" className={`${base} ${look} ${className}`} {...rest} />
 }
 
-type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }
+// ref 는 React 19 에서 평범한 prop 이라 rest 로 input 까지 그대로 내려간다 (포커스를 옮겨야 하는 호출자가 있다).
+type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string; ref?: Ref<HTMLInputElement> }
 
 export function TextField({ label, error, id, 'aria-describedby': describedBy, ...rest }: TextFieldProps) {
   const autoId = useId()

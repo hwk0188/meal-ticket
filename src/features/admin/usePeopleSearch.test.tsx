@@ -51,7 +51,7 @@ describe('usePeopleSearch', () => {
 })
 
 describe('useRegisterPerson', () => {
-  it('이름·번호로 사람을 만들고 검색 캐시를 무효화한다', async () => {
+  it('이름·번호로 사람을 만들고 검색·사람 목록 캐시를 무효화한다', async () => {
     const q = ok({ id: 'p2', name: '이순자', phone: '01022220001', auth_user_id: null, family_id: 'f2', is_minor: false })
     from.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
@@ -60,7 +60,8 @@ describe('useRegisterPerson', () => {
     expect(person.id).toBe('p2')
     expect(q.has('insert', { name: '이순자', phone: '01022220001' })).toBe(true)
     expect(q.has('single')).toBe(true)
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['people-search'] })
+    // 사람 목록도 함께 — staleTime 30초라 그 사이 사람 탭·합치기 후보에서 새 사람이 빠진다
+    expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual([['people-search'], ['all-people']])
   })
 })
 

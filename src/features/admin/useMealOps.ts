@@ -8,13 +8,15 @@ import { ledgerQueryKey } from '../history/useFamilyLedger'
 import { ticketsQueryKey } from '../tickets/useFamilyTickets'
 import { mealDetailQueryKey } from './useMealDetail'
 import { adminBalancesQueryKey } from './useMeals'
+import { PERSON_LEDGER_QUERY_KEY } from './usePersonLedger'
 
 /** RPC 응답 대기 한계. 넘기면 요청을 끊어 버튼이 영원히 '처리 중…' 에 머무르지 않게 한다 (useUseTicket 과 같은 패턴, 다른 값). */
 export const OPS_TIMEOUT_MS = 8_000
 
 /**
  * 식권 조작 뒤 다시 읽어야 하는 것 전부: 이 식사의 현황, 관리자 식사 카드 합계,
- * (관리자 본인 가족에게 한 조작일 수도 있으니) 식권·내역. 순서는 테스트가 그대로 단언한다.
+ * (관리자 본인 가족에게 한 조작일 수도 있으니) 식권·내역, (관리자 사람 상세를 보고 있었을 수도 있으니) 사람 이력.
+ * 순서는 테스트가 그대로 단언한다.
  */
 export function invalidateMealOps(queryClient: QueryClient, mealId: string) {
   return Promise.all([
@@ -22,6 +24,8 @@ export function invalidateMealOps(queryClient: QueryClient, mealId: string) {
     queryClient.invalidateQueries({ queryKey: adminBalancesQueryKey }),
     queryClient.invalidateQueries({ queryKey: ticketsQueryKey }),
     queryClient.invalidateQueries({ queryKey: ledgerQueryKey }),
+    // 어떤 사람의 이력인지 몰라도(취소·무효는 issuanceId·usageId 만 받는다) 접두사로 전부 — personLedgerQueryKey 전체를 덮는다.
+    queryClient.invalidateQueries({ queryKey: PERSON_LEDGER_QUERY_KEY }),
   ])
 }
 
@@ -37,14 +41,21 @@ const settleBoard = (queryClient: QueryClient, mealId: string) =>
 const makeRefreshBoard = (queryClient: QueryClient, mealId: string) => (err: unknown) =>
   rpcCodeOf(err) ? queryClient.invalidateQueries({ queryKey: mealDetailQueryKey(mealId) }) : undefined
 
-/** 발급 한 건 취소. 사유 입력 칸은 4a 에 두지 않는다(DB 의 p_reason 은 선택 인자). */
+export type CancelArgs = { issuanceId: string; reason: string }
+
+/** 발급 한 건 취소. 사유는 선택 — 비면 보내지 않는다(DB 의 p_reason 은 기본값 null). */
 export function useCancelIssuance(mealId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (issuanceId: string) => {
+    mutationFn: async ({ issuanceId, reason }: CancelArgs) => {
+      const trimmed = reason.trim()
       const { signal, done } = withTimeout(OPS_TIMEOUT_MS)
       try {
-        return unwrap(await supabase.rpc('cancel_issuance', { p_issuance_id: issuanceId }).abortSignal(signal))
+        return unwrap(
+          await supabase
+            .rpc('cancel_issuance', trimmed === '' ? { p_issuance_id: issuanceId } : { p_issuance_id: issuanceId, p_reason: trimmed })
+            .abortSignal(signal),
+        )
       } finally {
         done()
       }

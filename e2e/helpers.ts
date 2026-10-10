@@ -31,20 +31,26 @@ export async function hold(page: Page, name: string, ms: number) {
   await page.mouse.up()
 }
 
-type IssueArgs = { mealTitle: string; mealLabel: string; name: string; phone: string }
-
-/** 관리자로 로그인해 오늘 식사를 만들고, "새로 등록" 한 사람에게 5,000원 × 2장을 발급한 뒤 로그아웃한다. */
-export async function adminCreateTodayMealAndIssueTwo(page: Page, { mealTitle, mealLabel, name, phone }: IssueArgs) {
+/** 관리자로 개발 로그인하고 홈까지. */
+export async function adminLogin(page: Page) {
   await devLogin(page, ADMIN.email, ADMIN.password)
   await expect(page.getByRole('heading', { name: '권사 님' })).toBeVisible()
+}
+
+/** 관리 › 식사 › "+ 식사 직접 추가" 로 오늘 식사를 만든다 (날짜 기본값이 오늘이다). */
+export async function adminCreateTodayMeal(page: Page, mealTitle: string) {
   await page.getByRole('link', { name: '관리' }).click()
   await page.getByRole('button', { name: '+ 식사 직접 추가' }).click()
   await page.getByLabel('식사 이름').fill(mealTitle)
-  // 날짜 기본값은 오늘
   await page.getByRole('button', { name: '식사 추가' }).click()
   await expect(page.getByRole('article', { name: new RegExp(mealTitle) })).toBeVisible()
+}
 
-  await page.getByRole('link', { name: '발급' }).click()
+type IssueOne = { mealLabel: string; name: string; phone: string; quantity: number; unitPrice: number }
+
+/** 발급 › 식사 고르기 › "+ 새로 등록" › 장수·단가 › 발급. 등록·발급을 한 사람에게 한 번 한다. */
+export async function adminIssue(page: Page, { mealLabel, name, phone, quantity, unitPrice }: IssueOne) {
+  await page.getByRole('link', { name: '발급', exact: true }).click()
   await page.getByRole('button', { name: '변경' }).click()
   await page.getByRole('button', { name: mealLabel, exact: true }).click()
   await page.getByRole('button', { name: '+ 새로 등록' }).click()
@@ -53,12 +59,20 @@ export async function adminCreateTodayMealAndIssueTwo(page: Page, { mealTitle, m
   await page.getByLabel('휴대폰 번호').fill(phone)
   await page.getByRole('button', { name: '등록하고 선택' }).click()
   await expect(page.getByRole('heading', { name: `${name} 님께 발급` })).toBeVisible()
+  await page.getByLabel('단가 (원)').fill(String(unitPrice))
+  for (let i = 1; i < quantity; i++) await page.getByRole('button', { name: '장수 늘리기' }).click()
+  await expect(page.getByText(`합계 ${(quantity * unitPrice).toLocaleString('ko-KR')}원`)).toBeVisible()
+  await page.getByRole('button', { name: `${quantity}장 발급하기` }).click()
+  await expect(page.getByText(`${name} 님께 ${quantity}장 발급했어요`)).toBeVisible()
+}
 
-  await page.getByLabel('단가 (원)').fill('5000')
-  await page.getByRole('button', { name: '장수 늘리기' }).click()
-  await expect(page.getByText('합계 10,000원')).toBeVisible()
-  await page.getByRole('button', { name: '2장 발급하기' }).click()
-  await expect(page.getByText(`${name} 님께 2장 발급했어요`)).toBeVisible() // role=status 는 여러 개일 수 있어 텍스트로 찾는다
+type IssueArgs = { mealTitle: string; mealLabel: string; name: string; phone: string }
+
+/** 관리자로 로그인해 오늘 식사를 만들고, "새로 등록" 한 사람에게 5,000원 × 2장을 발급한 뒤 로그아웃한다. */
+export async function adminCreateTodayMealAndIssueTwo(page: Page, { mealTitle, mealLabel, name, phone }: IssueArgs) {
+  await adminLogin(page)
+  await adminCreateTodayMeal(page, mealTitle)
+  await adminIssue(page, { mealLabel, name, phone, quantity: 2, unitPrice: 5000 })
   await logout(page)
 }
 

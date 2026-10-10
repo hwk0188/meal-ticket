@@ -42,4 +42,18 @@ describe('useFamilyLedger', () => {
     expect(queries[0]?.has('order', 'issued_at', { ascending: false })).toBe(true)
     expect(queries[1]?.has('order', 'used_at', { ascending: false })).toBe(true)
   })
+
+  it('취소 사유는 읽지 않는다 — 화면에 안 그려도 select 에 두면 교인 폰이 받는다 (설계 §10)', async () => {
+    const queries: FakeQuery<unknown>[] = []
+    from.mockImplementation(() => {
+      const q = ok([])
+      queries.push(q)
+      return q
+    })
+    const { result } = renderHook(() => useFamilyLedger(person), { wrapper: makeWrapper() })
+    await waitFor(() => expect(result.current.status).toBe('success'))
+    const selects = queries.flatMap((q) => q.filters.filter(([method]) => method === 'select').map(([, arg]) => String(arg)))
+    expect(selects).toHaveLength(2)
+    for (const select of selects) expect(select).not.toContain('cancel_reason')
+  })
 })

@@ -4,8 +4,10 @@ import { AuthProvider } from './features/auth/AuthProvider'
 import { Gate, RequireAdmin, RequireAdult, RequirePerson, RequireSession } from './features/auth/Gate'
 import { OnboardingPage } from './features/onboarding/OnboardingPage'
 import { AdminMealsPage } from './pages/admin/AdminMealsPage'
+import { AdminPeoplePage } from './pages/admin/AdminPeoplePage'
 import { IssuePage } from './pages/admin/IssuePage'
 import { MealDetailPage } from './pages/admin/MealDetailPage'
+import { PersonDetailPage } from './pages/admin/PersonDetailPage'
 import { FamilyPage } from './pages/FamilyPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { PairPage } from './pages/PairPage'
@@ -37,6 +39,8 @@ export default function App() {
               <Route path="/admin/meals" element={<RequireAdmin><AdminMealsPage /></RequireAdmin>} />
               <Route path="/admin/meals/:mealId" element={<RequireAdmin><MealDetailPage /></RequireAdmin>} />
               <Route path="/admin/issue" element={<RequireAdmin><IssuePage /></RequireAdmin>} />
+              <Route path="/admin/people" element={<RequireAdmin><AdminPeoplePage /></RequireAdmin>} />
+              <Route path="/admin/people/:personId" element={<RequireAdmin><PersonDetailPage /></RequireAdmin>} />
             </Route>
             {/* 모르는 주소는 홈 주소로 정리한다 (Gate 를 그대로 띄우면 주소가 그대로 남는다). */}
             <Route path="*" element={<Navigate to="/" replace />} />

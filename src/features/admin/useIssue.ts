@@ -5,6 +5,7 @@ import { ledgerQueryKey } from '../history/useFamilyLedger'
 import { ticketsQueryKey } from '../tickets/useFamilyTickets'
 import type { IssueValues } from './issueSchema'
 import { adminBalancesQueryKey } from './useMeals'
+import { PERSON_LEDGER_QUERY_KEY } from './usePersonLedger'
 
 export const latestUnitPriceQueryKey = ['latest-unit-price'] as const
 
@@ -73,6 +74,8 @@ export function useIssueTickets() {
         // 관리자 본인 가족에게 발급했을 수도 있다 (식권·내역 모두)
         queryClient.invalidateQueries({ queryKey: ticketsQueryKey }),
         queryClient.invalidateQueries({ queryKey: ledgerQueryKey }),
+        // 관리자 사람 상세 이력도 — 어느 사람인지 아는데도 접두사로 덮는 건 취소·무효와 같은 모양을 지키기 위해서다
+        queryClient.invalidateQueries({ queryKey: PERSON_LEDGER_QUERY_KEY }),
       ]),
   })
 }

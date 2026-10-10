@@ -13,8 +13,8 @@ vi.mock('../features/auth/usePerson', () => ({ useCurrentPerson: () => ({ id: 'p
 const entries: LedgerEntry[] = [
   { kind: 'usage', id: 'u1', at: '2026-10-12T03:31:00Z', mealTitle: '주일 점심', servedOn: '2026-10-12', person: '서연', via: 'self', voided: false },
   { kind: 'usage', id: 'u2', at: '2026-10-12T03:30:00Z', mealTitle: '주일 점심', servedOn: '2026-10-12', person: '', via: 'admin', voided: true },
-  { kind: 'issuance', id: 'i1', at: '2026-10-08T01:00:00Z', mealTitle: '주일 점심', servedOn: '2026-10-12', quantity: 4, amount: 20000, buyer: '김철수', issuer: '권사', memo: '입금 확인', cancelled: false },
-  { kind: 'issuance', id: 'i2', at: '2026-10-01T01:00:00Z', mealTitle: '주일 점심', servedOn: '2026-10-05', quantity: 1, amount: 0, buyer: '김철수', issuer: '관리자', memo: '9/28 이월', cancelled: true },
+  { kind: 'issuance', id: 'i1', at: '2026-10-08T01:00:00Z', mealTitle: '주일 점심', servedOn: '2026-10-12', quantity: 4, amount: 20000, buyer: '김철수', issuer: '권사', memo: '입금 확인', cancelled: false, cancelReason: null },
+  { kind: 'issuance', id: 'i2', at: '2026-10-01T01:00:00Z', mealTitle: '주일 점심', servedOn: '2026-10-05', quantity: 1, amount: 0, buyer: '김철수', issuer: '관리자', memo: '9/28 이월', cancelled: true, cancelReason: null },
 ]
 
 describe('HistoryPage', () => {
