@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { AdminMealsPage } from './AdminMealsPage'
@@ -67,6 +67,7 @@ describe('AdminMealsPage', () => {
     const card = screen.getByRole('article', { name: /10월 11일/ })
     expect(card).toHaveTextContent('발급 6장 · 가족 2 · 30,000원')
     expect(card).toHaveTextContent('사용 2 / 6')
+    expect(within(card).getByRole('link', { name: '10월 11일 (주일) 주일 점심 현황' })).toHaveAttribute('href', '/admin/meals/m1')
     expect(card.querySelector('button')).toBeNull()
 
     const empty = screen.getByRole('article', { name: /10월 18일/ })

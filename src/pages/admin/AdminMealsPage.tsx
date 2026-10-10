@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router'
 import { Button, Spinner } from '../../components/ui'
 import { MealForm } from '../../features/admin/MealForm'
 import { nextSundayLunchDate } from '../../features/admin/nextSundayLunch'
@@ -93,10 +94,13 @@ function MealCard({ meal, summary, onDelete, deleting }: { meal: Meal; summary?:
           <h3 className="font-bold">{meal.title}</h3>
           {meal.note && <p className="text-xs text-gray-500">{meal.note}</p>}
         </div>
-        {/* 발급이 있으면 FK 가 막으므로 버튼 자체를 감춘다 */}
-        {s.issued === 0 && (
-          <button type="button" onClick={() => onDelete(meal)} disabled={deleting} aria-label={`${label} 삭제`} className="text-xs text-red-600 underline">삭제</button>
-        )}
+        <div className="flex shrink-0 items-center gap-3">
+          <Link to={`/admin/meals/${meal.id}`} aria-label={`${label} 현황`} className="-my-2 px-2 py-2 text-xs text-blue-600 underline">현황</Link>
+          {/* 발급이 있으면 FK 가 막으므로 버튼 자체를 감춘다 */}
+          {s.issued === 0 && (
+            <button type="button" onClick={() => onDelete(meal)} disabled={deleting} aria-label={`${label} 삭제`} className="text-xs text-red-600 underline">삭제</button>
+          )}
+        </div>
       </div>
       <p className="mt-2 text-sm">발급 {s.issued}장 · 가족 {s.families} · {formatWon(s.amount)}</p>
       <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
