@@ -1103,8 +1103,8 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { ok } from '../../test/fakeSupabase'
-import { invalidateMealOps, useCancelIssuance, useUseTicketAsAdmin, useVoidUsage } from './useMealOps'
+import { fail, ok } from '../../test/fakeSupabase'
+import { invalidateMealOps, mealOpsErrorMessage, useCancelIssuance, useUseTicketAsAdmin, useVoidUsage } from './useMealOps'
 
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn<(fn: string, args?: Record<string, unknown>) => unknown>() }))
 vi.mock('../../lib/supabase', () => ({ supabase: { rpc } }))
@@ -1118,8 +1118,8 @@ function makeWrapper() {
   return { client, wrapper, invalidate }
 }
 // 키 목록 전체를 정확히 — 스파이를 여러 훅이 공유하면 한 훅의 onSuccess 가 빠져도 통과한다 (공통 규약)
-function expectExactInvalidation(invalidate: { mock: { calls: unknown[][] } }) {
-  expect(invalidate.mock.calls.map((c) => (c[0] as { queryKey?: unknown } | undefined)?.queryKey)).toEqual(OPS_KEYS)
+function expectExactInvalidation(invalidate: ReturnType<typeof makeWrapper>['invalidate']) {
+  expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual(OPS_KEYS)
 }
 
 describe('invalidateMealOps', () => {
@@ -1132,51 +1132,87 @@ describe('invalidateMealOps', () => {
 })
 
 describe('useCancelIssuance', () => {
-  it('cancel_issuance 를 발급 id 로 부르고 성공 시 네 키를 무효화한다', async () => {
-    rpc.mockReturnValue(ok({ id: 'i1', cancelled_at: '2026-10-10T00:00:00Z' }))
+  it('cancel_issuance 를 발급 id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+    const q = ok({ id: 'i1', cancelled_at: '2026-10-10T00:00:00Z' })
+    rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
     await act(async () => {
       await result.current.mutateAsync('i1')
     })
     expect(rpc).toHaveBeenCalledWith('cancel_issuance', { p_issuance_id: 'i1' })
+    expect(q.has('abortSignal')).toBe(true)
     expectExactInvalidation(invalidate)
   })
 
-  it('RPC 오류는 코드를 보존한 Error 로 던진다', async () => {
-    rpc.mockReturnValue({ then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: null, error: { code: 'P0001', message: 'would_go_negative', details: '', hint: '', name: 'PostgrestError' } }).then(resolve) })
+  it('서버가 거부하면(코드 있음) 코드를 보존한 Error 로 던지고 현황만 다시 읽는다', async () => {
+    rpc.mockReturnValue(fail('would_go_negative'))
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
     await expect(result.current.mutateAsync('i1')).rejects.toMatchObject({ message: 'would_go_negative', code: 'P0001' })
     await waitFor(() => expect(result.current.isError).toBe(true))
     // 거부되면 화면의 잔량이 낡았을 수 있다 → 현황만 다시 읽는다
-    expect(invalidate.mock.calls.map((c) => (c[0] as { queryKey?: unknown } | undefined)?.queryKey)).toEqual([['meal-detail', 'm1']])
+    expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual([['meal-detail', 'm1']])
+  })
+
+  it('통신 오류(코드 없음)는 현황을 다시 읽지 않는다 — 오류 토스트가 재조회를 기다리지 않게', async () => {
+    rpc.mockReturnValue(fail('TimeoutError: signal timed out', ''))
+    const { wrapper, invalidate } = makeWrapper()
+    const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
+    await expect(result.current.mutateAsync('i1')).rejects.toThrow('TimeoutError: signal timed out')
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(invalidate).not.toHaveBeenCalled()
   })
 })
 
 describe('useVoidUsage', () => {
-  it('void_usage 를 사용 id 로 부르고 성공 시 네 키를 무효화한다', async () => {
-    rpc.mockReturnValue(ok({ id: 'u1', voided_at: '2026-10-10T00:00:00Z' }))
+  it('void_usage 를 사용 id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+    const q = ok({ id: 'u1', voided_at: '2026-10-10T00:00:00Z' })
+    rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useVoidUsage('m1'), { wrapper })
     await act(async () => {
       await result.current.mutateAsync('u1')
     })
     expect(rpc).toHaveBeenCalledWith('void_usage', { p_usage_id: 'u1' })
+    expect(q.has('abortSignal')).toBe(true)
     expectExactInvalidation(invalidate)
+  })
+
+  it('서버가 거부하면(코드 있음) 현황만 다시 읽는다', async () => {
+    rpc.mockReturnValue(fail('already_voided'))
+    const { wrapper, invalidate } = makeWrapper()
+    const { result } = renderHook(() => useVoidUsage('m1'), { wrapper })
+    await expect(result.current.mutateAsync('u1')).rejects.toMatchObject({ message: 'already_voided', code: 'P0001' })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual([['meal-detail', 'm1']])
   })
 })
 
 describe('useUseTicketAsAdmin', () => {
-  it('use_ticket_as_admin 을 사람·식사 id 로 부르고 성공 시 네 키를 무효화한다', async () => {
-    rpc.mockReturnValue(ok({ id: 'u9', used_via: 'admin' }))
+  it('use_ticket_as_admin 을 사람·식사 id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+    const q = ok({ id: 'u9', used_via: 'admin' })
+    rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useUseTicketAsAdmin('m1'), { wrapper })
     await act(async () => {
       await result.current.mutateAsync({ personId: 'p1', familyId: 'f1' })
     })
     expect(rpc).toHaveBeenCalledWith('use_ticket_as_admin', { p_person_id: 'p1', p_meal_id: 'm1', p_family_id: 'f1' })
+    expect(q.has('abortSignal')).toBe(true)
     expectExactInvalidation(invalidate)
+  })
+})
+
+describe('mealOpsErrorMessage', () => {
+  it('no_remaining 은 관리자 맥락 문구로 바꾼다', () => {
+    expect(mealOpsErrorMessage(new Error('no_remaining'))).toBe('남은 식권이 없어요. 현황을 다시 불러왔어요.')
+  })
+
+  it('그 외 코드는 toUserMessage 그대로', () => {
+    expect(mealOpsErrorMessage(new Error('would_go_negative'))).toBe(
+      '이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 먼저 사용 기록을 무효 처리해 주세요.',
+    )
   })
 })
 ```
@@ -1185,11 +1221,11 @@ describe('useUseTicketAsAdmin', () => {
 
 ```ts
   it('4a단계 관리자 식권 조작 코드에 문구가 있다', () => {
-    expect(toUserMessage(new Error('issuance_not_found'))).toBe('발급 기록을 찾을 수 없어요. 목록을 새로고침해 주세요.')
+    expect(toUserMessage(new Error('issuance_not_found'))).toBe('발급 기록을 찾을 수 없어요. 현황을 다시 불러왔어요.')
     expect(toUserMessage(new Error('already_cancelled'))).toBe('이미 취소된 발급이에요.')
     expect(toUserMessage(new Error('invalid_reason'))).toBe('취소 사유는 100자까지예요.')
-    expect(toUserMessage(new Error('would_go_negative'))).toBe('이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 남은 장수를 확인해 주세요.')
-    expect(toUserMessage(new Error('usage_not_found'))).toBe('사용 기록을 찾을 수 없어요. 목록을 새로고침해 주세요.')
+    expect(toUserMessage(new Error('would_go_negative'))).toBe('이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 먼저 사용 기록을 무효 처리해 주세요.')
+    expect(toUserMessage(new Error('usage_not_found'))).toBe('사용 기록을 찾을 수 없어요. 현황을 다시 불러왔어요.')
     expect(toUserMessage(new Error('already_voided'))).toBe('이미 무효 처리된 기록이에요.')
     expect(toUserMessage(new Error('family_changed'))).toBe('그 사이 이 분의 가족이 바뀌었어요. 현황을 다시 불러왔어요.')
   })
@@ -1206,11 +1242,11 @@ Expected: 모듈 없음 · 문구 없음(폴백 문구가 나온다).
 
 ```ts
   // 4a단계 · 관리자 식권 조작
-  issuance_not_found: '발급 기록을 찾을 수 없어요. 목록을 새로고침해 주세요.',
+  issuance_not_found: '발급 기록을 찾을 수 없어요. 현황을 다시 불러왔어요.',
   already_cancelled: '이미 취소된 발급이에요.',
   invalid_reason: '취소 사유는 100자까지예요.',
-  would_go_negative: '이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 남은 장수를 확인해 주세요.',
-  usage_not_found: '사용 기록을 찾을 수 없어요. 목록을 새로고침해 주세요.',
+  would_go_negative: '이미 사용된 장수가 있어 이 발급은 취소할 수 없어요. 먼저 사용 기록을 무효 처리해 주세요.',
+  usage_not_found: '사용 기록을 찾을 수 없어요. 현황을 다시 불러왔어요.',
   already_voided: '이미 무효 처리된 기록이에요.',
   family_changed: '그 사이 이 분의 가족이 바뀌었어요. 현황을 다시 불러왔어요.',
 ```
@@ -1219,12 +1255,17 @@ Expected: 모듈 없음 · 문구 없음(폴백 문구가 나온다).
 
 ```ts
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { rpcCodeOf, toUserMessage } from '../../lib/errors'
 import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
+import { withTimeout } from '../../lib/timeout'
 import { ledgerQueryKey } from '../history/useFamilyLedger'
 import { ticketsQueryKey } from '../tickets/useFamilyTickets'
 import { mealDetailQueryKey } from './useMealDetail'
 import { adminBalancesQueryKey } from './useMeals'
+
+/** RPC 응답 대기 한계. 넘기면 요청을 끊어 버튼이 영원히 '처리 중…' 에 머무르지 않게 한다 (useUseTicket 과 같은 패턴, 다른 값). */
+export const OPS_TIMEOUT_MS = 8_000
 
 /**
  * 식권 조작 뒤 다시 읽어야 하는 것 전부: 이 식사의 현황, 관리자 식사 카드 합계,
@@ -1239,26 +1280,43 @@ export function invalidateMealOps(queryClient: QueryClient, mealId: string) {
   ])
 }
 
-// 네 조회가 각자 스냅샷이라 화면의 남은 장수가 잠깐 낡을 수 있다 → 서버가 거부하면(would_go_negative·no_remaining 등)
-// 현황을 바로 다시 읽어 버튼 잠금이 실제 잔량을 따르게 한다 (Task 1 리뷰).
-const refreshBoard = (queryClient: QueryClient, mealId: string) => () => queryClient.invalidateQueries({ queryKey: mealDetailQueryKey(mealId) })
+// 서버가 판단한 거부(코드 있음)일 때만 현황을 다시 읽는다 — 통신 실패 때 재조회까지 기다리면 오류 문구가 늦거나(오프라인이면 영영) 안 보인다.
+// 같은 이유로 await 되는 onError 안에서 하므로 "현황을 다시 불러왔어요" 문구가 사실이 된다.
+const makeRefreshBoard = (queryClient: QueryClient, mealId: string) => (err: unknown) =>
+  rpcCodeOf(err) ? queryClient.invalidateQueries({ queryKey: mealDetailQueryKey(mealId) }) : undefined
 
 /** 발급 한 건 취소. 사유 입력 칸은 4a 에 두지 않는다(DB 의 p_reason 은 선택 인자). */
 export function useCancelIssuance(mealId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (issuanceId: string) => unwrap(await supabase.rpc('cancel_issuance', { p_issuance_id: issuanceId })),
+    mutationFn: async (issuanceId: string) => {
+      const { signal, done } = withTimeout(OPS_TIMEOUT_MS)
+      try {
+        return unwrap(await supabase.rpc('cancel_issuance', { p_issuance_id: issuanceId }).abortSignal(signal))
+      } finally {
+        done()
+      }
+    },
     // promise 를 돌려줘야 재조회가 끝날 때까지 isPending 이 유지된다
     onSuccess: () => invalidateMealOps(queryClient, mealId),
-    onError: refreshBoard(queryClient, mealId),
+    onError: makeRefreshBoard(queryClient, mealId),
   })
 }
 
 export function useVoidUsage(mealId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (usageId: string) => unwrap(await supabase.rpc('void_usage', { p_usage_id: usageId })),
+    mutationFn: async (usageId: string) => {
+      const { signal, done } = withTimeout(OPS_TIMEOUT_MS)
+      try {
+        return unwrap(await supabase.rpc('void_usage', { p_usage_id: usageId }).abortSignal(signal))
+      } finally {
+        done()
+      }
+    },
     onSuccess: () => invalidateMealOps(queryClient, mealId),
+    // already_voided·usage_not_found 도 "화면이 낡았다" 는 뜻 — cancel 과 똑같이 현황을 다시 읽는다.
+    onError: makeRefreshBoard(queryClient, mealId),
   })
 }
 
@@ -1268,11 +1326,24 @@ export type AdminUseArgs = { personId: string; familyId: string }
 export function useUseTicketAsAdmin(mealId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ personId, familyId }: AdminUseArgs) =>
-      unwrap(await supabase.rpc('use_ticket_as_admin', { p_person_id: personId, p_meal_id: mealId, p_family_id: familyId })),
+    mutationFn: async ({ personId, familyId }: AdminUseArgs) => {
+      const { signal, done } = withTimeout(OPS_TIMEOUT_MS)
+      try {
+        return unwrap(
+          await supabase.rpc('use_ticket_as_admin', { p_person_id: personId, p_meal_id: mealId, p_family_id: familyId }).abortSignal(signal),
+        )
+      } finally {
+        done()
+      }
+    },
     onSuccess: () => invalidateMealOps(queryClient, mealId),
-    onError: refreshBoard(queryClient, mealId),
+    onError: makeRefreshBoard(queryClient, mealId),
   })
+}
+
+/** 현황판 동작 오류 문구. no_remaining 은 교인 폰 문구("방금 다른 폰에서…")가 아니라 관리자 맥락으로. */
+export function mealOpsErrorMessage(err: unknown): string {
+  return rpcCodeOf(err) === 'no_remaining' ? '남은 식권이 없어요. 현황을 다시 불러왔어요.' : toUserMessage(err)
 }
 ```
 
