@@ -28,6 +28,7 @@
 
 ## 구현 결과와 계획의 차이 (실행 중 리뷰로 바뀐 것)
 
+- **Task 2** (화면): 품질 리뷰 + 로컬 실데이터 스모크(관리자 발급 → 현황 → 명단·검색·없는 식사·비관리자 리다이렉트·로그아웃 상태, PostgREST 임베딩 200 확인). 반영: ① 발급이 없는 식사(내일 식사를 미리 연 경우)는 "찾는 가족이 없어요" 대신 **"아직 발급이 없어요"**(`searching` 로 분기), ② 없는 식사(`null`)는 폴링 중지(`refetchInterval` 콜백), ③ 정렬 보조 키 `.order('id')`, ④ 내역 목록 `aria-label`, 가족 제목 `title`, 현황 링크 탭 영역 확대, ⑤ 테스트는 스피너를 `getByText('불러오는 중…')` 로(Task 5 의 ConfirmButton 프롬프트가 `role="status"`). 위 Task 1·2 스니펫은 반영본. 미룬 것: `text-gray-500` 의 바탕색 대비(4.44:1, 기존 화면과 동일 → 5단계 a11y 일괄), 로딩·오류 상태의 h1 부재, 음수 잔량 표시 강조(Task 5 이후), 가상 스크롤(가족 수백 규모에서만).
 - **Task 1** (조회): 계획 초안의 라벨 계산이 최근 발급부터 이름을 나열해 테스트의 기대(`'김철수 · 이영희'` — 먼저 산 사람 먼저)와 어긋났다. 구현은 `buyerId` 는 최근 활성 발급에서, 라벨은 오래된 발급부터(활성 → 취소 순)로 계산한다. 품질 리뷰로 ① `FamilyRow` → **`FamilyGroup`**(이후 Task 는 이 이름을 쓴다), ② 두 표 읽기에 `.order(…, desc)` 고정(ms 동률이 폴링마다 뒤바뀌어 `buyerId` 가 바뀌는 것 방지), ③ uuid 가 아닌 주소는 조회 없이 `null`(손으로 고친 `#/admin/meals/zzz` 가 22P02 → 영원한 '다시 시도' 가 되던 것), ④ 임베딩에 `deleted_at` 을 더해 **`buyerId` 는 탈퇴자를 건너뛰고** 산 사람(없으면 이 가족에서 쓴 산 사람)을 고른다 — `use_ticket_as_admin` 이 탈퇴자를 거부하므로, ⑤ 검색어 NFC 정규화, 이름 없는 가족은 맨 뒤, 사용만 남은 가족의 라벨도 오래된 순, ⑥ 오류 경로 테스트. 네 요청이 각자 스냅샷이라 합계와 줄이 잠깐 어긋날 수 있는 것은 5초 폴링으로 두고(조작 판단은 서버), 조작이 거부되면 현황을 바로 다시 읽는다(Task 4 `onError`). Task 1 스니펫은 리뷰 전 버전(이름만 `FamilyGroup` 으로 바꿔 둠). 재리뷰가 찾은 것: 장부의 `family_id` 는 발급 시점 스냅샷이고 `use_ticket_as_admin` 은 사람의 **현재** 가족에서 깎으므로, 가족을 옮긴 구매자를 옛 가족 블록에서 누르면 새 가족 풀이 깎인다 → ⑦ 임베딩에 `family_id` 를 더해 `buyerId` 는 **이 블록 가족에 아직 속한** 산 사람만 고르고(Task 1 후속 커밋; 테스트 픽스처의 `buyer`/`person` 에 `family_id` 가 들어간다), Task 3 의 `use_ticket_as_admin` 이 `p_family_id` 를 받아 `family_changed` 로 거부한다(5초 창도 닫음). 타입 이름은 `PersonRef`(name·deleted_at·family_id)·`NameRef`(name) 로 정리.
 
 ## 파일 구조
@@ -362,15 +363,16 @@ export function useMealDetail(mealId: string) {
       const [meal, issuances, usages, balances] = await Promise.all([
         // queryFn 문맥 타입과 maybeSingle 의 제네릭 추론이 부딪히므로(useLatestUnitPrice 참고) unwrap 에 타입 인자를 준다
         supabase.from('meals').select('*').eq('id', mealId).maybeSingle().then((r) => unwrap<Meal | null>(r)),
-        supabase.from('issuances').select(ISSUANCE_SELECT).eq('meal_id', mealId).then(unwrap),
-        supabase.from('usages').select(USAGE_SELECT).eq('meal_id', mealId).then(unwrap),
+        supabase.from('issuances').select(ISSUANCE_SELECT).eq('meal_id', mealId).order('issued_at', { ascending: false }).order('id').then(unwrap),
+        supabase.from('usages').select(USAGE_SELECT).eq('meal_id', mealId).order('used_at', { ascending: false }).order('id').then(unwrap),
         supabase.from('ticket_balances').select('*').eq('meal_id', mealId).then(unwrap),
       ])
       if (!meal) return null
       // 두 select 문자열은 MealIssuanceRow·MealUsageRow 와 구조적으로 일치한다 (tsc 가 검증)
       return { meal, ledger: groupMealLedger(issuances, usages, balances) }
     },
-    refetchInterval: MEAL_DETAIL_POLL_MS,
+    // 없는 식사(null)는 다시 읽어도 달라지지 않는다 — 폴링을 멈춘다 (포커스 복귀 재조회는 그대로)
+    refetchInterval: (q) => (q.state.data === null ? false : MEAL_DETAIL_POLL_MS),
   })
 }
 ```
@@ -478,10 +480,17 @@ describe('MealDetailPage', () => {
     renderPage()
     const box = screen.getByLabelText('이름으로 찾기')
     await userEvent.type(box, '민수')
-    expect(screen.getAllByRole('listitem', { name: /./ }).map((r) => r.getAttribute('aria-label'))).toEqual(['박민수'])
+    expect(within(screen.getByRole('list', { name: '가족별 현황' })).getAllByRole('listitem', { name: /./ }).map((r) => r.getAttribute('aria-label'))).toEqual(['박민수'])
     await userEvent.clear(box)
     await userEvent.type(box, '없는사람')
     expect(screen.getByText('찾는 가족이 없어요')).toBeInTheDocument()
+  })
+
+  it('발급이 하나도 없는 식사는 "아직 발급이 없어요" (검색 중이 아닐 때)', () => {
+    useMealDetail.mockReturnValue({ status: 'success', data: { meal, ledger: { totals: { issued: 0, used: 0, remaining: 0, amount: 0 }, families: [] } }, refetch: vi.fn<() => void>() })
+    renderPage()
+    expect(screen.getByText('발급 0장 · 사용 0장 · 남음 0장 · 0원')).toBeInTheDocument()
+    expect(screen.getByText('아직 발급이 없어요')).toBeInTheDocument()
   })
 
   it('"← 식사" 링크는 식사 목록으로', async () => {
@@ -500,7 +509,7 @@ describe('MealDetailPage', () => {
   it('처음 불러오는 중이면 스피너, data 없이 실패하면 다시 시도', async () => {
     useMealDetail.mockReturnValue({ status: 'pending', refetch: vi.fn<() => void>() })
     const { rerender } = renderPage()
-    expect(screen.getByRole('status')).toHaveTextContent('불러오는 중')
+    expect(screen.getByText('불러오는 중…')).toBeInTheDocument()
     const refetch = vi.fn<() => void>()
     useMealDetail.mockReturnValue({ status: 'error', refetch })
     rerender(
@@ -576,7 +585,7 @@ export function MealDetailPage() {
               발급 {detail.data.ledger.totals.issued}장 · 사용 {detail.data.ledger.totals.used}장 · 남음 {detail.data.ledger.totals.remaining}장 · {formatWon(detail.data.ledger.totals.amount)}
             </p>
             <TextField label="이름으로 찾기" name="query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="구매자·사용자 이름" autoComplete="off" />
-            <FamilyList families={filterFamilies(detail.data.ledger.families, query)} />
+            <FamilyList families={filterFamilies(detail.data.ledger.families, query)} searching={query.trim() !== ''} />
           </>
         )
       ) : detail.status === 'error' ? (
@@ -591,8 +600,9 @@ export function MealDetailPage() {
   )
 }
 
-function FamilyList({ families }: { families: readonly FamilyGroup[] }) {
-  if (families.length === 0) return <p className="py-6 text-center text-sm text-gray-500">찾는 가족이 없어요</p>
+function FamilyList({ families, searching }: { families: readonly FamilyGroup[]; searching: boolean }) {
+  // 검색 중이 아닌데 비었으면 "아직 발급 없음" — 내일 식사를 미리 열어 본 관리자가 고장으로 오해하지 않게 (Task 2 리뷰)
+  if (families.length === 0) return <p className="py-6 text-center text-sm text-gray-500">{searching ? '찾는 가족이 없어요' : '아직 발급이 없어요'}</p>
   return (
     <ul aria-label="가족별 현황" className="flex flex-col gap-2">
       {families.map((f) => <FamilyBlock key={f.familyId} family={f} />)}
@@ -605,11 +615,11 @@ function FamilyBlock({ family }: { family: FamilyGroup }) {
   return (
     <li aria-label={family.label} className="rounded-2xl border border-gray-200 bg-white p-4">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="truncate font-bold">{family.label}</h2>
+        <h2 className="truncate font-bold" title={family.label}>{family.label}</h2>
         <span className="shrink-0 text-sm">{family.issued}장 중 {family.used}장 사용</span>
       </div>
       <p className="text-xs text-gray-500">남음 {family.remaining}장 · {formatWon(family.amount)}</p>
-      <ul className="mt-2 flex flex-col gap-2 text-sm">
+      <ul aria-label="발급·사용 내역" className="mt-2 flex flex-col gap-2 text-sm">
         {family.issuances.map((i) => <IssuanceLine key={i.id} issuance={i} />)}
         {family.usages.map((u) => <UsageLine key={u.id} usage={u} />)}
       </ul>
@@ -644,7 +654,7 @@ function UsageLine({ usage: u }: { usage: MealUsage }) {
 
 ```tsx
         <div className="flex shrink-0 items-center gap-3">
-          <Link to={`/admin/meals/${meal.id}`} aria-label={`${label} 현황`} className="text-xs text-blue-600 underline">현황</Link>
+          <Link to={`/admin/meals/${meal.id}`} aria-label={`${label} 현황`} className="-my-2 px-2 py-2 text-xs text-blue-600 underline">현황</Link>
           {/* 발급이 있으면 FK 가 막으므로 버튼 자체를 감춘다 */}
           {s.issued === 0 && (
             <button type="button" onClick={() => onDelete(meal)} disabled={deleting} aria-label={`${label} 삭제`} className="text-xs text-red-600 underline">삭제</button>
@@ -1469,7 +1479,7 @@ export function MealDetailPage() {
             {notice && <p role="status" className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-700">{notice}</p>}
             {opsError && <p role="alert" className="text-sm text-red-600">{opsError}</p>}
             <TextField label="이름으로 찾기" name="query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="구매자·사용자 이름" autoComplete="off" />
-            <FamilyList families={filterFamilies(detail.data.ledger.families, query)} actions={actions} />
+            <FamilyList families={filterFamilies(detail.data.ledger.families, query)} searching={query.trim() !== ''} actions={actions} />
           </>
         )
       ) : detail.status === 'error' ? (
@@ -1484,8 +1494,8 @@ export function MealDetailPage() {
   )
 }
 
-function FamilyList({ families, actions }: { families: readonly FamilyGroup[]; actions: Actions }) {
-  if (families.length === 0) return <p className="py-6 text-center text-sm text-gray-500">찾는 가족이 없어요</p>
+function FamilyList({ families, searching, actions }: { families: readonly FamilyGroup[]; searching: boolean; actions: Actions }) {
+  if (families.length === 0) return <p className="py-6 text-center text-sm text-gray-500">{searching ? '찾는 가족이 없어요' : '아직 발급이 없어요'}</p>
   return (
     <ul aria-label="가족별 현황" className="flex flex-col gap-2">
       {families.map((f) => <FamilyBlock key={f.familyId} family={f} actions={actions} />)}
@@ -1498,7 +1508,7 @@ function FamilyBlock({ family, actions }: { family: FamilyGroup; actions: Action
   return (
     <li aria-label={family.label} className="rounded-2xl border border-gray-200 bg-white p-4">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="truncate font-bold">{family.label}</h2>
+        <h2 className="truncate font-bold" title={family.label}>{family.label}</h2>
         <span className="shrink-0 text-sm">{family.issued}장 중 {family.used}장 사용</span>
       </div>
       <div className="flex items-center justify-between gap-2">
@@ -1516,7 +1526,7 @@ function FamilyBlock({ family, actions }: { family: FamilyGroup; actions: Action
       {family.buyerId === null && family.remaining > 0 && (
         <p className="text-xs text-gray-500">대신 사용 처리할 구매자가 없어요 (탈퇴했거나 가족을 옮겼어요)</p>
       )}
-      <ul className="mt-2 flex flex-col gap-2 text-sm">
+      <ul aria-label="발급·사용 내역" className="mt-2 flex flex-col gap-2 text-sm">
         {family.issuances.map((i) => <IssuanceLine key={i.id} issuance={i} remaining={family.remaining} actions={actions} />)}
         {family.usages.map((u) => <UsageLine key={u.id} usage={u} actions={actions} />)}
       </ul>
