@@ -27,7 +27,39 @@ describe('decoratePeople', () => {
   })
 
   it('가족이 1명이면 가족 수 태그를 쓰지 않도록 familySize 는 그대로 1 로 둔다', () => {
-    expect(decoratePeople([row({})])[0]).toMatchObject({ familySize: 1 })
+    expect(decoratePeople([row({})])[0]).toMatchObject({ familySize: 1, familyHint: null })
+  })
+
+  it('가족 힌트로 동명이인을 사람이 구분할 수 있게 한다', () => {
+    const list = decoratePeople([
+      row({ id: 'p1', name: '김철수' }),
+      row({ id: 'p2', name: '서연', phone: null, is_minor: true, guardian_id: 'p1', auth_user_id: 'k1' }),
+      row({ id: 'p3', name: '서연', phone: null, is_minor: true, guardian_id: 'p4', family_id: 'f2', auth_user_id: 'k2' }),
+      row({ id: 'p4', name: '이영희', phone: '01098765432', family_id: 'f2' }),
+    ])
+    expect(list[1]!.familyHint).toBe('보호자 김철수')
+    expect(list[2]!.familyHint).toBe('보호자 이영희')
+    // 어른은 같은 가족의 다른 식구로 가린다
+    expect(list[0]!.familyHint).toBe('같은 가족 서연')
+  })
+
+  it('보호자가 명단에 없으면(익명화돼 빠졌다) 같은 가족의 다른 식구로 대신한다', () => {
+    const list = decoratePeople([
+      row({ id: 'p2', name: '서연', phone: null, is_minor: true, guardian_id: 'gone', auth_user_id: 'k1' }),
+      row({ id: 'p9', name: '김영수', phone: '01033334444' }),
+    ])
+    expect(list[0]!.familyHint).toBe('같은 가족 김영수')
+  })
+
+  it('가족 힌트는 입력 순서에 기대지 않는다', () => {
+    const rows = [
+      row({ id: 'p1', name: '김철수' }),
+      row({ id: 'p2', name: '박영수' }),
+      row({ id: 'p3', name: '이순자' }),
+    ]
+    const hint = (input: PersonRow[]) => decoratePeople(input).find((p) => p.id === 'p1')!.familyHint
+    expect(hint(rows)).toBe('같은 가족 박영수')
+    expect(hint(rows.toReversed())).toBe('같은 가족 박영수')
   })
 })
 

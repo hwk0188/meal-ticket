@@ -10,6 +10,7 @@ type Props = { person: Person; onDone: (message: string) => void }
 
 /** 후보를 두 글자부터 보여 준다 — 열자마자 전 교인 명단이 쏟아지면 잘못 고를 위험만 커진다. */
 const MIN_QUERY = 2
+/** 이름만으로는 동명이인 후보가 구별되지 않는다. 선택 버튼의 접근성 이름까지 이 꼬리표를 쓴다. */
 const label = (p: DecoratedPerson | Person) => `${p.name}(${p.phone ? formatPhone(p.phone) : '번호 없음'})`
 
 /**
@@ -79,7 +80,7 @@ export function PersonMergePanel({ person, onDone }: Props) {
                       type="button"
                       onClick={() => setPicked(p)}
                       disabled={bothLinked(p)}
-                      aria-label={`${p.name} 선택`}
+                      aria-label={`${label(p)} 선택`}
                       className="px-3 py-2 text-xs text-blue-600 underline disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       선택

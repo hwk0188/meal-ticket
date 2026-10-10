@@ -5,7 +5,13 @@ export type PersonRow = Pick<Person, 'id' | 'family_id' | 'name' | 'phone' | 'au
 
 /** 화면에 쓰는 태그. "방문자" 는 스키마에 근거가 없어 두지 않는다 (계획 "설계와 다른 점" 참고). */
 export type PersonTag = '관리자' | '자녀' | '미가입'
-export type DecoratedPerson = PersonRow & { familySize: number; tags: PersonTag[] }
+/**
+ * `familyHint` 는 동명이인을 **사람이** 구분할 수 있게 하는 식구 한 명의 이름이다
+ * ('보호자 김철수' / '같은 가족 김철수'). 번호 없는 동명이인은 이름·태그·번호가 모두 같아
+ * 줄이 글자까지 똑같아진다 — 자녀는 번호 없이 등록되고(add_child), 유일 인덱스도
+ * `where phone is not null` 이라 막아 주지 않는다. 그 줄을 누르면 합치기·초기화가 걸린다.
+ */
+export type DecoratedPerson = PersonRow & { familySize: number; tags: PersonTag[]; familyHint: string | null }
 export type PeopleFilter = 'all' | 'unlinked' | 'admin'
 
 /** 번호로 찾을 때 필요한 최소 자릿수. 한 자리면 `010…` 번호 전부에 걸려 명단이 쏟아진다. */
@@ -15,10 +21,28 @@ const SEARCH_MIN_DIGITS = 2
 const nameKey = (text: string) => text.normalize('NFC').replace(/\s+/g, '')
 const digits = (text: string) => text.replace(/\D/g, '')
 
-/** 가족 수와 태그를 붙인다. 입력 순서는 그대로 둔다 (정렬은 filterPeople 이 한다). */
+/** 보호자가 명단에 없으면(익명화돼 빠졌을 때) 같은 가족의 다른 식구로 대신한다. */
+function familyHintOf(row: PersonRow, byId: Map<string, PersonRow>, byFamily: Map<string, PersonRow[]>): string | null {
+  const guardian = row.guardian_id === null ? undefined : byId.get(row.guardian_id)
+  if (guardian) return `보호자 ${guardian.name}`
+  // 입력 순서에 기대지 않고 한 명을 고른다 (동명이인 정렬과 같은 이유)
+  const others = (byFamily.get(row.family_id) ?? []).filter((m) => m.id !== row.id)
+  const pick = others.toSorted((a, b) => a.name.localeCompare(b.name, 'ko') || a.id.localeCompare(b.id))[0]
+  return pick ? `같은 가족 ${pick.name}` : null
+}
+
+/** 가족 수·태그·가족 힌트를 붙인다. 입력 순서는 그대로 둔다 (정렬은 filterPeople 이 한다). */
 export function decoratePeople(rows: readonly PersonRow[]): DecoratedPerson[] {
   const sizeByFamily = new Map<string, number>()
-  for (const r of rows) sizeByFamily.set(r.family_id, (sizeByFamily.get(r.family_id) ?? 0) + 1)
+  const byId = new Map<string, PersonRow>()
+  const byFamily = new Map<string, PersonRow[]>()
+  for (const r of rows) {
+    sizeByFamily.set(r.family_id, (sizeByFamily.get(r.family_id) ?? 0) + 1)
+    byId.set(r.id, r)
+    const family = byFamily.get(r.family_id)
+    if (family) family.push(r)
+    else byFamily.set(r.family_id, [r])
+  }
   return rows.map((r) => {
     const tags: PersonTag[] = []
     if (r.role === 'admin') tags.push('관리자')
@@ -27,7 +51,7 @@ export function decoratePeople(rows: readonly PersonRow[]): DecoratedPerson[] {
     // 가 다룰 일이고, 목록 태그로 쓰지 않는다 — auth_user_id 는 on delete set null 이라 계정 없는
     // 자녀는 정상적으로 도달하는 상태다.
     if (!r.is_minor && !r.auth_user_id) tags.push('미가입')
-    return { ...r, familySize: sizeByFamily.get(r.family_id) ?? 1, tags }
+    return { ...r, familySize: sizeByFamily.get(r.family_id) ?? 1, tags, familyHint: familyHintOf(r, byId, byFamily) }
   })
 }
 

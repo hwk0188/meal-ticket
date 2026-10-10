@@ -77,7 +77,7 @@ describe('PersonMergePanel', () => {
     renderPanel({ ...me, auth_user_id: 'u1', consented_at: '2026-10-07T00:00:00Z', consent_version: '2026-10-07' })
     await userEvent.click(screen.getByRole('button', { name: '중복 사람 합치기' }))
     await userEvent.type(screen.getByLabelText('합칠 사람 찾기'), '이영희')
-    expect(screen.getByRole('button', { name: /이영희 선택/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '이영희(010-9999-8888) 선택' })).toBeDisabled()
     expect(screen.getByText('둘 다 카카오 계정이 있어요 — 한쪽을 먼저 초기화해 주세요')).toBeInTheDocument()
   })
 
@@ -88,7 +88,7 @@ describe('PersonMergePanel', () => {
     const { onDone } = renderPanel()
     await userEvent.click(screen.getByRole('button', { name: '중복 사람 합치기' }))
     await userEvent.type(screen.getByLabelText('합칠 사람 찾기'), '8888')
-    await userEvent.click(screen.getByRole('button', { name: /김철수 선택/ }))
+    await userEvent.click(screen.getByRole('button', { name: '김철수(010-8888-7777) 선택' }))
     expect(screen.getByText(/김철수\(010-8888-7777\) 의 기록·자녀·계정을 김철수\(010-1234-5678\) 로 옮기고/)).toBeInTheDocument()
     expect(merge.mutate).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: '합치기' }))
