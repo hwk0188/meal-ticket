@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { FakeQuery, fail, ok } from '../../test/fakeSupabase'
-import { allPeopleQueryKey, useAllPeople } from './useAllPeople'
+import { MAX_PEOPLE, allPeopleQueryKey, useAllPeople } from './useAllPeople'
 
 const { from } = vi.hoisted(() => ({ from: vi.fn<(table: string) => unknown>() }))
 vi.mock('../../lib/supabase', () => ({ supabase: { from } }))
@@ -29,6 +29,10 @@ describe('useAllPeople', () => {
     expect(from).toHaveBeenCalledWith('people')
     expect(q?.has('is', 'deleted_at', null)).toBe(true)
     expect(q?.has('order', 'name')).toBe(true)
+    // 동명이인의 순서를 서버에서도 고정한다 (Postgres 는 동순위 순서를 보장하지 않는다)
+    expect(q?.has('order', 'id')).toBe(true)
+    // max_rows 천장을 명시해 두면 화면이 잘렸음을 알아낼 수 있다
+    expect(q?.has('limit', MAX_PEOPLE)).toBe(true)
     expect(client.getQueryData(allPeopleQueryKey)).toBeDefined()
   })
 

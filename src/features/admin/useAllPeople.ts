@@ -5,6 +5,13 @@ import { decoratePeople, type DecoratedPerson } from './peopleFilter'
 
 export const allPeopleQueryKey = ['all-people'] as const
 
+/**
+ * 한 번에 읽는 최대 인원. PostgREST 의 `max_rows`(supabase/config.toml, 호스팅 기본값도 1000) 와
+ * 같은 값을 명시해 둔다 — 넘으면 오류 없이 잘려서 사람이 목록에서 사라지고, 합치기 패널이
+ * "중복을 못 찾았다" 고 말한다. 화면은 `data.length === MAX_PEOPLE` 로 천장에 닿았음을 알 수 있다.
+ */
+export const MAX_PEOPLE = 1000
+
 const COLUMNS = 'id, family_id, name, phone, auth_user_id, role, is_minor, guardian_id, created_at'
 
 /**
@@ -18,6 +25,6 @@ export function useAllPeople() {
     queryKey: allPeopleQueryKey,
     staleTime: 30_000,
     queryFn: async (): Promise<DecoratedPerson[]> =>
-      decoratePeople(await supabase.from('people').select(COLUMNS).is('deleted_at', null).order('name').then(unwrap)),
+      decoratePeople(await supabase.from('people').select(COLUMNS).is('deleted_at', null).order('name').order('id').limit(MAX_PEOPLE).then(unwrap)),
   })
 }
