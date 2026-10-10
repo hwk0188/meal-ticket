@@ -32,6 +32,11 @@
 
 **중간 배포:** Task 5(사람 상세 읽기 + 번호 수정) 커밋 직후면 "교인 찾아 전체 번호·이력 확인 + 번호 고치기" 까지 되고 마이그레이션은 Task 1 하나뿐이다. 사용자가 원하면 그 시점에 PR 을 만든다(아래 Task 5 끝의 중간 배포 지점 참고).
 
+## 구현 결과와 계획의 차이 (실행 중 리뷰로 바뀐 것)
+
+- **Task 1** (DB): 계획 초안의 `merge_people` 은 빈 옛 가족을 지우지 못했다 — 익명화는 `family_id` 를 건드리지 않아 **익명화된 from 행이 옛 가족을 계속 가리키기** 때문이다(`not exists (people)` 가 거짓 → 조용히 0행 삭제; `deleted_at is null` 로 조건만 좁히면 FK 23503). 구현은 장부를 옮긴 뒤 **익명화된 행의 가족도 남는 쪽으로 옮기고** 나서 빈 가족을 지운다. 3단계 `add_family_member` 는 같은 상황에서 빈 껍데기 가족을 남기는데(문서에 "무해하다" 로 기록), 합치기는 "두 행이 같은 사람" 이라 익명화된 행을 남는 쪽 가족에 두는 편이 뜻에 맞고 껍데기도 쌓이지 않는다. 교인 화면에는 영향이 없다(가족 조회는 RLS·쿼리 모두 `deleted_at is null`). 관리자 사람 상세의 가족 목록에는 '초기화됨' 태그로 보인다.
+- **Task 1** (테스트): `last_admin` 단언 뒤 관리자 인증 상태에서 `consented_at` 열을 넣으려다 `permission denied` — `authenticated` 에는 `insert (name, phone)` 열 권한만 있다. 그 insert 앞에 `tests.clear_auth()`, 뒤에 `tests.authenticate_as(admin)` 를 넣었다(공통 규약의 "직접 쓰기 전에 clear_auth" 그대로).
+
 ## 파일 구조
 
 | 파일 | 책임 |
@@ -239,8 +244,12 @@ select throws_ok(format($$ select public.admin_reset_person(%L) $$, :'admin_pid'
 
 -- ---------- link_person ----------
 -- 연결 대상: 동의 기록이 있는 계정 없는 사람. 박민수는 동의 기록이 없어 consent_required 가 된다.
+-- people 에 대한 authenticated 의 insert 권한은 (name, phone) 열뿐이다 — consented_at·consent_version 을
+-- 가진 테스트 시드 행은 postgres 로 넣고, 검증은 다시 admin_uid 로 돌아와 한다.
+select tests.clear_auth();
 insert into public.people (name, phone, consented_at, consent_version)
 values ('최은지', '01088880005', now(), '2026-10-07') returning id as link_pid \gset
+select tests.authenticate_as(:'admin_uid');
 select throws_ok(format($$ select public.link_person(%L, %L) $$, :'gone_pid', :'ghost_uid'), 'P0001', 'person_not_found', '익명화된 사람에게는 연결할 수 없다');
 select throws_ok(format($$ select public.link_person(%L, %L) $$, :'kid_pid', :'ghost_uid'), 'P0001', 'minor_not_allowed', '자녀에게는 연결할 수 없다 (가족 탭의 다시 연결)');
 select throws_ok(format($$ select public.link_person(%L, %L) $$, :'a_pid', :'ghost_uid'), 'P0001', 'already_registered', '이미 계정이 있는 사람에게는 연결할 수 없다');
@@ -406,6 +415,9 @@ begin
      and not exists (select 1 from public.people where family_id = v_from_family and deleted_at is null) then
     update public.issuances set family_id = v_into.family_id where family_id = v_from_family;
     update public.usages set family_id = v_into.family_id where family_id = v_from_family;
+    -- 익명화된 from 행 자신도 옛 가족을 여전히 가리키고 있다 (익명화는 family_id 를 건드리지 않는다) —
+    -- FK(people_family_id_fkey) 때문에 이 행을 옮기지 않으면 가족을 지울 수 없다.
+    update public.people set family_id = v_into.family_id where id = v_from.id and family_id = v_from_family;
     delete from public.families f
      where f.id = v_from_family
        and not exists (select 1 from public.people p where p.family_id = f.id)
