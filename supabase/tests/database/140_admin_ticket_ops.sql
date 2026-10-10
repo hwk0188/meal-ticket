@@ -1,9 +1,9 @@
 begin;
-select plan(32);
+select plan(43);
 
 -- 권한: anon 은 셋 다 실행 불가, authenticated 는 재정의된 use_ticket 을 여전히 실행할 수 있다
 select is(has_function_privilege('anon', 'public.cancel_issuance(uuid,text)', 'EXECUTE'), false, 'anon 은 cancel_issuance 를 실행할 수 없다');
-select is(has_function_privilege('anon', 'public.use_ticket_as_admin(uuid,uuid,uuid)', 'EXECUTE'), false, 'anon 은 use_ticket_as_admin 을 실행할 수 없다');
+select is(has_function_privilege('anon', 'public.use_ticket_as_admin(uuid,uuid,uuid,uuid)', 'EXECUTE'), false, 'anon 은 use_ticket_as_admin 을 실행할 수 없다');
 select is(has_function_privilege('anon', 'public.void_usage(uuid)', 'EXECUTE'), false, 'anon 은 void_usage 를 실행할 수 없다');
 select is(has_function_privilege('authenticated', 'public.use_ticket(uuid,uuid)', 'EXECUTE'), true, '재정의된 use_ticket 은 authenticated 가 실행할 수 있다');
 
@@ -45,6 +45,14 @@ select throws_ok(format($$ select public.void_usage(%L) $$, gen_random_uuid()), 
 select tests.authenticate_as(:'ghost_uid');
 select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, :'i2'), 'P0001', 'forbidden', '사람 행이 없는 계정은 취소할 수 없다');
 
+-- JWT 없이 직접 호출 (세 함수 모두, 090_use_ticket.sql 과 같은 규약)
+select tests.clear_auth();
+set local role authenticated;
+select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, :'i2'), 'P0001', 'not_authenticated', 'JWT 가 없으면 cancel_issuance 는 not_authenticated');
+select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'a_pid', :'today_meal'), 'P0001', 'not_authenticated', 'JWT 가 없으면 use_ticket_as_admin 은 not_authenticated');
+select throws_ok(format($$ select public.void_usage(%L) $$, gen_random_uuid()), 'P0001', 'not_authenticated', 'JWT 가 없으면 void_usage 는 not_authenticated');
+reset role;
+
 -- 관리자: 취소
 select tests.authenticate_as(:'admin_uid');
 select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, gen_random_uuid()), 'P0001', 'issuance_not_found', '없는 발급은 거부');
@@ -65,6 +73,12 @@ select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'b_pid
 -- 화면이 본 가족(p_family_id)과 사람의 현재 가족이 다르면 거부 — A 의 김철수를 B 가족 블록에서 누른 상황
 select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L) $$, :'a_pid', :'today_meal', :'b_fid'), 'P0001', 'family_changed', '그 사이 가족이 바뀐 사람은 거부');
 select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'kid_pid', :'today_meal'), '자녀 몫으로도 대신 사용 처리할 수 있다 (잔량은 가족 것)');
+-- ④ 잠금: 첫 성공 호출이 (가족, 식사) advisory lock 을 트랜잭션 끝까지 쥔다
+select is((select count(*) from pg_locks
+            where locktype = 'advisory' and objsubid = 2 and pid = pg_backend_pid()
+              and classid::bigint = (hashtext(:'a_fid'::text)::bigint & 4294967295)
+              and objid::bigint   = (hashtext(:'today_meal'::text)::bigint & 4294967295)),
+          1::bigint, 'use_ticket_as_admin 이 (가족, 식사) ④ 잠금을 쥔다');
 select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L) $$, :'b_pid', :'past_meal'), '지난 식사도 대신 사용 처리할 수 있다 (날짜 제한 없음)');
 select tests.clear_auth();
 select results_eq(
@@ -74,15 +88,33 @@ select results_eq(
 select is((select remaining from public.ticket_balances where family_id = :'a_fid' and meal_id = :'today_meal'), 2, '대신 사용 뒤 A 가족 남은 장수는 2');
 select id as admin_usage from public.usages where meal_id = :'today_meal' and used_via = 'admin' \gset
 
+-- 정상 경로: 화면이 본 가족이 지금 가족과 같으면(p_family_id 일치) 그대로 처리된다
+select tests.authenticate_as(:'admin_uid');
+select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L) $$, :'a_pid', :'today_meal', :'a_fid'), '화면이 본 가족이 지금 가족과 같으면 대신 사용할 수 있다 (정상 경로)');
+select tests.clear_auth();
+select id as a_usage from public.usages where meal_id = :'today_meal' and used_via = 'admin' and person_id = :'a_pid' \gset
+select is((select remaining from public.ticket_balances where family_id = :'a_fid' and meal_id = :'today_meal'), 1, '정상 경로 사용 뒤 A 가족 남은 장수는 1');
+
 -- 관리자: 무효
 select tests.authenticate_as(:'admin_uid');
 select throws_ok(format($$ select public.void_usage(%L) $$, gen_random_uuid()), 'P0001', 'usage_not_found', '없는 사용 기록은 거부');
 select lives_ok(format($$ select public.void_usage(%L) $$, :'admin_usage'), '관리자는 사용 기록을 무효 처리할 수 있다');
+select lives_ok(format($$ select public.void_usage(%L) $$, :'a_usage'), '정상 경로로 쓴 사용 기록도 무효 처리할 수 있다 (상쇄)');
 select tests.clear_auth();
 select is((select voided_by from public.usages where id = :'admin_usage'), :'admin_pid'::uuid, '무효 처리한 관리자가 기록된다');
 select is((select remaining from public.ticket_balances where family_id = :'a_fid' and meal_id = :'today_meal'), 3, '무효 처리된 사용은 잔량에서 빠진다');
 select tests.authenticate_as(:'admin_uid');
 select throws_ok(format($$ select public.void_usage(%L) $$, :'admin_usage'), 'P0001', 'already_voided', '이미 무효인 기록은 다시 무효 처리할 수 없다');
+
+-- 관리자: 대신 사용 멱등(p_request_id) — 같은 값은 처음 결과를 돌려준다(use_ticket 과 같은 규칙)
+select tests.authenticate_as(:'admin_uid');
+select gen_random_uuid() as rid \gset
+select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L, %L) $$, :'kid_pid', :'today_meal', :'a_fid', :'rid'), '같은 request_id 로 첫 호출은 기록된다');
+select lives_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L, %L) $$, :'kid_pid', :'today_meal', :'a_fid', :'rid'), '같은 request_id 로 다시 호출해도 살아 있다 (멱등)');
+select tests.clear_auth();
+select is((select count(*)::integer from public.usages where request_id = :'rid'), 1, '같은 request_id 는 한 건만');
+select tests.authenticate_as(:'admin_uid');
+select throws_ok(format($$ select public.use_ticket_as_admin(%L, %L, %L, %L) $$, :'b_pid', :'past_meal', :'b_fid', :'rid'), 'P0001', 'duplicate_request', '다른 사람·식사에 같은 request_id 를 재사용하면 거부');
 
 -- 재정의된 use_ticket: 교인이 그대로 쓸 수 있고, 그 뒤 잔량보다 큰 발급의 취소는 would_go_negative
 select tests.authenticate_as(:'a_uid');
@@ -90,7 +122,7 @@ select lives_ok(format($$ select public.use_ticket(%L, %L) $$, :'today_meal', ge
 select tests.clear_auth();
 select is((select count(*)::integer from public.usages where meal_id = :'today_meal' and used_via = 'self' and voided_at is null), 1, 'self 사용 1건이 남는다');
 select tests.authenticate_as(:'admin_uid');
--- A 오늘: 발급 3(i1), 사용 1 → i1(3장)을 취소하면 잔량 -1
+-- A 오늘: 발급 3(i1), 이미 쓴 장수(멱등 대신 사용 1 + self 1)가 있어 i1(3장) 전체 취소는 잔량을 음수로 만든다
 select throws_ok(format($$ select public.cancel_issuance(%L, null) $$, :'i1'), 'P0001', 'would_go_negative', '이미 사용된 장수가 있어 잔량이 음수가 되는 취소는 거부');
 
 select * from finish();

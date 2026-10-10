@@ -5,6 +5,9 @@
 --   합류(add_family_member)는 ③ → ④ → 장부 update 순이라, 장부 행을 먼저 잠그고 ④ 를 기다리면 40P01 이 난다.
 --   그래서 cancel_issuance·void_usage 는 행을 잠그지 않고 읽어 (family, meal) 을 알아낸 뒤 ④ → 행 for update 재조회 순으로 간다.
 --   과거 식사는 합류가 ④ 를 잡지 않아 그 사이 family_id 가 바뀔 수 있다 → 재조회한 가족이 다르면 그 쌍도 잠근다.
+--   (이론상 두 세션이 서로 다른 가족의 재조회에서 서로를 기다리는 상호 합류 40P01 도 생각해 볼 수 있지만, 앱에서는
+--   합류의 도착 가족이 항상 호출자 자신의 가족이고 leave_family 는 새 가족을 만들 뿐이라 이 경로로는 닿지 않는다 —
+--   혹시 나타나면 40P01 은 그대로 일반 오류 문구로 보여도 된다.)
 -- use_ticket: 2단계 파일(20261008000004)은 운영에 적용됐으므로 고치지 않고 여기서 같은 시그니처로 재정의한다.
 --   바뀐 점 = 사람 행 for update(합류 중이면 끝날 때까지 기다려 새 family_id 를 읽는다 — 3단계 최종 리뷰가 넘긴 틈) +
 --   잠금을 lock_family_meal 헬퍼로(키는 100_pairing_codes.sql 이 같음을 고정). 멱등·당일·잔량 규칙은 그대로.
@@ -45,6 +48,9 @@ begin
   perform public.lock_family_meal(v_row.family_id, v_row.meal_id);
   v_locked_family := v_row.family_id;
   select * into v_row from public.issuances where id = p_issuance_id for update;
+  if not found then
+    raise exception 'issuance_not_found';
+  end if;
   if v_row.family_id <> v_locked_family then
     perform public.lock_family_meal(v_row.family_id, v_row.meal_id);
   end if;
@@ -103,6 +109,9 @@ begin
   perform public.lock_family_meal(v_row.family_id, v_row.meal_id);
   v_locked_family := v_row.family_id;
   select * into v_row from public.usages where id = p_usage_id for update;
+  if not found then
+    raise exception 'usage_not_found';
+  end if;
   if v_row.family_id <> v_locked_family then
     perform public.lock_family_meal(v_row.family_id, v_row.meal_id);
   end if;
@@ -123,9 +132,15 @@ grant execute on function public.void_usage(uuid) to authenticated;
 -- 대신 사용: 담당자가 교인 폰 없이 1장을 사용 처리한다(사후 기록 포함 — 날짜 제한 없음). 자녀 몫도 허용(잔량은 가족 것).
 -- p_family_id(선택): 화면이 본 가족. 그 사이 사람이 가족을 옮겼으면(가족 나가기·합류) family_changed 로 거부한다 — 옛 가족 블록에서 눌렀는데
 -- 새 가족 풀에서 깎이는 것을 막는다(장부의 family_id 는 발급 시점 스냅샷, 함수는 현재 가족으로 깎는다 — Task 1 리뷰).
--- 코드: not_authenticated | forbidden | person_not_found | family_changed | meal_not_found | no_remaining
+-- p_request_id(선택): 클라이언트가 만든 재시도 키 — 같은 값은 처음 결과를 돌려준다(use_ticket 과 같은 규칙). 없으면 서버가 만든다(멱등 아님).
+-- 코드: not_authenticated | forbidden | person_not_found | family_changed | meal_not_found | no_remaining | duplicate_request
 -- =========================================================
-create or replace function public.use_ticket_as_admin(p_person_id uuid, p_meal_id uuid, p_family_id uuid default null)
+create or replace function public.use_ticket_as_admin(
+  p_person_id uuid,
+  p_meal_id uuid,
+  p_family_id uuid default null,
+  p_request_id uuid default null
+)
 returns public.usages
 language plpgsql
 security definer
@@ -158,6 +173,17 @@ begin
 
   -- ④
   perform public.lock_family_meal(v_person.family_id, p_meal_id);
+
+  if p_request_id is not null then
+    select * into v_row from public.usages where request_id = p_request_id;
+    if found then
+      if v_row.person_id <> v_person.id or v_row.meal_id <> p_meal_id then
+        raise exception 'duplicate_request';
+      end if;
+      return v_row;
+    end if;
+  end if;
+
   select coalesce(sum(i.quantity), 0)
          - (select coalesce(sum(u.quantity), 0) from public.usages u
              where u.family_id = v_person.family_id and u.meal_id = p_meal_id and u.voided_at is null)
@@ -168,16 +194,23 @@ begin
     raise exception 'no_remaining';
   end if;
 
-  insert into public.usages (family_id, person_id, meal_id, quantity, used_via, recorded_by, request_id)
-  values (v_person.family_id, v_person.id, p_meal_id, 1, 'admin', v_admin, gen_random_uuid())
-  returning * into v_row;
+  begin
+    insert into public.usages (family_id, person_id, meal_id, quantity, used_via, recorded_by, request_id)
+    values (v_person.family_id, v_person.id, p_meal_id, 1, 'admin', v_admin, coalesce(p_request_id, gen_random_uuid()))
+    returning * into v_row;
+  exception when unique_violation then
+    select * into v_row from public.usages where request_id = p_request_id;
+    if not found or v_row.person_id <> v_person.id or v_row.meal_id <> p_meal_id then
+      raise exception 'duplicate_request';
+    end if;
+  end;
   return v_row;
 end
 $$;
 
-comment on function public.use_ticket_as_admin(uuid, uuid, uuid) is '관리자 대신 사용 처리(날짜 제한 없음, ② 사람 행 → ④, 가족 확인). 오류 코드는 파일 헤더 참고.';
-revoke execute on function public.use_ticket_as_admin(uuid, uuid, uuid) from public, anon;
-grant execute on function public.use_ticket_as_admin(uuid, uuid, uuid) to authenticated;
+comment on function public.use_ticket_as_admin(uuid, uuid, uuid, uuid) is '관리자 대신 사용 처리(날짜 제한 없음, ② 사람 행 → ④, 가족 확인, p_request_id 로 멱등). 오류 코드는 파일 헤더 참고.';
+revoke execute on function public.use_ticket_as_admin(uuid, uuid, uuid, uuid) from public, anon;
+grant execute on function public.use_ticket_as_admin(uuid, uuid, uuid, uuid) to authenticated;
 
 -- =========================================================
 -- use_ticket 재정의 (시그니처·동작 동일, 잠금만 보강). 원본 설명은 20261008000004_use_ticket.sql 참고.

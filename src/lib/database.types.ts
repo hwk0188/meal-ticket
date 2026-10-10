@@ -416,7 +416,7 @@ isOneToOne: false
         isSetofReturn: false
       } },
 "use_ticket_as_admin":
-{ Args: { "p_family_id"?: string,"p_meal_id": string,"p_person_id": string }; Returns: {
+{ Args: { "p_family_id"?: string,"p_meal_id": string,"p_person_id": string,"p_request_id"?: string }; Returns: {
               "family_id": string,
 "id": string,
 "meal_id": string,
