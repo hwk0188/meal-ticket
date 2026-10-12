@@ -7,7 +7,9 @@ import { groupMealLedger, type MealLedger } from './groupMealLedger'
 /** 화면이 보이는 동안의 재조회 주기 (설계 §8.3 식사 상세 5초 폴링). 숨겨지면 멈추고 돌아오면 즉시 다시 읽는다. */
 export const MEAL_DETAIL_POLL_MS = 5_000
 
-export const mealDetailQueryKey = (mealId: string) => ['meal-detail', mealId] as const
+/** 식사를 모를 때(합치기·초기화는 어느 식사인지 모른다) 전부 무효화하는 접두사 — usePersonOps 가 쓴다. */
+export const MEAL_DETAIL_QUERY_KEY = ['meal-detail'] as const
+export const mealDetailQueryKey = (mealId: string) => [...MEAL_DETAIL_QUERY_KEY, mealId] as const
 
 // 손으로 고친 주소(#/admin/meals/zzz)는 PostgREST 가 22P02(400 부적합 입력) 로 응답하므로, 쿼리 전에 걸러 "없는 식사" 로 다룬다.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

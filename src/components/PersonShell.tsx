@@ -13,6 +13,7 @@ const ADMIN_LINK: TabItem = { to: '/admin/meals', label: '관리', icon: '🛠�
 const ADMIN_TABS: readonly TabItem[] = [
   { to: '/admin/meals', label: '식사', icon: '🍚' },
   { to: '/admin/issue', label: '발급', icon: '🎟️' },
+  { to: '/admin/people', label: '사람', icon: '👥' },
   { to: '/', label: '내 식권', icon: '🎫' },
 ]
 

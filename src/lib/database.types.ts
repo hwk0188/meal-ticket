@@ -222,6 +222,9 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"admin_reset_person":
+{ Args: { "p_person_id": string }; Returns: undefined
+                           },
 "cancel_issuance":
 { Args: { "p_issuance_id": string,"p_reason"?: string }; Returns: {
               "cancel_reason": string | null,
@@ -354,12 +357,58 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"link_person":
+{ Args: { "p_auth_user_id": string,"p_person_id": string }; Returns: {
+              "auth_user_id": string | null,
+"consent_version": string | null,
+"consented_at": string | null,
+"created_at": string,
+"deleted_at": string | null,
+"family_id": string,
+"guardian_consented_at": string | null,
+"guardian_id": string | null,
+"id": string,
+"is_minor": boolean,
+"name": string,
+"phone": string | null,
+"role": string,
+"updated_at": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "people"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
 "lock_family":
 { Args: { "p_family_id": string }; Returns: undefined
                            },
 "lock_family_meal":
 { Args: { "p_family_id": string,"p_meal_id": string }; Returns: undefined
                            },
+"merge_people":
+{ Args: { "p_from_id": string,"p_into_id": string }; Returns: {
+              "auth_user_id": string | null,
+"consent_version": string | null,
+"consented_at": string | null,
+"created_at": string,
+"deleted_at": string | null,
+"family_id": string,
+"guardian_consented_at": string | null,
+"guardian_id": string | null,
+"id": string,
+"is_minor": boolean,
+"name": string,
+"phone": string | null,
+"role": string,
+"updated_at": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "people"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
 "normalize_name":
 { Args: { "p": string }; Returns: string
                            },

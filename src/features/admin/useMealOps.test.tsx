@@ -15,7 +15,7 @@ import {
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn<(fn: string, args?: Record<string, unknown>) => unknown>() }))
 vi.mock('../../lib/supabase', () => ({ supabase: { rpc } }))
 
-const OPS_KEYS = [['meal-detail', 'm1'], ['admin-balances'], ['tickets'], ['ledger']]
+const OPS_KEYS = [['meal-detail', 'm1'], ['admin-balances'], ['tickets'], ['ledger'], ['person-ledger']]
 
 function makeWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: 0 } } })
@@ -30,7 +30,7 @@ function expectExactInvalidation(invalidate: ReturnType<typeof makeWrapper>['inv
 
 describe('invalidateMealOps', () => {
   // oxlint-disable-next-line vitest/expect-expect -- 단언은 expectExactInvalidation 안의 expect() 가 한다
-  it('식사 현황·관리자 합계·식권·내역을 무효화한다', async () => {
+  it('식사 현황·관리자 합계·식권·내역·사람 이력을 무효화한다', async () => {
     const { client, invalidate } = makeWrapper()
     await invalidateMealOps(client, 'm1')
     expectExactInvalidation(invalidate)
@@ -38,24 +38,35 @@ describe('invalidateMealOps', () => {
 })
 
 describe('useCancelIssuance', () => {
-  it('cancel_issuance 를 발급 id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+  it('cancel_issuance 를 발급 id 로 부르고 성공 시 다섯 키를 무효화한다 (abortSignal 포함)', async () => {
     const q = ok({ id: 'i1', cancelled_at: '2026-10-10T00:00:00Z' })
     rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
     await act(async () => {
-      await result.current.mutateAsync('i1')
+      await result.current.mutateAsync({ issuanceId: 'i1', reason: '  입금 취소  ' })
     })
-    expect(rpc).toHaveBeenCalledWith('cancel_issuance', { p_issuance_id: 'i1' })
+    expect(rpc).toHaveBeenCalledWith('cancel_issuance', { p_issuance_id: 'i1', p_reason: '입금 취소' })
     expect(q.has('abortSignal')).toBe(true)
     expectExactInvalidation(invalidate)
+  })
+
+  it('사유가 비면 p_reason 을 보내지 않는다', async () => {
+    const q = ok({ id: 'i1' })
+    rpc.mockReturnValue(q)
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync({ issuanceId: 'i1', reason: '   ' })
+    })
+    expect(rpc).toHaveBeenCalledWith('cancel_issuance', { p_issuance_id: 'i1' })
   })
 
   it('서버가 거부하면(코드 있음) 코드를 보존한 Error 로 던지고 현황만 다시 읽는다', async () => {
     rpc.mockReturnValue(fail('would_go_negative'))
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
-    await expect(result.current.mutateAsync('i1')).rejects.toMatchObject({ message: 'would_go_negative', code: 'P0001' })
+    await expect(result.current.mutateAsync({ issuanceId: 'i1', reason: '' })).rejects.toMatchObject({ message: 'would_go_negative', code: 'P0001' })
     await waitFor(() => expect(result.current.isError).toBe(true))
     // 거부되면 화면의 잔량이 낡았을 수 있다 → 현황만 다시 읽는다
     expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual([['meal-detail', 'm1']])
@@ -65,7 +76,7 @@ describe('useCancelIssuance', () => {
     rpc.mockReturnValue(fail('TimeoutError: signal timed out', ''))
     const { wrapper, invalidate } = makeWrapper()
     const { result } = renderHook(() => useCancelIssuance('m1'), { wrapper })
-    await expect(result.current.mutateAsync('i1')).rejects.toThrow('TimeoutError: signal timed out')
+    await expect(result.current.mutateAsync({ issuanceId: 'i1', reason: '' })).rejects.toThrow('TimeoutError: signal timed out')
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(invalidate).not.toHaveBeenCalled()
   })
@@ -80,7 +91,7 @@ describe('useCancelIssuance', () => {
     vi.useFakeTimers()
     try {
       act(() => {
-        void result.current.mutateAsync('i1').catch(() => undefined)
+        void result.current.mutateAsync({ issuanceId: 'i1', reason: '' }).catch(() => undefined)
       })
       await act(async () => {
         await vi.advanceTimersByTimeAsync(SETTLE_TIMEOUT_MS - 1)
@@ -110,7 +121,7 @@ describe('useCancelIssuance', () => {
 })
 
 describe('useVoidUsage', () => {
-  it('void_usage 를 사용 id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+  it('void_usage 를 사용 id 로 부르고 성공 시 다섯 키를 무효화한다 (abortSignal 포함)', async () => {
     const q = ok({ id: 'u1', voided_at: '2026-10-10T00:00:00Z' })
     rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()
@@ -134,7 +145,7 @@ describe('useVoidUsage', () => {
 })
 
 describe('useUseTicketAsAdmin', () => {
-  it('use_ticket_as_admin 을 사람·식사 id 와 새 request_id 로 부르고 성공 시 네 키를 무효화한다 (abortSignal 포함)', async () => {
+  it('use_ticket_as_admin 을 사람·식사 id 와 새 request_id 로 부르고 성공 시 다섯 키를 무효화한다 (abortSignal 포함)', async () => {
     const q = ok({ id: 'u9', used_via: 'admin' })
     rpc.mockReturnValue(q)
     const { wrapper, invalidate } = makeWrapper()

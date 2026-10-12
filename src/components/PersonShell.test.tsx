@@ -41,9 +41,9 @@ describe('PersonShell', () => {
     expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(['🎫식권', '🧾내역', '👪가족', '🛠️관리'])
   })
 
-  it('관리자 영역에서는 식사·발급·내 식권 탭', () => {
+  it('관리자 영역에서는 식사·발급·사람·내 식권 탭', () => {
     renderShell(admin, '/admin/issue')
-    expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(['🍚식사', '🎟️발급', '🎫내 식권'])
+    expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(['🍚식사', '🎟️발급', '👥사람', '🎫내 식권'])
   })
 
   it('교인이 관리자 주소로 바로 들어와도 교인 탭 그대로 (RequireAdmin 이 곧 돌려보낸다)', () => {

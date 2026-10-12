@@ -10,6 +10,8 @@ export const ledgerQueryKey = ['ledger'] as const
 const LIMIT = 100
 
 // FK 가 둘(person_id, issued_by)이라 임베딩에 제약 이름 힌트가 필요하다. 제약 이름은 Postgres 기본 규칙(<표>_<열>_fkey).
+// cancel_reason 은 일부러 빼 둔다 — 관리자가 적은 자유 서술이고, 화면에 안 그려도 select 에 두면
+// 교인 브라우저가 받는 JSON 에 담긴다. 관리자 조회(usePersonLedger)만 읽는다 (설계 §10).
 const ISSUANCE_SELECT =
   'id, issued_at, quantity, unit_price, memo, cancelled_at, meal:meals(title, served_on), buyer:people!issuances_person_id_fkey(name), issuer:people!issuances_issued_by_fkey(name)'
 const USAGE_SELECT = 'id, used_at, used_via, voided_at, meal:meals(title, served_on), person:people!usages_person_id_fkey(name)'

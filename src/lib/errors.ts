@@ -44,6 +44,12 @@ const MESSAGES = {
   usage_not_found: '사용 기록을 찾을 수 없어요. 현황을 다시 불러왔어요.',
   already_voided: '이미 무효 처리된 기록이에요.',
   family_changed: '그 사이 이 분의 가족이 바뀌었어요. 현황을 다시 불러왔어요.',
+  // 4b단계 · 관리자 사람 관리
+  same_person: '같은 사람끼리는 합칠 수 없어요.',
+  minor_not_allowed: '자녀는 가족 탭에서 관리해 주세요.',
+  both_have_accounts: '두 분 모두 카카오 계정이 있어요. 한쪽을 먼저 초기화해 주세요.',
+  account_not_found: '그 계정 id 를 찾을 수 없어요. 다시 확인해 주세요.',
+  account_taken: '이미 다른 분이 쓰는 계정이에요.',
 } as const satisfies Record<string, string>
 
 /** MESSAGES 에 문구가 있는 오류 코드. 호출하는 쪽에서 오타를 막는 데 쓴다. */

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ConfirmButton } from '../../components/ConfirmButton'
-import { Spinner, TextField } from '../../components/ui'
+import { Button, Spinner, TextField } from '../../components/ui'
 import { filterFamilies, NO_NAME, type FamilyGroup, type MealIssuance, type MealUsage } from '../../features/admin/groupMealLedger'
 import { useMealDetail } from '../../features/admin/useMealDetail'
 import { mealOpsErrorMessage, useCancelIssuance, useUseTicketAsAdmin, useVoidUsage } from '../../features/admin/useMealOps'
@@ -10,7 +10,11 @@ import { formatWon } from '../../lib/money'
 
 type Actions = {
   pending: boolean
-  onCancel: (issuance: MealIssuance) => void
+  /** 사유를 적는 중인 발급 id (한 줄만 열린다) */
+  cancelingId: string | null
+  onCancelOpen: (issuance: MealIssuance) => void
+  onCancelClose: () => void
+  onCancel: (issuance: MealIssuance, reason: string) => void
   onVoid: (usage: MealUsage) => void
   onUseAsAdmin: (family: FamilyGroup) => void
 }
@@ -29,6 +33,7 @@ export function MealDetailPage() {
   const useAsAdmin = useUseTicketAsAdmin(mealId)
   const [query, setQuery] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
+  const [cancelingId, setCancelingId] = useState<string | null>(null)
   const feedbackRef = useRef<HTMLDivElement>(null)
 
   const pending = cancel.isPending || voidUsage.isPending || useAsAdmin.isPending
@@ -55,9 +60,27 @@ export function MealDetailPage() {
   }
   const actions: Actions = {
     pending,
-    onCancel: (i) => {
+    cancelingId,
+    onCancelOpen: (i) => {
       clearFeedback()
-      cancel.mutate(i.id, { onSuccess: () => setNotice(`${i.buyer ? `${i.buyer} 님` : NO_NAME} ${i.quantity}장 발급을 취소했어요`) })
+      setCancelingId(i.id)
+    },
+    // 취소 제스처에서 오류를 지운다 — 폼이 닫히면 가리키는 대상이 없어진다 (ProfileSection·PersonEditForm 과 같다)
+    onCancelClose: () => {
+      clearFeedback()
+      setCancelingId(null)
+    },
+    onCancel: (i, reason) => {
+      clearFeedback()
+      cancel.mutate(
+        { issuanceId: i.id, reason },
+        {
+          onSuccess: () => {
+            setCancelingId(null)
+            setNotice(`${i.buyer ? `${i.buyer} 님` : NO_NAME} ${i.quantity}장 발급을 취소했어요`)
+          },
+        },
+      )
     },
     onVoid: (u) => {
       clearFeedback()
@@ -160,25 +183,92 @@ function IssuanceLine({ issuance: i, remaining, actions }: { issuance: MealIssua
   const buyer = i.buyer || NO_NAME
   // 발급 단위 취소라, 이 발급 장수가 가족 남은 장수보다 많으면 DB 가 would_go_negative 로 거부한다 → 미리 잠그고 이유를 적는다 (설계 §9)
   const blocked = !i.cancelled && i.quantity > remaining
+  const open = actions.cancelingId === i.id
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  // 폼이 열리면 트리거가 언마운트돼 포커스가 body 로 떨어진다. 닫힐 때 그 줄로 돌려준다 (ConfirmButton 과 같은 방식).
+  const pendingFocus = useRef(false)
+  useEffect(() => {
+    if (open) {
+      pendingFocus.current = true
+      return
+    }
+    const trigger = triggerRef.current
+    // 성공으로 줄이 '취소됨' 이 되면 트리거가 아예 없다 — 그때는 페이지가 피드백 영역으로 포커스를 옮긴다
+    if (!pendingFocus.current || !trigger || trigger.disabled) return
+    pendingFocus.current = false
+    trigger.focus()
+  }, [open, actions.pending])
   return (
-    <li className={`flex items-start justify-between gap-2 ${i.cancelled ? 'text-gray-500' : ''}`}>
-      <div className="min-w-0 break-words">
-        <div className={i.cancelled ? 'line-through' : ''}>발급 {i.quantity}장 · {buyer} · {formatWon(i.amount)}</div>
-        <div className="text-xs text-gray-500">{formatDateTime(i.issuedAt)} · {i.issuer}{i.memo ? ` · ${i.memo}` : ''}</div>
-        {i.cancelled && <div className="text-xs font-bold">취소됨{i.cancelReason ? ` · ${i.cancelReason}` : ''}</div>}
-        {blocked && <div className="text-xs text-gray-500">남은 장수({remaining})보다 많아 취소할 수 없어요 — 먼저 사용을 무효 처리해 주세요</div>}
+    <li className={i.cancelled ? 'text-gray-500' : ''}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 break-words">
+          <div className={i.cancelled ? 'line-through' : ''}>발급 {i.quantity}장 · {buyer} · {formatWon(i.amount)}</div>
+          <div className="text-xs text-gray-500">{formatDateTime(i.issuedAt)} · {i.issuer}{i.memo ? ` · ${i.memo}` : ''}</div>
+          {i.cancelled && <div className="text-xs font-bold">취소됨{i.cancelReason ? ` · ${i.cancelReason}` : ''}</div>}
+          {blocked && <div className="text-xs text-gray-500">남은 장수({remaining})보다 많아 취소할 수 없어요 — 먼저 사용을 무효 처리해 주세요</div>}
+        </div>
+        {!i.cancelled && !open && (
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={() => actions.onCancelOpen(i)}
+            disabled={actions.pending || blocked}
+            className="shrink-0 px-3 py-2 text-xs text-gray-600 underline disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {/* sr-only 접두사로 줄마다 접근성 이름을 다르게 한다 (같은 구매자·장수가 두 줄일 수 있다) */}
+            <span className="sr-only">{formatDateTime(i.issuedAt)} {buyer} {i.quantity}장</span> {actions.pending ? '처리 중…' : '발급 취소'}
+          </button>
+        )}
       </div>
-      {!i.cancelled && (
-        <ConfirmButton
-          label={actions.pending ? '처리 중…' : '발급 취소'}
-          context={`${formatDateTime(i.issuedAt)} ${buyer} ${i.quantity}장`}
-          message={`${buyer} 님의 ${i.quantity}장 발급을 취소할까요? 가족 잔량이 ${i.quantity}장 줄어요.`}
-          confirmLabel="취소하기"
-          onConfirm={() => actions.onCancel(i)}
-          disabled={actions.pending || blocked}
-        />
-      )}
+      {open && <CancelReasonForm issuance={i} actions={actions} blocked={blocked} />}
     </li>
+  )
+}
+
+/**
+ * 발급 취소는 두 단계다: 버튼 → 사유 폼(사유는 선택) → 취소하기. ConfirmButton 과 달리 입력 칸이 필요해 폼으로 둔다.
+ * `blocked` 을 함께 받는다 — 폼이 열려 있는 동안에도 5초 폴링으로 남은 장수가 줄 수 있고, 그러면 트리거만 잠그는
+ * 예비 검사가 뚫린다(ConfirmButton 은 disabled 가 되는 순간 프롬프트를 닫아 이 상태에 닿지 않았다).
+ */
+function CancelReasonForm({ issuance: i, actions, blocked }: { issuance: MealIssuance; actions: Actions; blocked: boolean }) {
+  const [reason, setReason] = useState('')
+  const hintId = useId()
+  const reasonRef = useRef<HTMLInputElement>(null)
+  // 눌렀던 트리거가 사라지므로 포커스를 이 폼으로 데려온다 (ConfirmButton 이 취소 버튼에 포커스를 주는 것과 같은 이유)
+  useEffect(() => reasonRef.current?.focus(), [])
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        actions.onCancel(i, reason)
+      }}
+      noValidate
+      className="mt-2 flex flex-col gap-2 rounded-xl border border-gray-200 p-3"
+    >
+      {/* 폼이 열리면서 나타나는 질문이라 라이브 리전으로 둔다 — 그냥 두면 스크린리더가 아무 말도 하지 않는다 */}
+      <p role="status" className="text-xs text-gray-600">
+        {blocked
+          ? '남은 장수가 줄어서 이제 이 발급은 취소할 수 없어요 — 먼저 사용을 무효 처리해 주세요'
+          : `${i.buyer || NO_NAME} 님의 ${i.quantity}장 발급을 취소할까요? 가족 잔량이 ${i.quantity}장 줄어요.`}
+      </p>
+      <TextField
+        ref={reasonRef}
+        label="취소 사유 (선택)"
+        name={`cancel-reason-${i.id}`}
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        maxLength={100}
+        placeholder="예) 입금 취소"
+        autoComplete="off"
+        aria-describedby={hintId}
+      />
+      {/* 교인 쪽 조회는 이 열을 읽지 않지만, 표 단위 select 권한이라 작정하면 볼 수 있다 (설계 §10) */}
+      <p id={hintId} className="text-xs text-gray-500">가족도 볼 수 있어요 — 사적인 내용은 적지 마세요</p>
+      <div className="flex gap-2">
+        <Button variant="ghost" onClick={actions.onCancelClose} disabled={actions.pending}>그만두기</Button>
+        <Button type="submit" disabled={actions.pending || blocked}>{actions.pending ? '처리 중…' : '취소하기'}</Button>
+      </div>
+    </form>
   )
 }
 
