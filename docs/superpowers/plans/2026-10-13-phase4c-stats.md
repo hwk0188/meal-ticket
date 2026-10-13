@@ -35,6 +35,10 @@
 - **`meals.created_by`(식사 등록자)는 CSV 에 넣지 않는다.** 4b 리뷰가 "4c 가 식사 등록자를 내보내면 합치기가 그 열을 옮기지 않는 문제를 다시 보라" 고 남겼다. 설계의 11열에 없으므로 넣지 않고, `merge_people` 도 그대로 둔다.
 - **교인별 검색은 이름만** 본다(번호 뒷자리 검색은 두지 않는다). 장부 행에는 번호가 없고, 번호로 사람을 찾는 일은 사람 탭의 몫이다.
 
+## 구현 결과와 계획의 차이 (실행 중 바뀐 것)
+
+- **Task 1** (DB): 계획의 pgTAP 가 `tests.authenticate_as` 에 이메일 문자열을 넘기고 있었다. 그 헬퍼는 `tests.authenticate_as(p_user uuid)` 하나뿐이라(`supabase/seeds/000_test_helpers.sql:29`) 그대로 돌리면 `invalid input syntax for type uuid` 가 난다. 구현은 이미 `\gset` 해 둔 uuid 변수(`:'admin_uid'`·`:'b_uid'`)를 넘긴다 — `150`·`120` 이 쓰는 방식 그대로다. 위 Task 1 본문도 고쳐 두었다. 마이그레이션은 계획과 한 글자도 다르지 않다.
+
 ## 파일 구조
 
 | 파일 | 책임 |
@@ -109,7 +113,7 @@ values ('16160001', :'a_uid', 'adult', now() + interval '10 minutes'),
        ('16160002', :'b_uid', 'adult', now() + interval '10 minutes');
 
 -- ---------- 초기화가 그 계정의 코드를 지운다 ----------
-select tests.authenticate_as('reset-admin@test.local');
+select tests.authenticate_as(:'admin_uid');
 select lives_ok(format($$ select public.admin_reset_person(%L) $$, :'a_pid'), '관리자가 김철수를 초기화한다');
 
 select tests.clear_auth();
@@ -122,7 +126,7 @@ select is((select deleted_at is not null and name = '탈퇴한 사용자' and au
           '초기화 자체는 그대로 — 익명화 + 계정 해제');
 
 -- ---------- 코드가 없어도 초기화는 된다 ----------
-select tests.authenticate_as('reset-admin@test.local');
+select tests.authenticate_as(:'admin_uid');
 select lives_ok(format($$ select public.admin_reset_person(%L) $$, :'b_pid'), '코드가 있든 없든 초기화는 성공한다');
 select tests.clear_auth();
 select is((select count(*) from public.pairing_codes where auth_user_id = :'b_uid'), 0::bigint,
@@ -137,7 +141,7 @@ update public.people set auth_user_id = :'kid_uid' where id = :'kid_pid';
 insert into public.pairing_codes (code, auth_user_id, kind, expires_at)
 values ('16160003', :'kid_uid', 'child', now() + interval '10 minutes');
 
-select tests.authenticate_as('reset-admin@test.local');
+select tests.authenticate_as(:'admin_uid');
 select throws_ok(format($$ select public.admin_reset_person(%L) $$, :'kid_pid'), 'P0001', 'minor_not_allowed',
                  '자녀는 초기화할 수 없다 (4b 와 같다)');
 select tests.clear_auth();
@@ -145,7 +149,7 @@ select is((select count(*) from public.pairing_codes where auth_user_id = :'kid_
           '거부된 초기화는 코드 삭제까지 되돌린다');
 
 -- ---------- 권한 ----------
-select tests.authenticate_as('reset-b@test.local');
+select tests.authenticate_as(:'b_uid');
 select throws_ok(format($$ select public.admin_reset_person(%L) $$, :'kid_pid'), 'P0001', 'forbidden',
                  '교인은 초기화할 수 없다 — 코드를 지우기 전에 막힌다');
 select tests.clear_auth();
