@@ -75,6 +75,8 @@ describe('useIssueTickets', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['latest-unit-price'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tickets'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['ledger'] })
+    // 통계의 그 달 장부도 낡는다 (어느 달인지 모르므로 접두사로)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['month-ledger'] })
   })
 
   it('메모가 있으면 그대로 전달한다', async () => {

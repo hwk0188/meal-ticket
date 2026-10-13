@@ -27,6 +27,7 @@ export class FakeQuery<T> {
   or = this.chain('or')
   gt = this.chain('gt')
   gte = this.chain('gte')
+  lte = this.chain('lte')
   order = this.chain('order')
   limit = this.chain('limit')
   maybeSingle = this.chain('maybeSingle')
