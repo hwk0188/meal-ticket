@@ -34,6 +34,8 @@ describe('useUseTicket', () => {
     expect(USE_TIMEOUT_MS).toBe(5_000)
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tickets'] }))
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['ledger'] })
+    // 권사님도 교인이라 자기 폰에서 식권을 쓴다 — 관리자 통계의 그 달 장부도 낡는다
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['month-ledger'] })
 
     // 성공했으면 다음 누름은 새 request_id
     await act(() => result.current.mutateAsync())

@@ -4,6 +4,7 @@ import { rpcCodeOf } from '../../lib/errors'
 import { unwrap } from '../../lib/postgrest'
 import { supabase } from '../../lib/supabase'
 import { withTimeout } from '../../lib/timeout'
+import { MONTH_LEDGER_QUERY_KEY } from '../admin/useMonthLedger'
 import { ledgerQueryKey } from '../history/useFamilyLedger'
 import type { Usage } from './groupTickets'
 import { ticketsQueryKey } from './useFamilyTickets'
@@ -51,11 +52,14 @@ export function useUseTicket(mealId: string) {
     },
     // 성공이든 실패든 잔량을 다시 읽는다 (no_remaining 이면 다른 폰이 쓴 것이라 목록이 바뀌어 있다)
     // 내역 화면도 같이 무효화한다 — 사용 성공은 usages 테이블에 새 행을 만들므로 내역에도 바로 보여야 한다.
+    // 관리자 통계의 그 달 장부도 같이 — 권사님도 교인이라 자기 폰에서 식권을 쓴다. 통계를 보다가 식권을 쓰고
+    // 5초 안에 돌아오면(기본 staleTime) 사용 장수가 하나 적고 그 사이에 받은 CSV 에 그 행이 빠진다.
     // promise 를 돌려줘야 TanStack 이 재조회가 끝날 때까지 isPending 을 유지한다 (끝나기 전에 버튼이 열리면 묵은 잔량으로 또 누른다)
     onSettled: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: ticketsQueryKey }),
         queryClient.invalidateQueries({ queryKey: ledgerQueryKey }),
+        queryClient.invalidateQueries({ queryKey: MONTH_LEDGER_QUERY_KEY }),
       ]),
   })
 }
