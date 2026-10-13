@@ -5,6 +5,7 @@ import { ledgerQueryKey } from '../history/useFamilyLedger'
 import { ticketsQueryKey } from '../tickets/useFamilyTickets'
 import type { IssueValues } from './issueSchema'
 import { adminBalancesQueryKey } from './useMeals'
+import { MONTH_LEDGER_QUERY_KEY } from './useMonthLedger'
 import { PERSON_LEDGER_QUERY_KEY } from './usePersonLedger'
 
 export const latestUnitPriceQueryKey = ['latest-unit-price'] as const
@@ -76,6 +77,8 @@ export function useIssueTickets() {
         queryClient.invalidateQueries({ queryKey: ledgerQueryKey }),
         // 관리자 사람 상세 이력도 — 어느 사람인지 아는데도 접두사로 덮는 건 취소·무효와 같은 모양을 지키기 위해서다
         queryClient.invalidateQueries({ queryKey: PERSON_LEDGER_QUERY_KEY }),
+        // 통계의 그 달 장부 (어느 달인지 모르므로 접두사로 — PERSON_LEDGER_QUERY_KEY 와 같은 이유)
+        queryClient.invalidateQueries({ queryKey: MONTH_LEDGER_QUERY_KEY }),
       ]),
   })
 }

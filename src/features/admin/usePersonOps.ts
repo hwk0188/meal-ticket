@@ -9,6 +9,7 @@ import { ticketsQueryKey } from '../tickets/useFamilyTickets'
 import { MEAL_DETAIL_QUERY_KEY } from './useMealDetail'
 import { OPS_TIMEOUT_MS } from './useMealOps'
 import { adminBalancesQueryKey } from './useMeals'
+import { MONTH_LEDGER_QUERY_KEY } from './useMonthLedger'
 import { peopleSearchQueryKey } from './usePeopleSearch'
 import { allPeopleQueryKey } from './useAllPeople'
 import { PERSON_DETAIL_QUERY_KEY, personDetailQueryKey } from './usePersonDetail'
@@ -24,7 +25,8 @@ export const SETTLE_TIMEOUT_MS = 3_000
  * 거쳐 왔다면 상대편 상세·이력이 캐시에 그대로 남아 있을 수 있다(어느 쪽 id 인지 몰라도 되게 접두사로 덮는다 —
  * useMealOps 의 PERSON_LEDGER_QUERY_KEY 접두사 무효화와 같은 이유). 장부의 가족이 옮겨질 수 있으니 관리자
  * 합계·식권·내역, 내 사람 행(합친 대상이 관리자 본인일 수 있다), 그리고 식사 현황판(구매자 이름·가족 묶음이
- * 낡는다 — 어느 식사인지 몰라도 되게 접두사로). 순서는 테스트가 단언한다.
+ * 낡는다 — 어느 식사인지 몰라도 되게 접두사로). 합치기·초기화는 CSV 의 이름·가족 대표도 바꾼다 — 통계의
+ * 그 달 장부도 어느 달인지 몰라도 되게 접두사로 덮는다. 순서는 테스트가 단언한다.
  */
 export function invalidatePeople(queryClient: QueryClient) {
   return Promise.all([
@@ -40,6 +42,7 @@ export function invalidatePeople(queryClient: QueryClient) {
     // (익명화된 사람이 계속 발급 대상으로 뜬다 — staleTime 10초 + keepPreviousData).
     queryClient.invalidateQueries({ queryKey: familyMembersQueryKey }),
     queryClient.invalidateQueries({ queryKey: peopleSearchQueryKey }),
+    queryClient.invalidateQueries({ queryKey: MONTH_LEDGER_QUERY_KEY }),
   ])
 }
 

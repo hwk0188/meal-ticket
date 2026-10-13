@@ -1,4 +1,5 @@
 import type { Person } from '../auth/usePerson'
+import { digitsOf, nameKey, SEARCH_MIN_DIGITS } from '../../lib/search'
 
 /** 목록에 필요한 열만. `useAllPeople` 의 select 문자열과 같은 모양이다. */
 export type PersonRow = Pick<Person, 'id' | 'family_id' | 'name' | 'phone' | 'auth_user_id' | 'role' | 'is_minor' | 'guardian_id' | 'created_at'>
@@ -13,13 +14,6 @@ export type PersonTag = '관리자' | '자녀' | '미가입'
  */
 export type DecoratedPerson = PersonRow & { familySize: number; tags: PersonTag[]; familyHint: string | null }
 export type PeopleFilter = 'all' | 'unlinked' | 'admin'
-
-/** 번호로 찾을 때 필요한 최소 자릿수. 한 자리면 `010…` 번호 전부에 걸려 명단이 쏟아진다. */
-const SEARCH_MIN_DIGITS = 2
-
-/** 검색 비교용 키: NFC 로 맞추고 공백을 없앤다 (iOS 가 자모 분리(NFD)로 보낼 수 있다 — lib/fieldSchemas 와 같은 이유). */
-const nameKey = (text: string) => text.normalize('NFC').replace(/\s+/g, '')
-const digits = (text: string) => text.replace(/\D/g, '')
 
 /** 보호자가 명단에 없으면(익명화돼 빠졌을 때) 같은 가족의 다른 식구로 대신한다. */
 function familyHintOf(row: PersonRow, byId: Map<string, PersonRow>, byFamily: Map<string, PersonRow[]>): string | null {
@@ -58,7 +52,7 @@ export function decoratePeople(rows: readonly PersonRow[]): DecoratedPerson[] {
 /** 검색어(이름 일부 또는 번호 뒷자리)와 필터 칩으로 좁히고 이름 순으로 정렬한다. */
 export function filterPeople(people: readonly DecoratedPerson[], query: string, filter: PeopleFilter): DecoratedPerson[] {
   const key = nameKey(query)
-  const num = digits(query)
+  const num = digitsOf(query)
   const matched = people.filter((p) => {
     // 칩의 뜻은 태그가 정한다 (한쪽만 고쳐 배지와 칩이 어긋나는 일을 막는다)
     if (filter === 'unlinked' && !p.tags.includes('미가입')) return false

@@ -8,6 +8,7 @@ import { AdminPeoplePage } from './pages/admin/AdminPeoplePage'
 import { IssuePage } from './pages/admin/IssuePage'
 import { MealDetailPage } from './pages/admin/MealDetailPage'
 import { PersonDetailPage } from './pages/admin/PersonDetailPage'
+import { StatsPage } from './pages/admin/StatsPage'
 import { FamilyPage } from './pages/FamilyPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { PairPage } from './pages/PairPage'
@@ -41,6 +42,7 @@ export default function App() {
               <Route path="/admin/issue" element={<RequireAdmin><IssuePage /></RequireAdmin>} />
               <Route path="/admin/people" element={<RequireAdmin><AdminPeoplePage /></RequireAdmin>} />
               <Route path="/admin/people/:personId" element={<RequireAdmin><PersonDetailPage /></RequireAdmin>} />
+              <Route path="/admin/stats" element={<RequireAdmin><StatsPage /></RequireAdmin>} />
             </Route>
             {/* 모르는 주소는 홈 주소로 정리한다 (Gate 를 그대로 띄우면 주소가 그대로 남는다). */}
             <Route path="*" element={<Navigate to="/" replace />} />

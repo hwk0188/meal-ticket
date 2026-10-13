@@ -66,6 +66,12 @@ export function formatClock(now: Date): string {
   return hms.format(now)
 }
 
+/** ISO 시각 → 서울 'YYYY-MM-DD HH:MM'. CSV 용 — 화면용 formatDateTime 은 연도가 없다. */
+export function formatSeoulStamp(iso: string): string {
+  const at = new Date(iso)
+  return `${ymd.format(at)} ${hm.format(at)}`
+}
+
 /**
  * 기준일 "다음" 의 첫 일요일. DB `create_next_sunday_lunch` 와 같은 규칙이라 버튼에 미리 날짜를 보여 줄 수 있다.
  * 일→+7, 월→+6, …, 토→+1
