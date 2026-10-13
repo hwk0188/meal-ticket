@@ -37,6 +37,7 @@
 
 ## 구현 결과와 계획의 차이 (실행 중 바뀐 것)
 
+- **Task 4** (그 달 장부): `FakeQuery` 에 `lte` 체인 메서드가 없었다 — 저장소에서 `.lte()` 를 쓰는 첫 자리다(`gte` 만 있었다). 계획이 그걸 놓쳐, 테스트가 의도한 동작이 아니라 `...lte is not a function` 으로 터졌다. `gte` 바로 아래에 한 줄(`lte = this.chain('lte')`)을 더해 고쳤다 — 계획의 8개 파일 밖이지만 테스트를 그대로 통과시키려면 필요했고, 단언을 낮추지 않았다.
 - **Task 1** (DB): 계획의 pgTAP 가 `tests.authenticate_as` 에 이메일 문자열을 넘기고 있었다. 그 헬퍼는 `tests.authenticate_as(p_user uuid)` 하나뿐이라(`supabase/seeds/000_test_helpers.sql:29`) 그대로 돌리면 `invalid input syntax for type uuid` 가 난다. 구현은 이미 `\gset` 해 둔 uuid 변수(`:'admin_uid'`·`:'b_uid'`)를 넘긴다 — `150`·`120` 이 쓰는 방식 그대로다. 위 Task 1 본문도 고쳐 두었다. 마이그레이션은 계획과 한 글자도 다르지 않다.
 
 ## 파일 구조
