@@ -1,4 +1,4 @@
-import { addDays, formatClock, formatDate, formatDateTime, formatMealDate, formatShortDate, formatTime, nextSundayAfter, todaySeoul } from './dates'
+import { addDays, formatClock, formatDate, formatDateTime, formatMealDate, formatSeoulStamp, formatShortDate, formatTime, nextSundayAfter, todaySeoul } from './dates'
 
 describe('todaySeoul', () => {
   it('서울 기준 날짜를 YYYY-MM-DD 로 준다 (UTC 자정 전후가 갈린다)', () => {
@@ -58,5 +58,15 @@ describe('formatDate', () => {
   it('ISO 시각을 서울 날짜 M/D 로 (UTC 저녁은 서울의 다음 날)', () => {
     expect(formatDate('2026-10-07T15:30:00Z')).toBe('10/8')
     expect(formatDate('2026-10-07T03:00:00Z')).toBe('10/7')
+  })
+})
+
+describe('formatSeoulStamp', () => {
+  it('ISO 시각 → 서울 YYYY-MM-DD HH:MM (CSV 는 연도가 있어야 한다)', () => {
+    expect(formatSeoulStamp('2026-10-11T03:31:00Z')).toBe('2026-10-11 12:31')
+  })
+
+  it('자정을 넘기는 UTC 시각도 서울 날짜로 찍는다', () => {
+    expect(formatSeoulStamp('2026-10-10T16:00:00Z')).toBe('2026-10-11 01:00')
   })
 })
