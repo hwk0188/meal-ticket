@@ -1,5 +1,5 @@
 import type { MonthIssuanceRow, MonthUsageRow } from './useMonthLedger'
-import { byMeal, filterByName, summarizeMonth, toStatsRows } from './statsRows'
+import { byMeal, filterByName, repByFamily, summarizeMonth, toStatsRows } from './statsRows'
 
 const meal = { id: 'm1', title: '주일 점심', served_on: '2026-10-11' }
 const other = { id: 'm2', title: '수요 저녁', served_on: '2026-10-07' }
@@ -152,5 +152,32 @@ describe('filterByName', () => {
     const before = rows.map((r) => r.kind)
     filterByName(rows, '영희')
     expect(rows.map((r) => r.kind)).toEqual(before)
+  })
+})
+
+describe('repByFamily', () => {
+  const p = (over: Partial<{ id: string; family_id: string; name: string; is_minor: boolean }> = {}) => ({
+    id: 'p1', family_id: 'f1', name: '김철수', is_minor: false, ...over,
+  })
+
+  it('가족마다 어른 중 이름 순 첫 사람', () => {
+    const map = repByFamily([p({ id: 'p1', name: '김철수' }), p({ id: 'p2', name: '박영수' }), p({ id: 'p3', family_id: 'f2', name: '이영희' })])
+    expect(map.get('f1')).toBe('김철수')
+    expect(map.get('f2')).toBe('이영희')
+  })
+
+  it('자녀는 대표가 되지 않는다', () => {
+    const map = repByFamily([p({ id: 'p1', name: '서연', is_minor: true }), p({ id: 'p2', name: '최영수' })])
+    expect(map.get('f1')).toBe('최영수')
+  })
+
+  it('어른이 없는 가족은 비워 둔다 (초기화된 1인 가족)', () => {
+    expect(repByFamily([p({ name: '서연', is_minor: true })].map((x) => x)).get('f1')).toBeUndefined()
+  })
+
+  it('입력 순서에 기대지 않는다 (동명이인은 id 로 고정)', () => {
+    const rows = [p({ id: 'pB', name: '김철수' }), p({ id: 'pA', name: '김철수' })]
+    expect(repByFamily(rows).get('f1')).toBe('김철수')
+    expect(repByFamily(rows.toReversed()).get('f1')).toBe('김철수')
   })
 })

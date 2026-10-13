@@ -127,3 +127,24 @@ export function filterByName(rows: readonly StatsRow[], query: string): StatsRow
   if (!key) return [...rows]
   return rows.filter((r) => nameKey(r.name).includes(key) || nameKey(r.familyRep).includes(key))
 }
+
+/** 가족 대표를 뽑을 때 필요한 최소 모양 — `useAllPeople` 의 행이 그대로 들어맞는다. */
+type RepCandidate = { id: string; family_id: string; name: string; is_minor: boolean }
+
+/**
+ * 가족마다 "대표" 한 사람의 이름. 스키마에 대표 열이 없어 **살아 있는 어른 중 이름 순 첫 사람**으로 정한다
+ * (4b 의 가족 힌트와 같은 규칙). 동명이인은 id 로 고정해 입력 순서에 기대지 않는다.
+ * 어른이 없는 가족(초기화된 1인 가족 등)은 아예 담지 않는다 — 통계 행에서는 빈 칸이 된다.
+ * `useAllPeople` 이 익명화된 행을 이미 빼고 읽으므로 여기서 다시 거르지 않는다.
+ */
+export function repByFamily(people: readonly RepCandidate[]): Map<string, string> {
+  const best = new Map<string, RepCandidate>()
+  for (const p of people) {
+    if (p.is_minor) continue
+    const current = best.get(p.family_id)
+    if (!current || p.name.localeCompare(current.name, 'ko') < 0 || (p.name === current.name && p.id < current.id)) {
+      best.set(p.family_id, p)
+    }
+  }
+  return new Map([...best].map(([familyId, p]) => [familyId, p.name]))
+}
