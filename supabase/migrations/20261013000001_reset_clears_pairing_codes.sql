@@ -30,18 +30,31 @@ begin
   end if;
 
   -- ① 연결 코드. 잠그지 않고 읽은 계정 id 기준으로 지운다.
-  --   경쟁: 이 사이에 그 계정이 다른 사람 행으로 옮겨 가면(link_person·claim_person) 이미 쓰인 죽은 코드 행이
-  --   하나 남을 수 있다. 무해하고(used_at 이 찍힌 행은 다시 못 쓴다) 매시간 cleanup_pairing_codes 가 지운다.
-  --   사람 행을 잠근 뒤에 지우면 ②가 ①보다 먼저 와 이 저장소의 잠금 순서를 어긴다 — remove_child 와 같은 판단.
-  --   아래에서 예외가 나면(미성년자·자녀 있음·마지막 관리자) 이 delete 도 같은 트랜잭션에서 되돌아간다.
+  --   사람 행을 잠근 뒤에 지우면 ②가 ①보다 먼저 와 이 저장소의 잠금 순서를 어긴다 — remove_child 와 같은 판단이고,
+  --   두 세션 실험으로 실제로 40P01(교착)이 나는 것을 확인했다(add_family_member 와 맞물릴 때).
+  --   아래에서 예외가 나면(계정 변경·미성년자·자녀 있음·마지막 관리자) 이 delete 도 같은 트랜잭션에서 되돌아간다.
+  --
+  --   **남는 경쟁 하나**: 이 사이에 교인 폰이 create_pairing_code 를 끝내면, 우리 delete 뒤에 **살아 있는**
+  --   코드가 한 줄 새로 들어올 수 있다(그 함수는 자기 사람 행을 읽은 뒤에야 pairing_code 잠금을 잡는다).
+  --   그러면 흡수 경로가 그만큼 다시 열린다 — 이 함수 안에서는 닫을 수 없다(위의 교착 때문에 delete 를
+  --   ② 뒤로 옮길 수 없다). 제대로 닫으려면 어른 코드에 person_id 를 달고 add_family_member 가
+  --   대상 사람과 맞는지 보게 해야 한다. 5단계로 넘긴다(4c 계획의 "5단계로 넘기는 것").
   select auth_user_id into v_account from public.people where id = p_person_id and deleted_at is null;
   if v_account is not null then
     delete from public.pairing_codes where auth_user_id = v_account;
   end if;
 
   -- ② 대상 사람 행
+  --   주의: 아래 `if not found` 는 바로 위 select 를 가리킨다(FOUND 는 위치로 정해진다).
+  --   이 사이에 DML 을 끼워 넣으면 person_not_found 가 "지운 행 수" 를 뜻하게 되어 조용히 틀린다.
   select * into v_person from public.people where id = p_person_id and deleted_at is null for update;
   if not found then
+    raise exception 'person_not_found';
+  end if;
+  -- 잠그기 전에 읽은 계정과 달라졌다면 ①의 delete 가 엉뚱한 계정을 지웠거나(혹은 아무것도 안 지웠고)
+  -- 이 계정의 코드는 살아 있다는 뜻이다. merge_people 이 이 창에서 계정을 붙이면 실제로 그렇게 된다
+  -- (두 세션 실험으로 확인했다). 되돌리고 다시 시도하게 한다 — 트랜잭션이 끝나며 delete 도 함께 풀린다.
+  if v_person.auth_user_id is distinct from v_account then
     raise exception 'person_not_found';
   end if;
   if v_person.is_minor then
