@@ -41,6 +41,7 @@
   그런데 **남은 경쟁 하나가 실재**했다: 잠그지 않고 읽은 계정과 ② 에서 잠그고 다시 읽은 계정이 다를 수 있다(`merge_people` 이 그 창에서 계정을 붙인다). 그러면 사전 읽기가 `null` 을 보고 아무 코드도 지우지 않은 채 ② 가 계정을 떼어 버려, **살아 있고 쓰이지 않은 코드**가 남는다 — 이 커밋이 닫으려던 흡수 경로가 그대로 다시 열린다. 한 줄 가드(`auth_user_id is distinct from v_account` → `person_not_found`)로 닫았고, 두 세션 실험으로 양쪽을 직접 재현했다(가드 있으면 아무것도 안 바뀐다, 빼면 코드가 살아남는다).
   주석의 설명도 틀려 있었다. `link_person`·`claim_person` 이 그 상황을 만든다고 적었지만 각각 `account_taken`·`already_registered` 로 막혀 만들 수 없고, 남는 것은 "이미 쓰인 죽은 코드" 가 아니라 살아 있는 코드다. **닫지 못한 경쟁**은 교인 폰이 `create_pairing_code` 를 우리 delete 뒤에 끝내는 경우로, 이 함수 안에서는 닫을 수 없다(교착 때문에 delete 를 뒤로 못 옮긴다) — 5단계로 넘긴다.
   pgTAP 쪽 지적도 받아들였다. 라벨과 실제가 어긋난 두 곳(코드 없는 사람을 시험하지 않던 "코드가 없어도" 테스트, 이미 초기화된 계정으로 불러 `forbidden` 의 다른 쪽을 시험하던 권한 테스트)을 고쳐 **458** 이 되었고, `delete` 의 **위치**와 새 가드는 한 세션 pgTAP 로 못 박을 수 없다는 것을 파일 끝에 적어 뒀다(순서를 바꿔도 전부 통과한다 — 녹색이 면허로 읽히지 않게).
+- **Task 9** (E2E): 계획의 코드가 헬퍼 시그니처와 어긋났다 — `adminCreateTodayMeal` 은 아무것도 돌려주지 않고(`mealLabel` 을 `people.spec.ts` 처럼 직접 만든다), `adminIssue` 의 `quantity`·`unitPrice` 는 문자열이 아니라 숫자다. 구현이 `people.spec.ts` 의 방식에 맞췄다. 제품 결함은 없었다 — 화면·CSV 코드가 첫 실행에 그대로 통과했다.
 - **Task 4** (그 달 장부): `FakeQuery` 에 `lte` 체인 메서드가 없었다 — 저장소에서 `.lte()` 를 쓰는 첫 자리다(`gte` 만 있었다). 계획이 그걸 놓쳐, 테스트가 의도한 동작이 아니라 `...lte is not a function` 으로 터졌다. `gte` 바로 아래에 한 줄(`lte = this.chain('lte')`)을 더해 고쳤다 — 계획의 8개 파일 밖이지만 테스트를 그대로 통과시키려면 필요했고, 단언을 낮추지 않았다.
 - **Task 1** (DB): 계획의 pgTAP 가 `tests.authenticate_as` 에 이메일 문자열을 넘기고 있었다. 그 헬퍼는 `tests.authenticate_as(p_user uuid)` 하나뿐이라(`supabase/seeds/000_test_helpers.sql:29`) 그대로 돌리면 `invalid input syntax for type uuid` 가 난다. 구현은 이미 `\gset` 해 둔 uuid 변수(`:'admin_uid'`·`:'b_uid'`)를 넘긴다 — `150`·`120` 이 쓰는 방식 그대로다. 위 Task 1 본문도 고쳐 두었다. 마이그레이션은 계획과 한 글자도 다르지 않다.
 
@@ -90,7 +91,7 @@
 
 **왜:** 같은 익명화를 하는 두 형제 함수(`delete_my_account`·`remove_child`)는 모두 떼어낸 계정의 연결 코드를 먼저 지운다. `admin_reset_person` 만 지우지 않아, 교인이 가족 탭에서 어른 코드를 띄워 둔 채 초기화되고 10분 안에 다시 가입하면 그 코드가 **새로 생긴 사람 행**에 대해 유효해진다(`add_family_member` 는 `auth_user_id` 로 대상을 찾는다). 코드를 쥔 사람이 그 교인을 자기 가족으로 흡수할 수 있다.
 
-- [ ] **Step 1: 실패하는 pgTAP 를 쓴다**
+- [x] **Step 1: 실패하는 pgTAP 를 쓴다**
 
 `supabase/tests/database/160_reset_pairing_codes.sql` 를 새로 만든다. 전화번호 블록은 `0101616000x` 다(다른 파일과 겹치면 `people_phone_unique` 가 23505 를 낸다).
 
@@ -165,7 +166,7 @@ select * from finish();
 rollback;
 ```
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 ```bash
 npm run db:reset && npm run db:test
@@ -173,7 +174,7 @@ npm run db:reset && npm run db:test
 
 Expected: `160_reset_pairing_codes.sql` 에서 `초기화한 계정의 연결 코드가 지워진다` 와 `박영수의 코드도 그 차례에 지워진다` 가 FAIL (현재 함수는 코드를 지우지 않는다). 나머지 8개는 PASS.
 
-- [ ] **Step 3: 마이그레이션을 쓴다**
+- [x] **Step 3: 마이그레이션을 쓴다**
 
 `supabase/migrations/20261013000001_reset_clears_pairing_codes.sql`:
 
@@ -260,7 +261,7 @@ comment on function public.link_person(uuid, uuid) is
   '카카오 계정 수동 연결(복구 경로): auth.users 행이 사라져 연결이 끊긴, 동의 기록이 있는 살아 있는 어른에게만. 초기화된 사람은 되돌릴 수 없다. 오류 코드는 20261011000001 헤더 참고.';
 ```
 
-- [ ] **Step 4: 통과를 확인한다**
+- [x] **Step 4: 통과를 확인한다**
 
 ```bash
 npm run db:reset && npm run db:test
@@ -268,11 +269,11 @@ npm run db:reset && npm run db:test
 
 Expected: `Files=16, Tests=456, PASS` (기존 446 + 10).
 
-- [ ] **Step 5: 단언이 비어 있지 않은지 확인한다**
+- [x] **Step 5: 단언이 비어 있지 않은지 확인한다**
 
 함수에서 `delete from public.pairing_codes …` 두 줄을 지우고 다시 돌려, `초기화한 계정의 연결 코드가 지워진다` 가 FAIL 하는 것을 확인한 뒤 되돌린다. (되돌릴 때 `git checkout --` 로 파일 전체를 되돌리지 말 것 — 같은 파일의 다른 변경까지 날아간다. 손으로 두 줄을 다시 넣는다.)
 
-- [ ] **Step 6: 타입 재생성 확인**
+- [x] **Step 6: 타입 재생성 확인**
 
 ```bash
 npm run db:types && git diff --stat src/lib/database.types.ts
@@ -280,7 +281,7 @@ npm run db:types && git diff --stat src/lib/database.types.ts
 
 Expected: 차이 없음 (함수 시그니처가 그대로다).
 
-- [ ] **Step 7: 커밋**
+- [x] **Step 7: 커밋**
 
 ```bash
 git add supabase/migrations/20261013000001_reset_clears_pairing_codes.sql supabase/tests/database/160_reset_pairing_codes.sql
@@ -314,7 +315,7 @@ MSG
 
 **왜:** 통계의 교인별 검색도 사람 목록과 똑같이 NFC 로 맞추고 공백을 없애야 한다(iOS 가 자모 분리(NFD)로 보낸다). 세 번째 복사본을 만들지 않는다. `usePeopleSearch.sanitizeQuery` 는 **합치지 않는다** — 그쪽은 문장부호까지 지우고, `nameKey` 는 DB 의 `normalize_name` 과 같은 규칙을 지키기로 4b 에서 정했다.
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/lib/search.test.ts`:
 
@@ -351,7 +352,7 @@ describe('SEARCH_MIN_DIGITS', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 ```bash
 npx vitest run src/lib/search.test.ts
@@ -359,7 +360,7 @@ npx vitest run src/lib/search.test.ts
 
 Expected: FAIL — `Failed to resolve import "./search"`.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/lib/search.ts`:
 
@@ -401,7 +402,7 @@ import { digitsOf, nameKey, SEARCH_MIN_DIGITS } from '../../lib/search'
   const num = digitsOf(query)
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 ```bash
 npx vitest run src/lib/search.test.ts src/features/admin/peopleFilter.test.ts && npm run lint && npx tsc -b
@@ -409,7 +410,7 @@ npx vitest run src/lib/search.test.ts src/features/admin/peopleFilter.test.ts &&
 
 Expected: 두 파일 모두 PASS (`peopleFilter.test.ts` 는 한 줄도 바꾸지 않는다 — 동작이 같아야 한다), lint·tsc 깨끗.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/lib/search.ts src/lib/search.test.ts src/features/admin/peopleFilter.ts
@@ -436,7 +437,7 @@ MSG
 
 **왜:** 월 선택이 **식사일**(`meals.served_on`, `date` 열) 기준이라, 조회 범위를 `YYYY-MM-DD` 두 개로 만들어야 한다. `lib/dates.ts` 와 같은 방식으로 **UTC 산술**을 쓴다 — 날짜만 있는 값을 로컬 `Date` 로 바꾸면 시간대에 하루씩 밀린다.
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/admin/statsMonth.test.ts`:
 
@@ -490,7 +491,7 @@ describe('형식이 아니면 던진다', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 ```bash
 npx vitest run src/features/admin/statsMonth.test.ts
@@ -498,7 +499,7 @@ npx vitest run src/features/admin/statsMonth.test.ts
 
 Expected: FAIL — `Failed to resolve import "./statsMonth"`.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/admin/statsMonth.ts`:
 
@@ -544,7 +545,7 @@ export function formatMonth(month: string): string {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 ```bash
 npx vitest run src/features/admin/statsMonth.test.ts && npm run lint && npx tsc -b
@@ -552,7 +553,7 @@ npx vitest run src/features/admin/statsMonth.test.ts && npm run lint && npx tsc 
 
 Expected: PASS, lint·tsc 깨끗.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/features/admin/statsMonth.ts src/features/admin/statsMonth.test.ts
@@ -579,7 +580,7 @@ MSG
 
 취소·무효 행도 CSV 에 들어가므로 `cancelled_at`/`voided_at` 으로 **걸러내지 않는다**.
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/admin/useMonthLedger.test.tsx`:
 
@@ -678,7 +679,7 @@ describe('useMonthLedger', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 ```bash
 npx vitest run src/features/admin/useMonthLedger.test.tsx
@@ -686,7 +687,7 @@ npx vitest run src/features/admin/useMonthLedger.test.tsx
 
 Expected: FAIL — `Failed to resolve import "./useMonthLedger"`.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/admin/useMonthLedger.ts`:
 
@@ -794,7 +795,7 @@ export function useMonthLedger(month: string) {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 ```bash
 npx vitest run src/features/admin/useMonthLedger.test.tsx && npm run lint && npx tsc -b
@@ -802,7 +803,7 @@ npx vitest run src/features/admin/useMonthLedger.test.tsx && npm run lint && npx
 
 Expected: 5 passed, lint·tsc 깨끗.
 
-- [ ] **Step 5: 새 캐시를 무효화하는 곳을 잇는다 — 실패하는 테스트부터**
+- [x] **Step 5: 새 캐시를 무효화하는 곳을 잇는다 — 실패하는 테스트부터**
 
 **왜 이 단계가 있는가:** 4b 에서 **같은 종류의 버그를 양방향으로 두 번** 겪었다(발급 취소가 사람 이력을 무효화하지 않았고, 합치기가 상대편 상세·식사 현황판을 무효화하지 않았다). 새 캐시를 만들었으니 그 캐시를 낡게 만드는 쓰기를 **지금** 모두 잇는다. 발급·취소·무효·대신 사용·합치기·초기화는 모두 그 달 합계와 CSV 내용을 바꾼다. 어느 달인지 모르므로 **접두사**(`MONTH_LEDGER_QUERY_KEY`)로 덮는다 — `useMealOps` 의 `PERSON_LEDGER_QUERY_KEY` 와 같은 이유다.
 
@@ -820,7 +821,7 @@ Expected: 5 passed, lint·tsc 깨끗.
 
 `src/features/admin/usePersonOps.test.tsx` 의 `PEOPLE_KEYS` 끝에도 `['month-ledger']` 를 더한다(합치기·초기화는 CSV 의 이름과 가족 대표를 바꾼다).
 
-- [ ] **Step 6: 실패 확인**
+- [x] **Step 6: 실패 확인**
 
 ```bash
 npx vitest run src/features/admin/useIssue.test.tsx src/features/admin/useMealOps.test.tsx src/features/admin/usePersonOps.test.tsx
@@ -828,7 +829,7 @@ npx vitest run src/features/admin/useIssue.test.tsx src/features/admin/useMealOp
 
 Expected: 세 파일 모두 FAIL — 키 목록에 `['month-ledger']` 가 없다.
 
-- [ ] **Step 7: 세 곳을 잇는다**
+- [x] **Step 7: 세 곳을 잇는다**
 
 `src/features/admin/useIssue.ts` — import 를 더하고 `onSuccess` 의 `Promise.all` 맨 뒤에 한 줄:
 
@@ -845,7 +846,7 @@ import { MONTH_LEDGER_QUERY_KEY } from './useMonthLedger'
 
 `src/features/admin/usePersonOps.ts` — `invalidatePeople` 의 배열 맨 뒤에 같은 줄을 더하고 주석에 "합치기·초기화는 CSV 의 이름·가족 대표도 바꾼다" 를 적는다.
 
-- [ ] **Step 8: 통과 확인**
+- [x] **Step 8: 통과 확인**
 
 ```bash
 npm test && npm run lint && npx tsc -b
@@ -853,7 +854,7 @@ npm test && npm run lint && npx tsc -b
 
 Expected: 전부 PASS.
 
-- [ ] **Step 9: 커밋**
+- [x] **Step 9: 커밋**
 
 ```bash
 git add src/features/admin/useMonthLedger.ts src/features/admin/useMonthLedger.test.tsx src/features/admin/useIssue.ts src/features/admin/useIssue.test.tsx src/features/admin/useMealOps.ts src/features/admin/useMealOps.test.tsx src/features/admin/usePersonOps.ts src/features/admin/usePersonOps.test.tsx
@@ -892,7 +893,7 @@ MSG
 - **정렬은 최신순**(앱의 다른 장부와 같다). `mergeLedger` 가 배운 함정을 그대로 피한다 — 문자열 비교가 아니라 **실제 시각(ms)** 으로 비교하고, 같으면 id 로 고정한다.
 - **이름이 가려진 행**(합쳐짐·초기화됨)은 DB 가 `'탈퇴한 사용자'` 로 돌려준다. 그대로 쓴다 — 통계는 그 사람이 그때 거기 있었다는 기록이다.
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/admin/statsRows.test.ts`:
 
@@ -1055,7 +1056,7 @@ describe('filterByName', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 ```bash
 npx vitest run src/features/admin/statsRows.test.ts
@@ -1063,7 +1064,7 @@ npx vitest run src/features/admin/statsRows.test.ts
 
 Expected: FAIL — `Failed to resolve import "./statsRows"`.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/admin/statsRows.ts`:
 
@@ -1199,7 +1200,7 @@ export function filterByName(rows: readonly StatsRow[], query: string): StatsRow
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 ```bash
 npx vitest run src/features/admin/statsRows.test.ts && npm run lint && npx tsc -b
@@ -1207,7 +1208,7 @@ npx vitest run src/features/admin/statsRows.test.ts && npm run lint && npx tsc -
 
 Expected: 14 passed, lint·tsc 깨끗.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/features/admin/statsRows.ts src/features/admin/statsRows.test.ts
@@ -1243,7 +1244,7 @@ MSG
 - **일시는 `YYYY-MM-DD HH:MM`(서울)** 이다. 화면용 `formatDateTime` 은 'M/D HH:MM' 이라 연도가 없어 CSV 로는 쓸 수 없다.
 - **수식 주입을 막는다.** `=` `+` `-` `@` 로 시작하는 칸은 앞에 `'` 를 붙인다. **이름은 교인이 직접 적는 값**이라(20자 제한뿐이고 `=` 를 막지 않는다) 수식으로 시작하는 이름이 들어올 수 있다. 엑셀에서 `'` 가 글자로 보이는 대가를 치르지만, 권사님 노트북에서 수식이 실행되는 쪽보다 낫다.
 
-- [ ] **Step 1: 실패하는 테스트 — 시각 표기부터**
+- [x] **Step 1: 실패하는 테스트 — 시각 표기부터**
 
 `src/lib/dates.test.ts` 맨 아래에 `describe` 하나를 더한다:
 
@@ -1261,7 +1262,7 @@ describe('formatSeoulStamp', () => {
 
 같은 파일 맨 위 import 에 `formatSeoulStamp` 를 더한다.
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 ```bash
 npx vitest run src/lib/dates.test.ts
@@ -1269,7 +1270,7 @@ npx vitest run src/lib/dates.test.ts
 
 Expected: FAIL — `formatSeoulStamp is not a function`.
 
-- [ ] **Step 3: 구현 — 시각 표기**
+- [x] **Step 3: 구현 — 시각 표기**
 
 `src/lib/dates.ts` 의 `formatDateTime` 아래에 더한다:
 
@@ -1281,7 +1282,7 @@ export function formatSeoulStamp(iso: string): string {
 }
 ```
 
-- [ ] **Step 4: 실패하는 테스트 — CSV**
+- [x] **Step 4: 실패하는 테스트 — CSV**
 
 `src/features/admin/statsCsv.test.ts`:
 
@@ -1343,7 +1344,7 @@ describe('csvFilename', () => {
 })
 ```
 
-- [ ] **Step 5: 실패 확인**
+- [x] **Step 5: 실패 확인**
 
 ```bash
 npx vitest run src/features/admin/statsCsv.test.ts
@@ -1351,7 +1352,7 @@ npx vitest run src/features/admin/statsCsv.test.ts
 
 Expected: FAIL — `Failed to resolve import "./statsCsv"`.
 
-- [ ] **Step 6: 구현 — CSV**
+- [x] **Step 6: 구현 — CSV**
 
 `src/features/admin/statsCsv.ts`:
 
@@ -1406,7 +1407,7 @@ export function csvFilename(month: string): string {
 }
 ```
 
-- [ ] **Step 7: 통과 확인**
+- [x] **Step 7: 통과 확인**
 
 ```bash
 npx vitest run src/lib/dates.test.ts src/features/admin/statsCsv.test.ts && npm run lint && npx tsc -b
@@ -1414,7 +1415,7 @@ npx vitest run src/lib/dates.test.ts src/features/admin/statsCsv.test.ts && npm 
 
 Expected: 모두 PASS, lint·tsc 깨끗.
 
-- [ ] **Step 8: 커밋**
+- [x] **Step 8: 커밋**
 
 ```bash
 git add src/lib/dates.ts src/lib/dates.test.ts src/features/admin/statsCsv.ts src/features/admin/statsCsv.test.ts
@@ -1447,7 +1448,7 @@ MSG
 
 **공유 지원 판정:** `navigator.canShare({ files })` 가 유일하게 믿을 수 있는 신호다. `navigator.share` 만 보고 파일 공유가 되는지 알 수 없다(데스크톱 크롬은 `share` 는 있고 파일은 못 받는다). 설계가 "미지원 시 숨김" 이라 했으므로 **판정이 거짓이면 버튼을 아예 그리지 않는다**.
 
-- [ ] **Step 1: 실패하는 테스트**
+- [x] **Step 1: 실패하는 테스트**
 
 `src/features/admin/shareCsv.test.ts`:
 
@@ -1515,7 +1516,7 @@ describe('shareCsv', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 ```bash
 npx vitest run src/features/admin/shareCsv.test.ts
@@ -1523,7 +1524,7 @@ npx vitest run src/features/admin/shareCsv.test.ts
 
 Expected: FAIL — `Failed to resolve import "./shareCsv"`.
 
-- [ ] **Step 3: 구현**
+- [x] **Step 3: 구현**
 
 `src/features/admin/shareCsv.ts`:
 
@@ -1590,7 +1591,7 @@ export async function shareCsv(filename: string, text: string, nav: ShareDeps = 
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [x] **Step 4: 통과 확인**
 
 ```bash
 npx vitest run src/features/admin/shareCsv.test.ts && npm run lint && npx tsc -b
@@ -1598,7 +1599,7 @@ npx vitest run src/features/admin/shareCsv.test.ts && npm run lint && npx tsc -b
 
 Expected: 8 passed, lint·tsc 깨끗.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add src/features/admin/shareCsv.ts src/features/admin/shareCsv.test.ts
@@ -1636,7 +1637,7 @@ MSG
 - **다음 달로도 갈 수 있다.** 다음 주일 점심이 다음 달일 수 있어 미래를 막지 않는다.
 - 관리자 탭이 5개가 된다(식사·발급·사람·통계·내 식권). `max-w-sm` 바에서 `flex-1` 이라 320px 화면에서 한 칸 64px — `text-xs` 로 '내 식권' 까지 들어간다.
 
-- [ ] **Step 1: 실패하는 테스트 — 가족 대표 맵**
+- [x] **Step 1: 실패하는 테스트 — 가족 대표 맵**
 
 `src/features/admin/statsRows.test.ts` 맨 아래에 더한다:
 
@@ -1671,7 +1672,7 @@ describe('repByFamily', () => {
 
 파일 맨 위 import 에 `repByFamily` 를 더한다.
 
-- [ ] **Step 2: 실패 확인**
+- [x] **Step 2: 실패 확인**
 
 ```bash
 npx vitest run src/features/admin/statsRows.test.ts
@@ -1679,7 +1680,7 @@ npx vitest run src/features/admin/statsRows.test.ts
 
 Expected: FAIL — `repByFamily is not a function`.
 
-- [ ] **Step 3: 구현 — 가족 대표 맵**
+- [x] **Step 3: 구현 — 가족 대표 맵**
 
 `src/features/admin/statsRows.ts` 맨 아래에 더한다:
 
@@ -1706,7 +1707,7 @@ export function repByFamily(people: readonly RepCandidate[]): Map<string, string
 }
 ```
 
-- [ ] **Step 4: 실패하는 테스트 — 화면**
+- [x] **Step 4: 실패하는 테스트 — 화면**
 
 `src/pages/admin/StatsPage.test.tsx`:
 
@@ -1897,7 +1898,7 @@ describe('StatsPage', () => {
 })
 ```
 
-- [ ] **Step 5: 실패 확인**
+- [x] **Step 5: 실패 확인**
 
 ```bash
 npx vitest run src/pages/admin/StatsPage.test.tsx
@@ -1905,7 +1906,7 @@ npx vitest run src/pages/admin/StatsPage.test.tsx
 
 Expected: FAIL — `Failed to resolve import "./StatsPage"`.
 
-- [ ] **Step 6: 구현 — 화면**
+- [x] **Step 6: 구현 — 화면**
 
 `src/pages/admin/StatsPage.tsx`:
 
@@ -2051,7 +2052,7 @@ function LedgerLine({ row: r }: { row: StatsRow }) {
 
 **`SegmentedControl` 은 쓰지 않는다** — 월 선택은 좌우 버튼이고 필터 칩이 없다. import 를 넣으면 `noUnusedLocals` 가 빌드를 막는다.
 
-- [ ] **Step 7: 탭과 라우트**
+- [x] **Step 7: 탭과 라우트**
 
 `src/components/PersonShell.tsx` 의 `ADMIN_TABS` 에 통계를 넣는다 (사람 다음, 내 식권 앞):
 
@@ -2083,7 +2084,7 @@ import { StatsPage } from './pages/admin/StatsPage'
               <Route path="/admin/stats" element={<RequireAdmin><StatsPage /></RequireAdmin>} />
 ```
 
-- [ ] **Step 8: 통과 확인**
+- [x] **Step 8: 통과 확인**
 
 ```bash
 npm test && npm run lint && npx tsc -b
@@ -2091,11 +2092,11 @@ npm test && npm run lint && npx tsc -b
 
 Expected: 전부 PASS, lint·tsc 깨끗.
 
-- [ ] **Step 9: 손으로 확인 (컨트롤러가 한다 — 구현자는 `npm run dev` 를 띄우지 않는다)**
+- [x] **Step 9: 손으로 확인 (컨트롤러가 한다 — 구현자는 `npm run dev` 를 띄우지 않는다)**
 
 관리자로 `#/admin/stats` 에서: 이번 달이 기본이고, ◀▶ 가 달을 옮기고, 합계·식사별 행이 맞고, 이름 검색이 장부 줄을 보여 주고, CSV 저장이 엑셀에서 한글·숫자 모두 제대로 열린다.
 
-- [ ] **Step 10: 커밋**
+- [x] **Step 10: 커밋**
 
 ```bash
 git add src/features/admin/statsRows.ts src/features/admin/statsRows.test.ts src/pages/admin/StatsPage.tsx src/pages/admin/StatsPage.test.tsx src/components/PersonShell.tsx src/components/PersonShell.test.tsx src/App.tsx
@@ -2127,7 +2128,7 @@ MSG
 
 **주의:** E2E 는 **공유 DB 에서 단일 워커로 직렬** 실행된다. 다른 spec 도 오늘 날짜로 식사를 만들고 발급하므로, **그 달 전체 합계를 단언하면 안 된다.** 유일한 이름으로 검색해 그 사람의 소계·장부 줄·CSV 내용만 단언한다.
 
-- [ ] **Step 1: 테스트를 쓴다**
+- [x] **Step 1: 테스트를 쓴다**
 
 `e2e/stats.spec.ts`:
 
@@ -2179,7 +2180,7 @@ test('관리자 통계: 월 합계 → 이름 검색 → CSV 내용', async ({ p
 })
 ```
 
-- [ ] **Step 2: 돌린다**
+- [x] **Step 2: 돌린다**
 
 ```bash
 npm run e2e
@@ -2189,7 +2190,7 @@ Expected: **7 passed** (admin 1 · family 1 · onboarding 2 · people 1 · stats
 
 실패하면 테스트를 느슨하게 바꾸기 전에 원인을 본다. `npx playwright test e2e/stats.spec.ts --headed` 와 trace 가 도움이 된다. 제품 결함이 드러났다면 그것은 **고쳐서 보고할 발견**이지, 단언을 낮춰 덮을 일이 아니다.
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add e2e/stats.spec.ts
@@ -2216,7 +2217,7 @@ MSG
 - Modify: `docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md`
 - Modify: `docs/superpowers/plans/2026-10-13-phase4c-stats.md` (이 파일)
 
-- [ ] **Step 1: README — 운영 체크리스트에 월 정산 절차**
+- [x] **Step 1: README — 운영 체크리스트에 월 정산 절차**
 
 "### 5. 운영 체크리스트" 의 발급 정정 줄 **다음에** 한 줄을 넣는다:
 
@@ -2224,7 +2225,7 @@ MSG
 - 월 정산은 **관리 › 통계** 에서 한다: 달을 고르고 발급·사용·금액을 확인한 뒤 "이 달 CSV 저장" 으로 받는다(엑셀에서 바로 열린다 — 장수·단가·금액은 숫자라 그대로 더할 수 있다). 폰에서 "카톡으로 공유" 가 보이면 그 파일을 그대로 보낼 수 있다. **취소·무효 행도 들어 있다** — 종류 열로 구분한다.
 ```
 
-- [ ] **Step 2: 설계 문서**
+- [x] **Step 2: 설계 문서**
 
 - **§8.3 통계**: 구현대로 적고, 넣지 않은 것을 밝힌다. 그 단락을 아래로 바꾼다.
 
@@ -2268,11 +2269,11 @@ item 4 의 E2E 목록 끝에 더한다(`(e)` 다음).
 - 통계에 **경로(본인 폰/담당자 처리)** 와 **식사 등록자** 열은 넣지 않았다. 필요해지면 CSV 열을 늘리고, 등록자를 내보낼 때는 `merge_people` 이 `meals.created_by` 를 옮기지 않는 것부터 다시 본다.
 ```
 
-- [ ] **Step 3: 이 계획 파일**
+- [x] **Step 3: 이 계획 파일**
 
 "구현 결과와 계획의 차이" 절을 범위 절 다음에 만들어 Task 별로 실제 바뀐 것을 적고, 완료 기준의 수치를 **측정값**으로 채운다. 모든 Step 체크박스를 `[x]` 로 바꾼다(PR 본문의 Test Plan 항목은 그대로 둔다).
 
-- [ ] **Step 4: 전체 검증**
+- [x] **Step 4: 전체 검증**
 
 ```bash
 npm run db:reset && npm run db:test        # pgTAP Files=16, Tests=456
@@ -2282,7 +2283,7 @@ npm run build && VITE_BASE_PATH=/meal-ticket/ npm run build && grep -q '/meal-ti
 npm run e2e                                # 7 passed
 ```
 
-- [ ] **Step 5: 커밋** (push·PR 은 컨트롤러가 한다)
+- [x] **Step 5: 커밋** (push·PR 은 컨트롤러가 한다)
 
 ```bash
 git add README.md docs/superpowers/specs/2026-10-07-church-meal-ticket-design.md docs/superpowers/plans/2026-10-13-phase4c-stats.md
@@ -2300,7 +2301,7 @@ PR 본문:
 ## Summary
 - 관리자 **통계** 탭 신설: `#/admin/stats` 월 선택(식사일 기준, 좌우 버튼) → 발급·사용·금액 합계 → 식사별 행 → 이름 검색(구매자·사용자·가족 대표, 적으면 그 사람의 장부 줄과 소계).
 - **CSV 저장**(11열 · UTF-8 BOM · CRLF · 숫자 칸 · 수식 주입 차단)과 **카톡으로 공유**(`canShare({files})` 가 참일 때만 버튼). CSV 는 이름 검색과 무관하게 그 달 전체를 담고 취소·무효 행도 들어 있다.
-- DB: 마이그레이션 1개 — **사람 초기화가 떼어낸 계정의 연결 코드도 지운다**(4b 가 넘긴 것). pgTAP +10 (총 456). E2E `stats.spec.ts`(총 7).
+- DB: 마이그레이션 1개 — **사람 초기화가 떼어낸 계정의 연결 코드도 지운다**(4b 가 넘긴 것) + 잠그기 전후로 계정이 달라지면 거부하는 가드(리뷰가 두 세션 실험으로 찾았다). pgTAP +12 (총 458). E2E `stats.spec.ts`(총 7).
 
 ## 운영 (merge 전 확인)
 - 마이그레이션은 **함수 본문 하나와 주석 둘**뿐이다 — 표·인덱스·권한을 건드리지 않고 `create or replace` 와 `comment on` 이라 재실행도 안전하다. 교인 화면은 바뀌지 않는다.
@@ -2311,14 +2312,14 @@ PR 본문:
 ## 검증 (로컬, merge 전)
 | 항목 | 결과 |
 |---|---|
-| pgTAP | Files=16, Tests=456, PASS |
-| Vitest | (측정값) |
-| 커버리지 (statements / branches / functions / lines) | (측정값) |
+| pgTAP | Files=16, Tests=458, PASS |
+| Vitest | 80 파일 645 통과 |
+| 커버리지 (statements / branches / functions / lines) | 97.89% / 91.1% / 97.22% / 99% |
 | Playwright | 7 passed |
 | lint · tsc · 빌드(기본·하위 경로) | 통과 |
 
 ## Test Plan
-- [ ] CI 녹색 (pgTAP 456 · Vitest · E2E 7)
+- [ ] CI 녹색 (pgTAP 458 · Vitest 645 · E2E 7)
 - [ ] merge 후 Deploy 성공, 운영에서 관리 › 통계 열어 이번 달 합계 확인
 - [ ] 실제 폰: CSV 저장 → 엑셀·구글 시트에서 한글이 깨지지 않고 금액이 더해지는지, "카톡으로 공유" 가 보이면 그것도
 
@@ -2331,10 +2332,10 @@ PR 은 사용자가 merge 한다.
 
 ## 완료 기준
 
-- pgTAP: 010~160 전부 통과, `Files=16, Tests=456` (160 = `plan(10)`).
-- Vitest 전부 통과, 커버리지 임계값(lines 80 · functions 80 · branches 70 · statements 80) 통과.
-- `npm run lint` · `npx tsc -b` · `npm run build` · 하위 경로 빌드 통과.
-- Playwright: 7 passed (admin 1 · family 1 · onboarding 2 · people 1 · stats 1 · tickets 1).
+- pgTAP: 010~160 전부 통과, **`Files=16, Tests=458`** (160 = `plan(12)` — 계획의 10 에 리뷰가 찾은 라벨 불일치 수정으로 2개를 더했다).
+- Vitest: **80 파일 645 통과**. 커버리지 — statements **97.89%** (1624/1659) · branches **91.1%** (1158/1271) · functions **97.22%** (560/576) · lines **99%** (1395/1409). 임계값(80/80/70/80) 모두 통과.
+- `npm run lint`(oxlint `--deny-warnings`) · `npx tsc -b` · `npm run build` · `VITE_BASE_PATH=/meal-ticket/` 하위 경로 빌드 통과(`dist/index.html` 에 `/meal-ticket/assets/` 확인).
+- Playwright: **7 passed** (admin 1 · family 1 · onboarding 2 · people 1 · stats 1 · tickets 1).
 - 수동: 관리자로 통계 → 달 이동 → 이름 검색 → CSV 저장이 화면 문구대로 동작하고, 받은 CSV 가 엑셀에서 한글·숫자 모두 제대로 열린다.
 - 운영: merge 뒤 Deploy 성공, 관리 › 통계에서 이번 달 숫자가 보인다.
 
